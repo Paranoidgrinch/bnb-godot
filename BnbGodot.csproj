@@ -1,0 +1,19 @@
+<Project Sdk="Godot.NET.Sdk/4.7.0">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>BnbGodot</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The RogueDeck engine, referenced from the sibling checkout (see README): the frontend never
+         reimplements rules — it renders state and forwards input, per docs/godot-export-contract.md.
+         Sandbox.Run carries the reference host layer (RunPlayback, the interactive session/drivers,
+         ReplayScript, IMetaStore). -->
+    <ProjectReference Include="../RogueDeck-Core/src/RogueDeck.Core/RogueDeck.Core.csproj" />
+    <ProjectReference Include="../RogueDeck-Core/src/RogueDeck.Scenario/RogueDeck.Scenario.csproj" />
+    <ProjectReference Include="../RogueDeck-Core/src/RogueDeck.Run/RogueDeck.Run.csproj" />
+    <ProjectReference Include="../RogueDeck-Core/src/RogueDeck.Sandbox.Run/RogueDeck.Sandbox.Run.csproj" />
+  </ItemGroup>
+</Project>
