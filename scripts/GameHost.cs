@@ -19,7 +19,15 @@ public partial class GameHost : Godot.Node
     public RunPlayback? Play { get; private set; }
     public string? HostError { get; private set; }
 
+    private readonly GodotMetaStore _metaStore = new();
     private const string SavePath = "user://run-save.json";
+
+    // The current cross-run profile (unlock flags, meta counters) — the title screen reads it to gate the
+    // character roster. Freshly loaded each call so it reflects the last run's meta writes.
+    public MetaState Meta => _metaStore.Load();
+
+    public IReadOnlyList<RunCharacter> AvailableCharacters =>
+        MetaProgression.AvailableCharacters(Blueprint, Meta);
 
     public override void _Ready()
     {
@@ -41,7 +49,7 @@ public partial class GameHost : Godot.Node
     public void StartNewRun(int seed, string? characterId = null)
     {
         Play?.Dispose();
-        Play = new RunPlayback(OnPlayChanged, new GodotMetaStore());
+        Play = new RunPlayback(OnPlayChanged, _metaStore);
         Play.Start(Blueprint, seed, interactive: true, characterId);
         EmitChanged();
     }
@@ -65,7 +73,7 @@ public partial class GameHost : Godot.Node
             return false;
         var save = RunSaveJson.FromJson(Godot.FileAccess.GetFileAsString(SavePath));
         Play?.Dispose();
-        Play = new RunPlayback(OnPlayChanged, new GodotMetaStore());
+        Play = new RunPlayback(OnPlayChanged, _metaStore);
         Play.Resume(Blueprint, save, interactive: true);
         EmitChanged();
         return Play.Error is null;
