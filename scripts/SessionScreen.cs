@@ -67,6 +67,145 @@ public partial class SessionScreen : Control
             SmokeRun();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-map"))
             _ = CaptureThenQuit("smoke-map.png"); // a fresh run parks at the entry fork — screenshot the map
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-full"))
+            SmokeFull();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-timing"))
+            SmokeTiming();
+    }
+
+    // Measure per-action latency (a card play under the replay model re-executes the whole run — is that
+    // fast enough for a human clicking cards?). Reach the first fight, then time up to 12 actions.
+    private void SmokeTiming()
+    {
+        var session = Session;
+        var play = Play;
+        var reachWatch = System.Diagnostics.Stopwatch.StartNew();
+        for (var i = 0; i < 8 && play?.CombatDriver?.Current is null && session is not null; i++)
+        {
+            if (session.IsAwaitingNodeChoice)
+                session.PickNode(session.PendingNodeChoices[0].Id.Value);
+            else if (session.IsAwaitingInterlude)
+                session.Continue();
+            else
+                break;
+        }
+        var combat = play?.CombatDriver?.Current;
+        if (combat is null || play is null)
+        {
+            GD.Print("smoke-timing: no fight reached");
+            GetTree().Quit();
+            return;
+        }
+        GD.Print($"smoke-timing: reached fight in {reachWatch.ElapsedMilliseconds} ms");
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var actions = 0;
+        for (; actions < 2 && play.CombatDriver!.Current is { } live && !live.IsOver; actions++)
+        {
+            var before = watch.ElapsedMilliseconds;
+            var hero = live.State.GetCombatant(live.HeroId);
+            var card = live.Hand.FirstOrDefault(c =>
+                !c.DefinitionId.value.Contains("red_tape") && CanPay(hero, c.DefinitionId.value));
+            if (card is not null && live.IsHeroTurn)
+            {
+                var target = live.State.Combatants
+                    .FirstOrDefault(c => c.Id != live.HeroId && c.IsAlive && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
+                play.CombatDriver.PlayCard(card.Id, target);
+            }
+            else
+            {
+                play.CombatDriver.EndTurn();
+            }
+            GD.Print($"smoke-timing: action {actions} took {watch.ElapsedMilliseconds - before} ms");
+        }
+        GD.Print($"smoke-timing: {actions} actions in {watch.ElapsedMilliseconds} ms "
+            + $"({(actions > 0 ? watch.ElapsedMilliseconds / actions : 0)} ms/action avg)");
+        GetTree().Quit();
+    }
+
+    // Auto-play the FIRST FEW nodes through the same input methods the UI calls — proves the multi-node
+    // loop holds up (combat → interlude → fork → event/shop → next fight) without the full-act cost (the
+    // replay model re-executes the whole run per input, so a whole act is far too slow headless; the
+    // fast full-act check is bnb-content's direct-driver C3 test). Greedy in combat, forward-biased at
+    // choices; stops after NodeBudget rooms.
+    private const int NodeBudget = 2;
+
+    private void SmokeFull()
+    {
+        var session = Session;
+        var play = Play;
+        var fights = 0;
+        for (var step = 0; step < 4000 && session is not null && play is not null && !session.IsComplete; step++)
+        {
+            if (session.Error is not null || play.Error is not null)
+                break;
+            if (session.Run.VisitedNodes.Count >= NodeBudget && play.CombatDriver?.Current is null
+                && !session.IsAwaitingChoice && !session.IsAwaitingEntities)
+                break; // budget reached at a clean boundary
+
+            if (play.CombatDriver?.Current is { } combat)
+            {
+                if (play.CombatDriver.PendingCardChoice is { } candidates)
+                {
+                    play.CombatDriver.SupplyCardChoice(
+                        candidates.Take(play.CombatDriver.PendingCardChoiceCount).Select(c => c.Id).ToList());
+                }
+                else if (combat.IsHeroTurn)
+                {
+                    var hero = combat.State.GetCombatant(combat.HeroId);
+                    var playable = combat.Hand.FirstOrDefault(c =>
+                        !c.DefinitionId.value.Contains("red_tape") && !c.DefinitionId.value.Contains("unsigned_form")
+                        && CanPay(hero, c.DefinitionId.value));
+                    if (playable is not null)
+                    {
+                        var target = combat.State.Combatants
+                            .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
+                        play.CombatDriver.PlayCard(playable.Id, target);
+                    }
+                    else
+                    {
+                        fights++;
+                        play.CombatDriver.EndTurn();
+                    }
+                }
+                else
+                {
+                    break; // enemy turn resolves synchronously under replay — never parks here
+                }
+            }
+            else if (session.IsAwaitingChoice)
+            {
+                // Forward-biased: prefer a leave/continue/decline choice so shops and events terminate.
+                var choices = session.PendingChoices;
+                var choice = choices.FirstOrDefault(c =>
+                    c.Id is "leave" or "continue" or "skip" or "decline") ?? choices[^1];
+                session.Pick(choice.Id);
+            }
+            else if (session.IsAwaitingEntities && session.PendingEntities is { } entities)
+            {
+                session.PickEntities(Enumerable.Range(0, entities.Count).ToList());
+            }
+            else if (session.IsAwaitingNodeChoice)
+            {
+                session.PickNode(session.PendingNodeChoices[0].Id.Value);
+            }
+            else if (session.IsAwaitingInterlude)
+            {
+                session.Continue();
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        GD.Print("smoke-full: "
+            + $"result={session?.Run.Result} "
+            + $"visited={session?.Run.VisitedNodes.Count}/{GameHost.Instance.Blueprint.Map.Nodes.Count} "
+            + $"hp={session?.Run.Health.Current}/{session?.Run.Health.Max} "
+            + $"gold={session?.Run.GetResource(StandardRunIds.Gold)} "
+            + $"deck={session?.Run.Deck.Count} relics={session?.Run.Relics.Count} "
+            + $"turns={fights} error={session?.Error ?? play?.Error ?? "none"}");
+        GetTree().Quit();
     }
 
     // Headless proof of the whole Godot-side loop: walk to the first fight THROUGH the same methods the

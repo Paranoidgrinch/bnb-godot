@@ -35,9 +35,9 @@ public partial class Boot : Control
             GetTree().Quit();
             return;
         }
-        if (userArgs.Contains("--smoke-run"))
+        // Any session smoke boots straight into a seeded run; SessionScreen runs the matching probe + quits.
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing"))
         {
-            // Boot straight into a seeded run: SessionScreen prints the parked state and quits.
             host.StartNewRun(seed: 7);
             CallDeferred(nameof(GoToSession));
             return;
