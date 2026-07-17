@@ -65,6 +65,8 @@ public partial class SessionScreen : Control
 
         if (OS.GetCmdlineUserArgs().Contains("--smoke-run"))
             SmokeRun();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-map"))
+            _ = CaptureThenQuit("smoke-map.png"); // a fresh run parks at the entry fork — screenshot the map
     }
 
     // Headless proof of the whole Godot-side loop: walk to the first fight THROUGH the same methods the
@@ -120,16 +122,21 @@ public partial class SessionScreen : Control
             GetTree().Quit();
             return;
         }
-        _ = CaptureThenQuit();
+        _ = CaptureThenQuit("smoke-combat.png");
     }
 
-    private async System.Threading.Tasks.Task CaptureThenQuit()
+    private async System.Threading.Tasks.Task CaptureThenQuit(string file)
     {
+        if (DisplayServer.GetName().Contains("headless"))
+        {
+            GetTree().Quit();
+            return;
+        }
         for (var i = 0; i < 3; i++)
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         var image = GetViewport().GetTexture().GetImage();
-        image.SavePng("user://smoke-combat.png");
-        GD.Print($"smoke-run: screenshot user://smoke-combat.png ({image.GetWidth()}x{image.GetHeight()})");
+        image.SavePng($"user://{file}");
+        GD.Print($"smoke: screenshot user://{file} ({image.GetWidth()}x{image.GetHeight()})");
         GetTree().Quit();
     }
 
@@ -221,11 +228,8 @@ public partial class SessionScreen : Control
     private void RenderNodeFork(InteractiveRunSession session)
     {
         Title("Choose your path");
-        foreach (var node in session.PendingNodeChoices)
-        {
-            var id = node.Id.Value;
-            AddButton($"{id}  ({node.Type.Value})", () => session.PickNode(id));
-        }
+        Muted("Pick a highlighted room to travel to.");
+        AddMap(session.PendingNodeChoices.Select(n => n.Id.Value), session.PickNode);
     }
 
     private void RenderInterlude(InteractiveRunSession session)
@@ -238,6 +242,20 @@ public partial class SessionScreen : Control
         }
         AddButton("Continue ▸", session.Continue);
         AddButton("Save run", () => Toast(GameHost.Instance.SaveRun() ?? "Saved."));
+        AddMap(null, null);
+    }
+
+    // Drop the map graph into the main column: reachable ids are the clickable rooms (a fork), or null
+    // for a read-only "you are here" overview (an interlude).
+    private void AddMap(IEnumerable<string>? reachable, Action<string>? onPick)
+    {
+        if (Session is not { } session)
+            return;
+        var map = new MapView(GameHost.Instance.Blueprint.Map, session.Run, reachable, onPick)
+        {
+            SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
+        };
+        _main.AddChild(map);
     }
 
     private void RenderComplete(InteractiveRunSession session)
