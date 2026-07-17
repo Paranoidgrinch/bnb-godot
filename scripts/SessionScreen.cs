@@ -64,17 +64,73 @@ public partial class SessionScreen : Control
         Rebuild();
 
         if (OS.GetCmdlineUserArgs().Contains("--smoke-run"))
+            SmokeRun();
+    }
+
+    // Headless proof of the whole Godot-side loop: walk to the first fight THROUGH the same methods the
+    // buttons call, play one affordable card at the default target, and report the resulting state.
+    private void SmokeRun()
+    {
+        var session = Session;
+        if (session is null)
         {
-            var session = Session;
-            GD.Print(session is null
-                ? "smoke-run: NO SESSION"
-                : "smoke-run: "
-                    + $"error={session.Error ?? Play?.Error ?? "none"} "
-                    + $"choice={session.IsAwaitingChoice} entities={session.IsAwaitingEntities} "
-                    + $"fork={session.IsAwaitingNodeChoice} interlude={session.IsAwaitingInterlude} "
-                    + $"combat={Play?.CombatDriver?.Current is not null} hand={Play?.CombatDriver?.Current?.Hand.Count ?? 0}");
+            GD.Print("smoke-run: NO SESSION");
             GetTree().Quit();
+            return;
         }
+
+        for (var guard = 0; guard < 10 && Play?.CombatDriver?.Current is null; guard++)
+        {
+            if (session.IsAwaitingNodeChoice)
+                session.PickNode(session.PendingNodeChoices[0].Id.Value);
+            else if (session.IsAwaitingInterlude)
+                session.Continue();
+            else
+                break;
+        }
+
+        var combat = Play?.CombatDriver?.Current;
+        if (combat is null)
+        {
+            GD.Print($"smoke-run: no fight reached (error={session.Error ?? Play?.Error ?? "none"})");
+            GetTree().Quit();
+            return;
+        }
+
+        var hero = combat.State.GetCombatant(combat.HeroId);
+        var enemy = combat.State.Combatants.First(c => c.Id != combat.HeroId);
+        var hpBefore = enemy.Health.Current;
+        _armedCard = combat.Hand.FirstOrDefault(c => CanPay(hero, c.DefinitionId.value))?.Id;
+        if (_armedCard is not null)
+            PlayArmedCardAt(null);
+
+        var after = Play?.CombatDriver?.Current;
+        var enemyAfter = after?.State.Combatants.First(c => c.Id != after.HeroId);
+        GD.Print("smoke-run: "
+            + $"fight={combat.State.Combatants.Count(c => c.Id != combat.HeroId)}v1 "
+            + $"hand={combat.Hand.Count}→{after?.Hand.Count ?? -1} "
+            + $"enemyHp={hpBefore}→{enemyAfter?.Health.Current ?? -1} "
+            + $"intent={combat.UpcomingIntentFor(enemy.Id)?.Label ?? "-"} "
+            + $"error={session.Error ?? Play?.Error ?? "none"}");
+
+        // Windowed run only: let the freshly-built UI render a few frames, capture the combat screen so
+        // the look can be eyeballed, then quit. Headless has no framebuffer to read, so just quit.
+        if (DisplayServer.GetName().Contains("headless"))
+        {
+            GetTree().Quit();
+            return;
+        }
+        _ = CaptureThenQuit();
+    }
+
+    private async System.Threading.Tasks.Task CaptureThenQuit()
+    {
+        for (var i = 0; i < 3; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        var image = GetViewport().GetTexture().GetImage();
+        image.SavePng("user://smoke-combat.png");
+        GD.Print($"smoke-run: screenshot user://smoke-combat.png ({image.GetWidth()}x{image.GetHeight()})");
+        GetTree().Quit();
     }
 
     public override void _ExitTree() => GameHost.Instance.StateChanged -= Rebuild;
