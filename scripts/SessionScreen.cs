@@ -478,6 +478,7 @@ public partial class SessionScreen : Control
             };
             var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definition);
             button.AddThemeColorOverride("font_color", MoonvineTheme.RarityColor(presentation?.Rarity));
+            button.TooltipText = CardTooltip(definition, presentation);
             if (_armedCard is { } armed && armed.value == cardId.value)
                 button.AddThemeStyleboxOverride("normal", MoonvineTheme.Panel(MoonvineTheme.BgControl, MoonvineTheme.Accent, 8));
             button.Pressed += () => OnCardClicked(cardId);
@@ -590,7 +591,13 @@ public partial class SessionScreen : Control
         {
             _sidebar.AddChild(new Label { Text = "Relics" });
             foreach (var relic in run.Relics)
-                _sidebar.AddChild(MutedLabel($"• {relic.Definition.DisplayName}{(relic.Enabled ? "" : " (off)")}"));
+            {
+                var label = MutedLabel($"• {relic.Definition.DisplayName}{(relic.Enabled ? "" : " (off)")}");
+                label.MouseFilter = MouseFilterEnum.Stop; // tooltips need a hit-testable control
+                label.TooltipText = GameHost.Instance.Blueprint.Presentation.Relics
+                    .GetValueOrDefault(relic.Id.Value)?.FlavorText ?? "";
+                _sidebar.AddChild(label);
+            }
         }
         if (run.Consumables.Count > 0)
         {
@@ -648,6 +655,20 @@ public partial class SessionScreen : Control
         combatant.Id == combat.HeroId
             ? Play?.HeroName ?? "You"
             : Play!.EnemyNames.TryGetValue(combatant.Id.value, out var name) ? name : combatant.Id.value;
+
+    // Name · cost · flavor — the presentation manifest's flavor line under the derived name/cost.
+    private string CardTooltip(string definitionId, RogueDeck.Run.EntityPresentation? presentation)
+    {
+        var lines = new System.Collections.Generic.List<string>
+        {
+            $"{CardName(definitionId)}  ·  {CostLabel(definitionId)}",
+        };
+        if (presentation?.Rarity is { } rarity)
+            lines.Add(rarity);
+        if (!string.IsNullOrWhiteSpace(presentation?.FlavorText))
+            lines.Add(presentation!.FlavorText!);
+        return string.Join("\n", lines);
+    }
 
     private string CardName(string definitionId)
     {
