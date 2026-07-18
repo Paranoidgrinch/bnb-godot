@@ -25,6 +25,12 @@ public partial class SessionScreen : Control
     private CardInstanceId? _armedCard; // the hand card waiting for a target click
     private int _seenProblems;
 
+    // Draw animation: which hand cards were already on screen last render (so newly-drawn cards fly in from
+    // the deck), the card nodes queued for that fly-in, and the deck pile's top node (their start point).
+    private readonly HashSet<string> _shownHandIds = [];
+    private readonly List<Control> _cardsToAnimate = [];
+    private Control? _deckTopNode;
+
     private static RunPlayback? Play => GameHost.Instance.Play;
     private static InteractiveRunSession? Session => Play?.Session;
 
@@ -76,6 +82,8 @@ public partial class SessionScreen : Control
             SmokeRun();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-target"))
             SmokeTarget();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-draw"))
+            _ = SmokeDraw();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-map"))
             _ = CaptureThenQuit("smoke-map.png"); // a fresh run parks at the entry fork — screenshot the map
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-full"))
@@ -333,8 +341,8 @@ public partial class SessionScreen : Control
             GetTree().Quit();
             return;
         }
-        for (var i = 0; i < 3; i++)
-            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        // Let animations (draw fly-in, the deck's video) settle before the still capture.
+        await ToSignal(GetTree().CreateTimer(1.6), SceneTreeTimer.SignalName.Timeout);
         var image = GetViewport().GetTexture().GetImage();
         image.SavePng($"user://{file}");
         GD.Print($"smoke: screenshot user://{file} ({image.GetWidth()}x{image.GetHeight()})");
@@ -361,6 +369,9 @@ public partial class SessionScreen : Control
             && !session.IsAwaitingInterlude && Play?.CombatDriver?.Current is not null;
         _combatRoot.Visible = inCombat;
         _mainScroll.Visible = !inCombat;
+        _deckTopNode = null;
+        if (!inCombat)
+            _shownHandIds.Clear(); // a fresh fight re-deals; its opening hand animates in
 
         if (Play is null || session is null)
         {
@@ -597,19 +608,9 @@ public partial class SessionScreen : Control
         hint.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
         col.AddChild(hint);
 
-        var handCenter = new CenterContainer();
-        var hand = new HBoxContainer();
-        hand.AddThemeConstantOverride("separation", 10);
-        foreach (var card in combat.Hand)
-        {
-            var cardId = card.Id;
-            var armed = _armedCard is { } a && a.value == cardId.value;
-            hand.AddChild(CardBlockButton(combat, hero, card, armed, () => OnCardClicked(cardId)));
-        }
-        if (combat.Hand.Count == 0)
-            hand.AddChild(MutedLabel("(empty hand)"));
-        handCenter.AddChild(hand);
-        col.AddChild(handCenter);
+        // The deck pile sits in the bottom-left corner; build it first so its top card is the fly-in origin.
+        BuildDeckPile(combat);
+        BuildHand(col, combat, hero);
 
         var controls = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         controls.AddThemeConstantOverride("separation", 10);
@@ -624,6 +625,110 @@ public partial class SessionScreen : Control
             controls.AddChild(use);
         }
         col.AddChild(controls);
+    }
+
+    // The draw pile in the bottom-left corner: a few offset card backs (the top one animated), plus a count.
+    private void BuildDeckPile(InteractiveCombat combat)
+    {
+        var drawCount = combat.State.GetCardZones(combat.HeroId).GetCardsInZone(CardZone.DrawPile).Count;
+
+        var holder = new Control { CustomMinimumSize = new Vector2(CardVisuals.CardW + 24, CardVisuals.CardH + 30) };
+        holder.SetAnchorsPreset(LayoutPreset.BottomLeft);
+        holder.Position = new Vector2(24, -(CardVisuals.CardH + 30) - 12);
+        _combatRoot.AddChild(holder);
+
+        // Static backs fanned slightly for depth; the top one animates.
+        var backing = Math.Min(drawCount, 3);
+        for (var i = 0; i < backing; i++)
+        {
+            var still = CardVisuals.Back(animated: false);
+            still.Position = new Vector2(i * 4, -i * 4);
+            holder.AddChild(still);
+        }
+        if (drawCount > 0)
+        {
+            var top = CardVisuals.Back(animated: true);
+            top.Position = new Vector2(backing * 4, -backing * 4);
+            holder.AddChild(top);
+            _deckTopNode = top;
+        }
+
+        var count = new Label { Text = $"Draw {drawCount}", HorizontalAlignment = HorizontalAlignment.Center };
+        count.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+        count.SetAnchorsPreset(LayoutPreset.BottomWide);
+        holder.AddChild(count);
+    }
+
+    // The hand as manually-placed card faces (a centered row), so newly-drawn cards can fly in from the deck.
+    private void BuildHand(VBoxContainer col, InteractiveCombat combat, CombatantState hero)
+    {
+        var cards = combat.Hand.ToList();
+        const int spacing = 12;
+        var totalWidth = cards.Count * CardVisuals.CardW + Math.Max(0, cards.Count - 1) * spacing;
+
+        var center = new CenterContainer();
+        var inner = new Control { CustomMinimumSize = new Vector2(Math.Max(totalWidth, 1), CardVisuals.CardH + 8) };
+        center.AddChild(inner);
+        col.AddChild(center);
+
+        _cardsToAnimate.Clear();
+        for (var i = 0; i < cards.Count; i++)
+        {
+            var card = cards[i];
+            var cardId = card.Id;
+            var armed = _armedCard is { } a && a.value == cardId.value;
+            var face = CardBlockButton(combat, hero, card, armed, () => OnCardClicked(cardId));
+            face.Position = new Vector2(i * (CardVisuals.CardW + spacing), 0);
+            face.Size = new Vector2(CardVisuals.CardW, CardVisuals.CardH);
+            inner.AddChild(face);
+            if (!_shownHandIds.Contains(cardId.value))
+                _cardsToAnimate.Add(face); // newly drawn → fly it in
+        }
+        if (cards.Count == 0)
+            inner.AddChild(MutedLabel("(empty hand)"));
+
+        _shownHandIds.Clear();
+        foreach (var card in cards)
+            _shownHandIds.Add(card.Id.value);
+
+        if (_cardsToAnimate.Count > 0)
+            CallDeferred(nameof(AnimateDraws));
+    }
+
+    // Fly each freshly-drawn card from the deck to its hand slot with a mid-flight flip (back → face).
+    // Deferred so the layout has settled and the slots' real positions are known.
+    private void AnimateDraws()
+    {
+        var deckGlobal = _deckTopNode is { } deck && IsInstanceValid(deck)
+            ? deck.GlobalPosition
+            : new Vector2(40, GetViewportRect().Size.Y - 120);
+
+        for (var i = 0; i < _cardsToAnimate.Count; i++)
+        {
+            var card = _cardsToAnimate[i];
+            if (!IsInstanceValid(card) || card.GetParent() is not Control parent)
+                continue;
+
+            var target = card.Position;
+            var startLocal = parent.GetGlobalTransform().AffineInverse() * deckGlobal;
+            var mid = startLocal.Lerp(target, 0.5f);
+            card.PivotOffset = new Vector2(CardVisuals.CardW / 2f, CardVisuals.CardH / 2f);
+            card.Position = startLocal;
+
+            // A still back covers the face until the flip's midpoint.
+            var back = CardVisuals.Back(animated: false);
+            back.SetAnchorsPreset(LayoutPreset.FullRect);
+            card.AddChild(back);
+
+            var tween = CreateTween();
+            tween.TweenInterval(i * 0.12);
+            tween.TweenProperty(card, "scale:x", 0.0f, 0.15f).SetTrans(Tween.TransitionType.Sine);
+            tween.Parallel().TweenProperty(card, "position", mid, 0.15f).SetTrans(Tween.TransitionType.Cubic);
+            tween.TweenCallback(Callable.From(() => { if (IsInstanceValid(back)) back.QueueFree(); }));
+            tween.TweenProperty(card, "scale:x", 1.0f, 0.15f).SetTrans(Tween.TransitionType.Sine);
+            tween.Parallel().TweenProperty(card, "position", target, 0.15f).SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+        }
+        _cardsToAnimate.Clear();
     }
 
     // A combatant's column: name, a stick-figure placeholder, an HP bar, energy (hero) or intent (enemy),
@@ -729,28 +834,44 @@ public partial class SessionScreen : Control
         var affordable = CanPay(hero, definition);
         var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definition);
 
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(150, 150) };
+        var panel = new PanelContainer { CustomMinimumSize = new Vector2(CardVisuals.CardW, CardVisuals.CardH) };
         panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
-            new Color("050505"),
-            highlighted ? MoonvineTheme.AccentLight : affordable ? new Color(MoonvineTheme.Accent, 0.4f) : new Color(MoonvineTheme.TextMuted, 0.25f)));
+            new Color("0a0a0c"),
+            highlighted ? MoonvineTheme.AccentLight : affordable ? new Color(MoonvineTheme.Accent, 0.5f) : new Color(MoonvineTheme.TextMuted, 0.25f), 6));
 
+        var margin = new MarginContainer();
+        foreach (var s in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })
+            margin.AddThemeConstantOverride(s, 6);
         var column = new VBoxContainer();
-        column.AddThemeConstantOverride("separation", 4);
-        var name = new Label { Text = CardName(definition), AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        name.AddThemeColorOverride("font_color", affordable ? MoonvineTheme.RarityColor(presentation?.Rarity) : MoonvineTheme.TextMuted);
-        column.AddChild(name);
+        column.AddThemeConstantOverride("separation", 3);
+
+        var header = new HBoxContainer();
         var cost = new Label { Text = CostLabel(definition) };
         cost.AddThemeColorOverride("font_color", MoonvineTheme.Warning);
-        column.AddChild(cost);
+        cost.AddThemeFontSizeOverride("font_size", 13);
+        header.AddChild(cost);
+        column.AddChild(header);
+
+        var name = new Label { Text = CardName(definition), AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        name.AddThemeColorOverride("font_color", affordable ? MoonvineTheme.RarityColor(presentation?.Rarity) : MoonvineTheme.TextMuted);
+        name.AddThemeFontSizeOverride("font_size", 14);
+        column.AddChild(name);
+
+        var rule = new HSeparator();
+        column.AddChild(rule);
+
         var effect = new Label
         {
             Text = presentation?.FlavorText ?? "",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
         };
-        effect.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
-        effect.AddThemeFontSizeOverride("font_size", 12);
+        effect.AddThemeColorOverride("font_color", affordable ? MoonvineTheme.TextSoft : MoonvineTheme.TextMuted);
+        effect.AddThemeFontSizeOverride("font_size", 11);
         column.AddChild(effect);
-        panel.AddChild(column);
+
+        margin.AddChild(column);
+        panel.AddChild(margin);
 
         var overlay = new Button { Flat = true, Disabled = !affordable };
         overlay.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -771,6 +892,27 @@ public partial class SessionScreen : Control
         if (!_selectedCards.Remove(id.value) && _selectedCards.Count < driver.PendingCardChoiceCount)
             _selectedCards.Add(id.value);
         Rebuild();
+    }
+
+    // Capture the opening draw MID-FLIGHT (cards fanning out of the deck), to eyeball the animation.
+    private async System.Threading.Tasks.Task SmokeDraw()
+    {
+        var session = Session;
+        for (var i = 0; i < 8 && Play?.CombatDriver?.Current is null && session is not null; i++)
+        {
+            if (session.IsAwaitingNodeChoice) session.PickNode(session.PendingNodeChoices[0].Id.Value);
+            else if (session.IsAwaitingInterlude) session.Continue();
+            else break;
+        }
+        if (Play?.CombatDriver?.Current is null || DisplayServer.GetName().Contains("headless"))
+        {
+            GetTree().Quit();
+            return;
+        }
+        await ToSignal(GetTree().CreateTimer(0.34), SceneTreeTimer.SignalName.Timeout);
+        GetViewport().GetTexture().GetImage().SavePng("user://smoke-draw.png");
+        GD.Print("smoke: screenshot user://smoke-draw.png (mid-draw)");
+        GetTree().Quit();
     }
 
     // Verify the targeting rule through the real click handler: a block card plays on click (no arm),
