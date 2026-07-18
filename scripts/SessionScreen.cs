@@ -429,9 +429,14 @@ public partial class SessionScreen : Control
                     + (combatant.IsAlive ? "" : "  💀"),
             });
 
-            if (!isHero && combat.UpcomingIntentFor(combatant.Id) is { } intent)
+            if (!isHero && combatant.IsAlive && combat.UpcomingIntentFor(combatant.Id) is { } intent)
             {
-                var intentLabel = new Label { Text = $"▸ {intent.Label}" };
+                var intentLabel = new Label
+                {
+                    Text = $"{RogueDeck.Scenario.Authoring.IntentDisplay.Glyph(intent.Kind)} "
+                        + $"{RogueDeck.Scenario.Authoring.IntentDisplay.KindWord(intent.Kind)}: {intent.Label}",
+                    AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                };
                 intentLabel.AddThemeColorOverride("font_color", MoonvineTheme.IntentColor(intent.Kind));
                 column.AddChild(intentLabel);
             }
