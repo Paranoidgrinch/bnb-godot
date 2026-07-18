@@ -410,6 +410,14 @@ public partial class SessionScreen : Control
             session.PickEntities(picks);
         });
         confirm.Disabled = _selectedEntities.Count != entities.Count;
+
+        // A declinable reward (e.g. a card reward): let the player take nothing.
+        if (entities.AllowSkip)
+            AddButton("Skip — take none", () =>
+            {
+                _selectedEntities.Clear();
+                session.PickEntities([]);
+            });
     }
 
     // A pickable option showing the name on top and its ability/rules text beneath — so a card reward
