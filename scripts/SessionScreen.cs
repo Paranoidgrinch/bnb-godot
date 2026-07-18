@@ -71,6 +71,48 @@ public partial class SessionScreen : Control
             SmokeFull();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-timing"))
             SmokeTiming();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-reward"))
+            _ = SmokeReward();
+    }
+
+    // Auto-play greedily until the first reward/entity pick, then screenshot it (verifies reward
+    // readability). Windowed only.
+    private async System.Threading.Tasks.Task SmokeReward()
+    {
+        var session = Session;
+        var play = Play;
+        for (var step = 0; step < 200 && session is not null && play is not null && !session.IsAwaitingEntities; step++)
+        {
+            if (play.CombatDriver?.Current is { } combat)
+            {
+                if (combat.IsHeroTurn)
+                {
+                    var hero = combat.State.GetCombatant(combat.HeroId);
+                    var card = combat.Hand.FirstOrDefault(c =>
+                        !c.DefinitionId.value.Contains("red_tape") && CanPay(hero, c.DefinitionId.value));
+                    var target = combat.State.Combatants
+                        .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
+                    if (card is not null)
+                        play.CombatDriver.PlayCard(card.Id, target);
+                    else
+                        play.CombatDriver.EndTurn();
+                }
+                else
+                    break;
+            }
+            else if (session.IsAwaitingNodeChoice)
+                session.PickNode(session.PendingNodeChoices[0].Id.Value);
+            else if (session.IsAwaitingInterlude)
+                session.Continue();
+            else if (session.IsAwaitingChoice)
+                session.Pick(session.PendingChoices[^1].Id);
+            else
+                break;
+        }
+        Rebuild();
+        GD.Print($"smoke-reward: awaiting={session?.IsAwaitingEntities} "
+            + $"displays={(session?.PendingEntities is { } e ? string.Join(" | ", e.Displays) : "-")}");
+        await CaptureThenQuit("smoke-reward.png");
     }
 
     // Measure per-action latency (a card play under the replay model re-executes the whole run — is that

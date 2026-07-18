@@ -38,7 +38,7 @@ public partial class Boot : Control
             return;
         }
         // Any session smoke boots straight into a seeded run; SessionScreen runs the matching probe + quits.
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward"))
         {
             host.StartNewRun(seed: 7);
             CallDeferred(nameof(GoToSession));
