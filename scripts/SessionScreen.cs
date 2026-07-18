@@ -14,6 +14,8 @@ namespace BnbGodot;
 public partial class SessionScreen : Control
 {
     private VBoxContainer _main = null!;
+    private ScrollContainer _mainScroll = null!;
+    private Control _combatRoot = null!;
     private VBoxContainer _sidebar = null!;
     private RichTextLabel _log = null!;
 
@@ -39,11 +41,18 @@ public partial class SessionScreen : Control
         AddChild(split);
 
         var mainPanel = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        var mainScroll = new ScrollContainer();
+        var mainHolder = new Control();
+        _mainScroll = new ScrollContainer();
+        _mainScroll.SetAnchorsPreset(LayoutPreset.FullRect);
         _main = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _main.AddThemeConstantOverride("separation", 10);
-        mainScroll.AddChild(_main);
-        mainPanel.AddChild(mainScroll);
+        _mainScroll.AddChild(_main);
+        mainHolder.AddChild(_mainScroll);
+        // The graphical combat scene lives here (hero left, enemies right, hand bottom) — shown only in combat.
+        _combatRoot = new Control { Visible = false };
+        _combatRoot.SetAnchorsPreset(LayoutPreset.FullRect);
+        mainHolder.AddChild(_combatRoot);
+        mainPanel.AddChild(mainHolder);
         split.AddChild(mainPanel);
 
         var side = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
@@ -65,6 +74,8 @@ public partial class SessionScreen : Control
 
         if (OS.GetCmdlineUserArgs().Contains("--smoke-run"))
             SmokeRun();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-target"))
+            SmokeTarget();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-map"))
             _ = CaptureThenQuit("smoke-map.png"); // a fresh run parks at the entry fork — screenshot the map
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-full"))
@@ -338,10 +349,19 @@ public partial class SessionScreen : Control
     {
         foreach (var child in _main.GetChildren())
             child.QueueFree();
+        foreach (var child in _combatRoot.GetChildren())
+            child.QueueFree();
         foreach (var child in _sidebar.GetChildren())
             child.QueueFree();
 
         var session = Session;
+        // Combat gets the graphical scene (_combatRoot); everything else the ordinary list (_mainScroll).
+        var inCombat = session is not null && Play?.Error is null && session.Error is null
+            && !session.IsAwaitingChoice && !session.IsAwaitingEntities && !session.IsAwaitingNodeChoice
+            && !session.IsAwaitingInterlude && Play?.CombatDriver?.Current is not null;
+        _combatRoot.Visible = inCombat;
+        _mainScroll.Visible = !inCombat;
+
         if (Play is null || session is null)
         {
             Title("No run active.");
@@ -361,7 +381,7 @@ public partial class SessionScreen : Control
         else if (session.IsAwaitingInterlude)
             RenderInterlude(session);
         else if (Play.CombatDriver?.Current is { } combat)
-            RenderCombat(session, combat);
+            RenderCombatGraphical(session, combat);
         else if (session.IsComplete)
             RenderComplete(session);
         else
@@ -491,154 +511,333 @@ public partial class SessionScreen : Control
         AddButton("Back to title", () => GetTree().ChangeSceneToFile("res://scenes/Boot.tscn"));
     }
 
-    // ── combat ───────────────────────────────────────────────────────────────────
+    // ── combat (graphical: hero left, enemies right, hand bottom-center) ──────────
 
-    private void RenderCombat(InteractiveRunSession session, InteractiveCombat combat)
+    private void RenderCombatGraphical(InteractiveRunSession session, InteractiveCombat combat)
     {
         var play = Play!;
         var hero = combat.State.GetCombatant(combat.HeroId);
-        Title($"Combat — round {combat.Round}");
+        var enemies = combat.State.Combatants
+            .Where(c => c.Id != combat.HeroId && c.TeamId == StandardCombatIds.EnemyTeam).ToList();
 
-        foreach (var combatant in combat.State.Combatants)
-        {
-            var isHero = combatant.Id == combat.HeroId;
-            var panel = new PanelContainer();
-            panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
-                isHero ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
-                _armedCard is not null && !isHero && combatant.IsAlive ? MoonvineTheme.Accent : null));
-            var column = new VBoxContainer();
+        var margin = new MarginContainer();
+        margin.SetAnchorsPreset(LayoutPreset.FullRect);
+        foreach (var side in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })
+            margin.AddThemeConstantOverride(side, 20);
+        _combatRoot.AddChild(margin);
 
-            column.AddChild(new Label
-            {
-                Text = $"{Name(combatant, combat)}   {combatant.Health.Current}/{combatant.Health.Max} HP"
-                    + (Block(combatant) > 0 ? $"  🛡{Block(combatant)}" : "")
-                    + (combatant.IsAlive ? "" : "  💀"),
-            });
+        var col = new VBoxContainer();
+        col.AddThemeConstantOverride("separation", 8);
+        margin.AddChild(col);
 
-            if (!isHero && combatant.IsAlive && combat.UpcomingIntentFor(combatant.Id) is { } intent)
-            {
-                var intentLabel = new Label
-                {
-                    Text = $"{RogueDeck.Scenario.Authoring.IntentDisplay.Glyph(intent.Kind)} "
-                        + $"{RogueDeck.Scenario.Authoring.IntentDisplay.KindWord(intent.Kind)}: {intent.Label}",
-                    AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                };
-                intentLabel.AddThemeColorOverride("font_color", MoonvineTheme.IntentColor(intent.Kind));
-                column.AddChild(intentLabel);
-            }
-            if (combatant.Statuses.Count > 0)
-                column.AddChild(MutedLabel(StatusLine(combatant)));
-            if (isHero)
-                column.AddChild(MutedLabel(ResourcePoolsLine(combatant)));
+        var round = new Label { Text = $"Round {combat.Round}", HorizontalAlignment = HorizontalAlignment.Center };
+        round.AddThemeFontSizeOverride("font_size", 18);
+        col.AddChild(round);
 
-            if (_armedCard is not null && !isHero && combatant.IsAlive)
-            {
-                var targetId = combatant.Id;
-                var pick = new Button { Text = "◎ Target" };
-                pick.Pressed += () => PlayArmedCardAt(targetId);
-                column.AddChild(pick);
-            }
-            panel.AddChild(column);
-            _main.AddChild(panel);
-        }
+        // Arena: hero far left, enemies far right, a stretchy gap between.
+        var arena = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        var heroBox = CombatantBox(combat, hero, isHero: true);
+        heroBox.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        arena.AddChild(heroBox);
+        arena.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        var enemyRow = new HBoxContainer { SizeFlagsVertical = SizeFlags.ShrinkCenter };
+        enemyRow.AddThemeConstantOverride("separation", 24);
+        foreach (var enemy in enemies)
+            enemyRow.AddChild(CombatantBox(combat, enemy, isHero: false));
+        arena.AddChild(enemyRow);
+        col.AddChild(arena);
 
+        // Bottom: an in-combat card choice, the "resolving" note, or the hand + controls.
         if (play.CombatDriver!.PendingCardChoice is { } cardChoice)
         {
-            RenderCardChoice(play, cardChoice);
-            return;
-        }
-        if (!combat.IsHeroTurn)
-        {
-            Muted("Resolving enemy actions…");
+            var choiceBox = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+            var title = new Label
+            {
+                Text = $"{play.CombatDriver.PendingCardChoicePurpose}  (pick {play.CombatDriver.PendingCardChoiceCount})",
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            choiceBox.AddChild(title);
+            var choiceRow = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+            choiceRow.AddThemeConstantOverride("separation", 10);
+            foreach (var candidate in cardChoice)
+            {
+                var id = candidate.Id;
+                var selected = _selectedCards.Contains(id.value);
+                var block = CardBlockButton(combat, hero, candidate, selected, () => OnCardChoiceClicked(play, cardChoice, id));
+                choiceRow.AddChild(block);
+            }
+            choiceBox.AddChild(choiceRow);
+            if (play.CombatDriver.PendingCardChoiceCount > 1)
+            {
+                var confirm = new Button { Text = "Confirm" };
+                confirm.Disabled = _selectedCards.Count != play.CombatDriver.PendingCardChoiceCount;
+                confirm.Pressed += () =>
+                {
+                    var picks = cardChoice.Where(c => _selectedCards.Contains(c.Id.value)).Select(c => c.Id).ToList();
+                    _selectedCards.Clear();
+                    play.CombatDriver.SupplyCardChoice(picks);
+                };
+                choiceBox.AddChild(confirm);
+            }
+            col.AddChild(choiceBox);
             return;
         }
 
-        Muted(_armedCard is not null
-            ? "Choose a target — or click the card again for the first enemy."
-            : "Your hand:");
-        var handRow = new HFlowContainer();
+        if (!combat.IsHeroTurn)
+        {
+            col.AddChild(new Label { Text = "Resolving enemy actions…", HorizontalAlignment = HorizontalAlignment.Center });
+            return;
+        }
+
+        var hint = new Label
+        {
+            Text = _armedCard is not null ? "Click an enemy to play it — or the card again to cancel." : " ",
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        hint.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+        col.AddChild(hint);
+
+        var handCenter = new CenterContainer();
+        var hand = new HBoxContainer();
+        hand.AddThemeConstantOverride("separation", 10);
         foreach (var card in combat.Hand)
         {
             var cardId = card.Id;
-            var definition = card.DefinitionId.value;
-            var button = new Button
-            {
-                Text = $"{CardName(definition)}\n{CostLabel(definition)}",
-                Disabled = !CanPay(hero, definition),
-                CustomMinimumSize = new Vector2(150, 72),
-            };
-            var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definition);
-            button.AddThemeColorOverride("font_color", MoonvineTheme.RarityColor(presentation?.Rarity));
-            button.TooltipText = CardTooltip(definition, presentation);
-            if (_armedCard is { } armed && armed.value == cardId.value)
-                button.AddThemeStyleboxOverride("normal", MoonvineTheme.Panel(MoonvineTheme.BgControl, MoonvineTheme.Accent, 8));
-            button.Pressed += () => OnCardClicked(cardId);
-            handRow.AddChild(button);
+            var armed = _armedCard is { } a && a.value == cardId.value;
+            hand.AddChild(CardBlockButton(combat, hero, card, armed, () => OnCardClicked(cardId)));
         }
         if (combat.Hand.Count == 0)
-            Muted("(empty hand)");
-        _main.AddChild(handRow);
+            hand.AddChild(MutedLabel("(empty hand)"));
+        handCenter.AddChild(hand);
+        col.AddChild(handCenter);
 
-        AddButton("End turn ▸", () =>
-        {
-            _armedCard = null;
-            play.CombatDriver.EndTurn();
-            SurfaceNewProblems();
-        });
-
+        var controls = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        controls.AddThemeConstantOverride("separation", 10);
+        var endTurn = new Button { Text = "End turn ▸" };
+        endTurn.Pressed += () => { _armedCard = null; play.CombatDriver.EndTurn(); SurfaceNewProblems(); };
+        controls.AddChild(endTurn);
         foreach (var consumable in session.Run.Consumables.Where(c => c.CombatUse is not null))
         {
             var id = consumable.Id;
-            AddButton($"Use {consumable.DefinitionId.Value}", () => play.UseConsumableInCombat(id));
+            var use = new Button { Text = $"Use {consumable.DefinitionId.Value}" };
+            use.Pressed += () => play.UseConsumableInCombat(id);
+            controls.AddChild(use);
         }
+        col.AddChild(controls);
     }
 
-    private void RenderCardChoice(RunPlayback play, IReadOnlyList<CardInstance> candidates)
+    // A combatant's column: name, a stick-figure placeholder, an HP bar, energy (hero) or intent (enemy),
+    // and its status chips. When a card is armed, an enemy box becomes a clickable target.
+    private Control CombatantBox(InteractiveCombat combat, CombatantState combatant, bool isHero)
+    {
+        var box = new VBoxContainer { CustomMinimumSize = new Vector2(200, 0) };
+        box.AddThemeConstantOverride("separation", 4);
+
+        var name = new Label { Text = Name(combatant, combat), HorizontalAlignment = HorizontalAlignment.Center };
+        name.AddThemeFontSizeOverride("font_size", 16);
+        box.AddChild(name);
+
+        var figure = new StickFigure(isHero ? MoonvineTheme.Accent : MoonvineTheme.Danger,
+            facing: isHero ? 1 : -1, dead: !combatant.IsAlive)
+        { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
+        box.AddChild(figure);
+
+        box.AddChild(HealthBar(combatant));
+
+        if (isHero)
+        {
+            var energy = new Label
+            {
+                Text = ResourcePoolsLine(combatant),
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            energy.AddThemeColorOverride("font_color", MoonvineTheme.Warning);
+            box.AddChild(energy);
+        }
+        else if (combatant.IsAlive && combat.UpcomingIntentFor(combatant.Id) is { } intent)
+        {
+            var intentLabel = new Label
+            {
+                Text = $"{RogueDeck.Scenario.Authoring.IntentDisplay.Glyph(intent.Kind)} "
+                    + $"{RogueDeck.Scenario.Authoring.IntentDisplay.KindWord(intent.Kind)}\n{intent.Label}",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            };
+            intentLabel.AddThemeColorOverride("font_color", MoonvineTheme.IntentColor(intent.Kind));
+            box.AddChild(intentLabel);
+        }
+
+        if (combatant.Statuses.Count > 0)
+        {
+            var statuses = new Label
+            {
+                Text = StatusLine(combatant),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            };
+            statuses.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+            box.AddChild(statuses);
+        }
+
+        // A framed panel around the column; enemies highlight + become clickable when a card is armed.
+        var panel = new PanelContainer();
+        var targetable = !isHero && combatant.IsAlive && _armedCard is not null;
+        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
+            isHero ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
+            targetable ? MoonvineTheme.AccentLight : null));
+        panel.AddChild(box);
+
+        if (targetable)
+        {
+            var overlay = new Button { Flat = true };
+            overlay.SetAnchorsPreset(LayoutPreset.FullRect);
+            var targetId = combatant.Id;
+            overlay.Pressed += () => PlayArmedCardAt(targetId);
+            panel.AddChild(overlay);
+        }
+        return panel;
+    }
+
+    private static Control HealthBar(CombatantState combatant)
+    {
+        var holder = new Control { CustomMinimumSize = new Vector2(170, 22) };
+        var bg = new ColorRect { Color = new Color("2a1414") };
+        bg.SetAnchorsPreset(LayoutPreset.FullRect);
+        holder.AddChild(bg);
+        var ratio = combatant.Health.Max > 0 ? Mathf.Clamp((float)combatant.Health.Current / combatant.Health.Max, 0, 1) : 0;
+        var fill = new ColorRect { Color = new Color("6a9a5a") };
+        fill.SetAnchorsPreset(LayoutPreset.FullRect);
+        fill.AnchorRight = ratio;
+        fill.OffsetRight = 0;
+        holder.AddChild(fill);
+        var block = Block(combatant);
+        var label = new Label
+        {
+            Text = $"{combatant.Health.Current}/{combatant.Health.Max}" + (block > 0 ? $"   🛡{block}" : ""),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        label.SetAnchorsPreset(LayoutPreset.FullRect);
+        holder.AddChild(label);
+        return holder;
+    }
+
+    // A hand/choice card as a black block: name, cost, and its ability text. `onClick` arms/plays it.
+    private Control CardBlockButton(InteractiveCombat combat, CombatantState hero, CardInstance card, bool highlighted, Action onClick)
+    {
+        var definition = card.DefinitionId.value;
+        var affordable = CanPay(hero, definition);
+        var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definition);
+
+        var panel = new PanelContainer { CustomMinimumSize = new Vector2(150, 150) };
+        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
+            new Color("050505"),
+            highlighted ? MoonvineTheme.AccentLight : affordable ? new Color(MoonvineTheme.Accent, 0.4f) : new Color(MoonvineTheme.TextMuted, 0.25f)));
+
+        var column = new VBoxContainer();
+        column.AddThemeConstantOverride("separation", 4);
+        var name = new Label { Text = CardName(definition), AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        name.AddThemeColorOverride("font_color", affordable ? MoonvineTheme.RarityColor(presentation?.Rarity) : MoonvineTheme.TextMuted);
+        column.AddChild(name);
+        var cost = new Label { Text = CostLabel(definition) };
+        cost.AddThemeColorOverride("font_color", MoonvineTheme.Warning);
+        column.AddChild(cost);
+        var effect = new Label
+        {
+            Text = presentation?.FlavorText ?? "",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        effect.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+        effect.AddThemeFontSizeOverride("font_size", 12);
+        column.AddChild(effect);
+        panel.AddChild(column);
+
+        var overlay = new Button { Flat = true, Disabled = !affordable };
+        overlay.SetAnchorsPreset(LayoutPreset.FullRect);
+        overlay.Pressed += () => onClick();
+        panel.AddChild(overlay);
+        return panel;
+    }
+
+    private void OnCardChoiceClicked(RunPlayback play, IReadOnlyList<CardInstance> candidates, CardInstanceId id)
     {
         var driver = play.CombatDriver!;
-        Title(driver.PendingCardChoicePurpose);
-        Muted($"Pick {driver.PendingCardChoiceCount}");
-        foreach (var candidate in candidates)
+        if (driver.PendingCardChoiceCount == 1)
         {
-            var id = candidate.Id;
-            var selected = _selectedCards.Contains(id.value);
-            AddButton((selected ? "✓ " : "") + CardName(candidate.DefinitionId.value), () =>
-            {
-                if (driver.PendingCardChoiceCount == 1)
-                {
-                    _selectedCards.Clear();
-                    driver.SupplyCardChoice([id]);
-                    return;
-                }
-                if (!_selectedCards.Remove(id.value) && _selectedCards.Count < driver.PendingCardChoiceCount)
-                    _selectedCards.Add(id.value);
-                Rebuild();
-            });
+            _selectedCards.Clear();
+            driver.SupplyCardChoice([id]);
+            return;
         }
-        if (driver.PendingCardChoiceCount > 1)
-        {
-            var confirm = AddButton("Confirm", () =>
-            {
-                var picks = candidates.Where(c => _selectedCards.Contains(c.Id.value)).Select(c => c.Id).ToList();
-                _selectedCards.Clear();
-                driver.SupplyCardChoice(picks);
-            });
-            confirm.Disabled = _selectedCards.Count != driver.PendingCardChoiceCount;
-        }
+        if (!_selectedCards.Remove(id.value) && _selectedCards.Count < driver.PendingCardChoiceCount)
+            _selectedCards.Add(id.value);
+        Rebuild();
     }
 
-    // Click a card: arm it for a target click; clicking the SAME card again plays it at the default
-    // target (first living enemy — the reference behavior for untargeted plays).
+    // Verify the targeting rule through the real click handler: a block card plays on click (no arm),
+    // a damage card arms (waits for an enemy click).
+    private void SmokeTarget()
+    {
+        var session = Session;
+        for (var i = 0; i < 8 && Play?.CombatDriver?.Current is null && session is not null; i++)
+        {
+            if (session.IsAwaitingNodeChoice)
+                session.PickNode(session.PendingNodeChoices[0].Id.Value);
+            else if (session.IsAwaitingInterlude)
+                session.Continue();
+            else
+                break;
+        }
+        var combat = Play?.CombatDriver?.Current;
+        if (combat is null)
+        {
+            GD.Print("smoke-target: no fight reached");
+            GetTree().Quit();
+            return;
+        }
+
+        var block = combat.Hand.FirstOrDefault(c => c.DefinitionId.value.Contains("cower"));   // gain block → self
+        var attack = combat.Hand.FirstOrDefault(c => c.DefinitionId.value.Contains("paper_cut")); // deal damage → target
+        var handBefore = combat.Hand.Count;
+
+        if (block is not null)
+            OnCardClicked(block.Id); // should PLAY immediately (no arm)
+        var afterBlock = Play?.CombatDriver?.Current;
+        GD.Print($"smoke-target: block played={afterBlock?.Hand.Count < handBefore} armed={_armedCard is not null}");
+
+        if (attack is not null)
+            OnCardClicked(attack.Id); // should ARM (wait for enemy)
+        GD.Print($"smoke-target: attack armed={_armedCard is not null} played={Play?.CombatDriver?.Current?.Hand.Count < (afterBlock?.Hand.Count ?? 0)}");
+        GetTree().Quit();
+    }
+
+    // Click a card. A self-only card (gain block, draw, self-buff) plays immediately — no enemy target
+    // needed. A card that aims at an enemy arms for a target click (click an enemy to play, or the card
+    // again to cancel).
     private void OnCardClicked(CardInstanceId cardId)
     {
+        var combat = Play?.CombatDriver?.Current;
+        var definition = combat?.Hand.FirstOrDefault(c => c.Id.value == cardId.value)?.DefinitionId.value;
+
+        if (definition is not null && !NeedsTarget(definition))
+        {
+            _armedCard = cardId;
+            PlayArmedCardAt(null); // source/self card: the engine ignores the (default) target
+            return;
+        }
         if (_armedCard is { } armed && armed.value == cardId.value)
         {
-            PlayArmedCardAt(null);
+            _armedCard = null; // clicking the armed card again cancels
+            Rebuild();
             return;
         }
         _armedCard = cardId;
         Rebuild();
     }
+
+    // Does the card require the player to choose an enemy? (Only cards that aim at "eventTarget".) Unknown
+    // (e.g. a composed card) defaults to needing one, so a damage card is never silently misfired.
+    private bool NeedsTarget(string definitionId) =>
+        Play is { } play && play.CardNeedsTarget.TryGetValue(definitionId, out var needs) ? needs : true;
 
     private void PlayArmedCardAt(CombatantId? target)
     {
@@ -747,19 +946,6 @@ public partial class SessionScreen : Control
             ? Play?.HeroName ?? "You"
             : Play!.EnemyNames.TryGetValue(combatant.Id.value, out var name) ? name : combatant.Id.value;
 
-    // Name · cost · flavor — the presentation manifest's flavor line under the derived name/cost.
-    private string CardTooltip(string definitionId, RogueDeck.Run.EntityPresentation? presentation)
-    {
-        var lines = new System.Collections.Generic.List<string>
-        {
-            $"{CardName(definitionId)}  ·  {CostLabel(definitionId)}",
-        };
-        if (presentation?.Rarity is { } rarity)
-            lines.Add(rarity);
-        if (!string.IsNullOrWhiteSpace(presentation?.FlavorText))
-            lines.Add(presentation!.FlavorText!);
-        return string.Join("\n", lines);
-    }
 
     private string CardName(string definitionId)
     {
