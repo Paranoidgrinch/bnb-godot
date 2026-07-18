@@ -81,8 +81,17 @@ public partial class SessionScreen : Control
     {
         var session = Session;
         var play = Play;
-        for (var step = 0; step < 200 && session is not null && play is not null && !session.IsAwaitingEntities; step++)
+        // Advance to a MEANINGFUL entity pick — one with real ability descriptions (the card reward),
+        // auto-taking the bundled 1-option "spoils" pick along the way.
+        bool AtCardPick() => session!.IsAwaitingEntities
+            && session.PendingEntities!.Descriptions.Any(d => !string.IsNullOrWhiteSpace(d));
+        for (var step = 0; step < 300 && session is not null && play is not null && !AtCardPick(); step++)
         {
+            if (session.IsAwaitingEntities)
+            {
+                session.PickEntities([0]); // the bundled spoils (no descriptions) — take it and move on
+                continue;
+            }
             if (play.CombatDriver?.Current is { } combat)
             {
                 if (combat.IsHeroTurn)
@@ -381,8 +390,8 @@ public partial class SessionScreen : Control
         for (var i = 0; i < entities.Displays.Count; i++)
         {
             var index = i;
-            var selected = _selectedEntities.Contains(index);
-            AddButton((selected ? "✓ " : "") + Display(entities.Displays[index]), () =>
+            var description = index < entities.Descriptions.Count ? entities.Descriptions[index] : "";
+            _main.AddChild(EntityOption(entities.Displays[index], description, _selectedEntities.Contains(index), () =>
             {
                 if (!_selectedEntities.Remove(index))
                 {
@@ -392,7 +401,7 @@ public partial class SessionScreen : Control
                         _selectedEntities.Add(index);
                 }
                 Rebuild();
-            });
+            }));
         }
         var confirm = AddButton("Confirm", () =>
         {
@@ -403,8 +412,35 @@ public partial class SessionScreen : Control
         confirm.Disabled = _selectedEntities.Count != entities.Count;
     }
 
-    private string Display(string raw) =>
-        Play is { } play && play.CardNames.TryGetValue(raw, out var name) ? name : raw;
+    // A pickable option showing the name on top and its ability/rules text beneath — so a card reward
+    // pick shows WHAT each card does. The whole panel is clickable via a transparent overlay button.
+    private static Control EntityOption(string name, string description, bool selected, Action onPressed)
+    {
+        var panel = new PanelContainer { CustomMinimumSize = new Vector2(0, 0) };
+        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
+            selected ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
+            selected ? MoonvineTheme.AccentLight : new Color(MoonvineTheme.Accent, 0.3f)));
+
+        var column = new VBoxContainer();
+        column.AddThemeConstantOverride("separation", 2);
+        var title = new Label { Text = (selected ? "✓ " : "") + name };
+        title.AddThemeColorOverride("font_color", MoonvineTheme.Text);
+        column.AddChild(title);
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            var desc = new Label { Text = description, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+            desc.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+            desc.AddThemeFontSizeOverride("font_size", 13);
+            column.AddChild(desc);
+        }
+        panel.AddChild(column);
+
+        var overlay = new Button { Flat = true };
+        overlay.SetAnchorsPreset(LayoutPreset.FullRect);
+        overlay.Pressed += () => onPressed();
+        panel.AddChild(overlay);
+        return panel;
+    }
 
     private void RenderNodeFork(InteractiveRunSession session)
     {
