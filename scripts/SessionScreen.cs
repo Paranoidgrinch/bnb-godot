@@ -22,6 +22,10 @@ public partial class SessionScreen : Control
     // Transient pick state owned by the view (mirrors RunSessionView's _selected/_cardPicks/_combatTarget).
     private readonly HashSet<int> _selectedEntities = [];
     private readonly HashSet<string> _selectedCards = [];
+
+    // Options a card offered and the player has taken so far, IN PICK ORDER — a choice resolves in the order
+    // it was chosen, so this is a list rather than a set.
+    private readonly List<int> _selectedOptions = [];
     private CardInstanceId? _armedCard; // the hand card waiting for a target click
     private int _seenProblems;
 
@@ -214,7 +218,12 @@ public partial class SessionScreen : Control
 
             if (play.CombatDriver?.Current is { } combat)
             {
-                if (play.CombatDriver.PendingCardChoice is { } candidates)
+                if (play.CombatDriver.PendingOptionChoice is { } options)
+                {
+                    play.CombatDriver.SupplyOptionChoice(
+                        Enumerable.Range(0, Math.Min(play.CombatDriver.PendingOptionChoiceCount, options.Count)).ToList());
+                }
+                else if (play.CombatDriver.PendingCardChoice is { } candidates)
                 {
                     play.CombatDriver.SupplyCardChoice(
                         candidates.Take(play.CombatDriver.PendingCardChoiceCount).Select(c => c.Id).ToList());
@@ -558,7 +567,57 @@ public partial class SessionScreen : Control
         arena.AddChild(enemyRow);
         col.AddChild(arena);
 
-        // Bottom: an in-combat card choice, the "resolving" note, or the hand + controls.
+        // Bottom: a prompt the played card raised, the "resolving" note, or the hand + controls.
+        //
+        // An OPTION prompt comes first: a card parked on one is mid-resolution, so nothing else is playable
+        // until it is answered. Picking is by position — one option supplies at once, several toggle into an
+        // ordered set, and the order they are picked is the order they resolve.
+        if (play.CombatDriver!.PendingOptionChoice is { } optionChoice)
+        {
+            var box = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+            box.AddChild(new Label
+            {
+                Text = $"{play.CombatDriver.PendingOptionChoicePurpose}  (pick {play.CombatDriver.PendingOptionChoiceCount})",
+                HorizontalAlignment = HorizontalAlignment.Center,
+            });
+
+            var row = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+            row.AddThemeConstantOverride("separation", 10);
+            for (var i = 0; i < optionChoice.Count; i++)
+            {
+                var index = i;
+                var order = _selectedOptions.IndexOf(index);
+                var button = new Button
+                {
+                    Text = order >= 0 && play.CombatDriver.PendingOptionChoiceCount > 1
+                        ? $"{order + 1}. {optionChoice[index]}"
+                        : optionChoice[index],
+                    CustomMinimumSize = new Vector2(180, 48),
+                };
+                button.AddThemeColorOverride("font_color",
+                    order >= 0 ? MoonvineTheme.Accent : MoonvineTheme.Text);
+                button.Pressed += () => OnOptionChoiceClicked(play, index);
+                row.AddChild(button);
+            }
+            box.AddChild(row);
+
+            if (play.CombatDriver.PendingOptionChoiceCount > 1)
+            {
+                var confirm = new Button { Text = "Confirm" };
+                confirm.Disabled = _selectedOptions.Count != play.CombatDriver.PendingOptionChoiceCount;
+                confirm.Pressed += () =>
+                {
+                    var picks = _selectedOptions.ToList();
+                    _selectedOptions.Clear();
+                    play.CombatDriver.SupplyOptionChoice(picks);
+                };
+                box.AddChild(confirm);
+            }
+
+            col.AddChild(box);
+            return;
+        }
+
         if (play.CombatDriver!.PendingCardChoice is { } cardChoice)
         {
             var choiceBox = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
@@ -891,6 +950,20 @@ public partial class SessionScreen : Control
         }
         if (!_selectedCards.Remove(id.value) && _selectedCards.Count < driver.PendingCardChoiceCount)
             _selectedCards.Add(id.value);
+        Rebuild();
+    }
+
+    private void OnOptionChoiceClicked(RunPlayback play, int index)
+    {
+        var driver = play.CombatDriver!;
+        if (driver.PendingOptionChoiceCount == 1)
+        {
+            _selectedOptions.Clear();
+            driver.SupplyOptionChoice([index]);
+            return;
+        }
+        if (!_selectedOptions.Remove(index) && _selectedOptions.Count < driver.PendingOptionChoiceCount)
+            _selectedOptions.Add(index);
         Rebuild();
     }
 
