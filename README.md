@@ -30,6 +30,7 @@ Headless checks (no window):
 godot --headless -- --smoke        # boot: prints "loaded: …" and quits
 godot --headless -- --smoke-full    # auto-plays the first rooms and reports the state
 godot --headless -- --smoke-timing  # per-action latency (~17 ms/action)
+godot --headless -- --smoke-statuses # carried state reads as its authored name, not its id
 ```
 
 ## Building desktop binaries

@@ -96,6 +96,8 @@ public partial class SessionScreen : Control
             SmokeTiming();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-reward"))
             _ = SmokeReward();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-statuses"))
+            SmokeStatuses();
     }
 
     // Auto-play greedily until the first reward/entity pick, then screenshot it (verifies reward
@@ -285,6 +287,94 @@ public partial class SessionScreen : Control
             + $"deck={session?.Run.Deck.Count} relics={session?.Run.Relics.Count} "
             + $"turns={fights} error={session?.Error ?? play?.Error ?? "none"}");
         GetTree().Quit();
+    }
+
+    // Headless proof that carried state READS: every status the game defines must show the name it was
+    // authored with, not the id it is filed under. Walks into the first fight (which supplies a live
+    // definition registry), then renders a sample of statuses from across the game — the plain ones, the
+    // Act-II boss state that whole fights are built on — exactly as a chip in the fight would.
+    private void SmokeStatuses()
+    {
+        var combat = WalkToFirstFight();
+        if (combat is null)
+        {
+            GD.Print("smoke-statuses: no fight reached");
+            GetTree().Quit();
+            return;
+        }
+
+        var registry = combat.State.DefinitionRegistry;
+        if (registry is null)
+        {
+            GD.Print("smoke-statuses: FAIL the fight carries no definition registry");
+            GetTree().Quit();
+            return;
+        }
+
+        // Let the fight put something ON the table first: two turns of the Notary's wax is Paperwork stacking
+        // on the hero, which is what a chip with a magnitude has to look like.
+        for (var turn = 0; turn < 2 && Play?.CombatDriver?.Current is not null; turn++)
+            Play.CombatDriver.EndTurn();
+        combat = Play?.CombatDriver?.Current ?? combat;
+
+        // Statuses the Act-II bosses put on the table, plus two ordinary ones for contrast.
+        string[] sample =
+        [
+            "paperwork", "strength",
+            "scheduled_the_collapse", "final_entry", "catalogue_authority",
+            "warden_custody", "supporting_documentation", "office_hours",
+        ];
+
+        var unnamed = 0;
+        var lines = new List<string>();
+        foreach (var id in sample)
+        {
+            if (!registry.TryGetStatus(new StatusDefinitionId(id), out var definition) || definition is null)
+                continue;
+            var named = !string.IsNullOrWhiteSpace(definition.DisplayNameKey)
+                && !string.Equals(definition.DisplayNameKey, id, StringComparison.Ordinal);
+            if (!named)
+                unnamed++;
+            lines.Add($"{id} -> \"{definition.DisplayNameKey}\""
+                + (string.IsNullOrWhiteSpace(definition.DescriptionKey) ? " (no rules text)" : ""));
+        }
+
+        GD.Print($"smoke-statuses: resolved={lines.Count}/{sample.Length} unnamed={unnamed}");
+        foreach (var line in lines)
+            GD.Print($"  {line}");
+        // …and what the fight itself is currently carrying, rendered as the chips render it.
+        foreach (var combatant in combat.State.Combatants)
+            GD.Print($"  [{Name(combatant, combat)}] {StatusLine(combat, combatant)}");
+
+        // Windowed: the chips are a layout as well as a lookup — capture the fight so they can be eyeballed.
+        if (!DisplayServer.GetName().Contains("headless"))
+            _ = CaptureThenQuit("smoke-statuses.png");
+        else
+            GetTree().Quit();
+    }
+
+    // The first fight of a fresh run, reached through the same session calls the buttons make.
+    private InteractiveCombat? WalkToFirstFight()
+    {
+        var session = Session;
+        for (var guard = 0; guard < 20 && session is not null && Play?.CombatDriver?.Current is null; guard++)
+        {
+            if (session.IsAwaitingNodeChoice)
+            {
+                var combatNode = session.PendingNodeChoices
+                    .FirstOrDefault(n => n.Type == StandardRunIds.CombatNode) ?? session.PendingNodeChoices[0];
+                session.PickNode(combatNode.Id.Value);
+            }
+            else if (session.IsAwaitingChoice)
+                session.Pick(session.PendingSituation!.Choices[0].Id);
+            else if (session.IsAwaitingEntities)
+                session.PickEntities([0]);
+            else if (session.IsAwaitingInterlude)
+                session.Continue();
+            else
+                break;
+        }
+        return Play?.CombatDriver?.Current;
     }
 
     // Headless proof of the whole Godot-side loop: walk to the first fight THROUGH the same methods the
@@ -831,17 +921,8 @@ public partial class SessionScreen : Control
             box.AddChild(intentLabel);
         }
 
-        if (combatant.Statuses.Count > 0)
-        {
-            var statuses = new Label
-            {
-                Text = StatusLine(combatant),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            };
-            statuses.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
-            box.AddChild(statuses);
-        }
+        if (StatusChips(combat, combatant) is { } chips)
+            box.AddChild(chips);
 
         // A framed panel around the column; enemies highlight + become clickable when a card is armed.
         var panel = new PanelContainer();
@@ -1212,13 +1293,92 @@ public partial class SessionScreen : Control
     private static int Block(CombatantState combatant) =>
         combatant.DefensivePools.TryGetValue(StandardCombatIds.BlockDefensivePool, out var pool) ? pool.Current : 0;
 
-    private static string StatusLine(CombatantState combatant) =>
-        string.Join("  ", combatant.Statuses.Select(s =>
+    // What a combatant is CARRYING, one chip per status. Everything a fight in this game turns on lives here —
+    // an Act-II boss is built out of visible state (Authority, Custody, the seals, the filed hours), so a chip
+    // says the status's authored NAME, not the id it is stored under, and its rules text on hover.
+    //
+    // The definitions come from the live fight's registry, which knows the engine's own statuses as well as the
+    // game's. A status the registry cannot resolve falls back to a readable form of its id rather than to
+    // nothing: an unnamed status is a content gap, not a reason to hide state from the player.
+    private static Control? StatusChips(InteractiveCombat combat, CombatantState combatant)
+    {
+        var registry = combat.State.DefinitionRegistry;
+        var shown = combatant.Statuses.Where(s => s.Visibility == StatusVisibility.Visible).ToList();
+        if (shown.Count == 0)
+            return null;
+
+        var flow = new HFlowContainer { Alignment = FlowContainer.AlignmentMode.Center };
+        flow.AddThemeConstantOverride("h_separation", 8);
+
+        foreach (var status in shown)
         {
-            var name = s.DefinitionId.value.Replace("standard.", "");
-            var magnitude = s.Stacks > 0 ? $"×{s.Stacks}"
-                : s.DurationTurns > 0 ? $" {s.DurationTurns}t"
-                : s.Charges > 0 ? $" {s.Charges}c" : "";
-            return $"{name}{magnitude}";
-        }));
+            StatusDefinition? definition = null;
+            registry?.TryGetStatus(status.DefinitionId, out definition);
+
+            var chip = new Label
+            {
+                Text = StatusText(status, definition),
+                MouseFilter = Control.MouseFilterEnum.Pass, // let the targeting overlay keep the click
+                TooltipText = StatusTooltip(status, definition),
+            };
+            chip.AddThemeColorOverride("font_color", status.Polarity switch
+            {
+                StatusPolarity.Buff => MoonvineTheme.Accent,
+                StatusPolarity.Debuff => MoonvineTheme.Danger,
+                _ => MoonvineTheme.TextMuted,
+            });
+            flow.AddChild(chip);
+        }
+        return flow;
+    }
+
+    // The chips as one line of text — what the headless checks read, and what a log line would say.
+    private static string StatusLine(InteractiveCombat combat, CombatantState combatant)
+    {
+        var registry = combat.State.DefinitionRegistry;
+        return combatant.Statuses.Count == 0
+            ? "-"
+            : string.Join("  ", combatant.Statuses.Select(status =>
+            {
+                StatusDefinition? definition = null;
+                registry?.TryGetStatus(status.DefinitionId, out definition);
+                return StatusText(status, definition);
+            }));
+    }
+
+    // "Scheduled: The Collapse 2t" — the name, then whatever the status is counting.
+    //
+    // The magnitude comes from the INSTANCE, not from the definition's ShowStacksInUi/…InUi flags: a blueprint
+    // does not carry those, so the engine leaves them false for every authored status, and honouring them here
+    // would hide every number in the game. What the instance holds is what the player is owed.
+    private static string StatusText(StatusInstance status, StatusDefinition? definition)
+    {
+        var name = definition is not null && !string.IsNullOrWhiteSpace(definition.DisplayNameKey)
+            ? definition.DisplayNameKey
+            : Humanized(status.DefinitionId.value);
+
+        // …filtered by what the status is DECLARED to count (the blueprint does carry that), so a plain marker
+        // does not read "Paper Seals Wax ×1" while a stacking debuff still counts up.
+        var magnitude = status.Stacks > 0 && (definition?.UsesStacks ?? true) ? $" ×{status.Stacks}"
+            : status.DurationTurns > 0 && (definition?.UsesDuration ?? true) ? $" {status.DurationTurns}t"
+            : status.Charges > 0 && (definition?.UsesCharges ?? true) ? $" {status.Charges}c" : "";
+        // A status that has not taken effect yet is state the player can still answer — say so.
+        var pending = status.PendingTurns > 0 ? $" (in {status.PendingTurns})" : "";
+        return $"{name}{magnitude}{pending}";
+    }
+
+    private static string StatusTooltip(StatusInstance status, StatusDefinition? definition)
+    {
+        var description = definition?.DescriptionKey;
+        return string.IsNullOrWhiteSpace(description)
+            ? StatusText(status, definition)
+            : $"{StatusText(status, definition)}\n{description}";
+    }
+
+    // "scheduled_the_collapse" → "Scheduled the collapse". Only ever seen when content forgot a name.
+    private static string Humanized(string id)
+    {
+        var text = id.Replace("standard.", "", StringComparison.Ordinal).Replace('_', ' ');
+        return text.Length == 0 ? id : char.ToUpperInvariant(text[0]) + text[1..];
+    }
 }
