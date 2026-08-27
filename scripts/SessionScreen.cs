@@ -92,7 +92,7 @@ public partial class SessionScreen : Control
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-draw"))
             _ = SmokeDraw();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-map"))
-            _ = CaptureThenQuit("smoke-map.png"); // a fresh run parks at the entry fork — screenshot the map
+            _ = MapShot(); // a fresh run parks at the entry fork — screenshot the map
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-full"))
             SmokeFull();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-timing"))
@@ -113,7 +113,110 @@ public partial class SessionScreen : Control
             _ = SmokeRoom(MapNodeTags.Elite, "smoke-elite.png");
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-marathon"))
             SmokeMarathon();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-tooltips"))
+            _ = SmokeTooltips();
     }
+
+    // Walk the screen the way a mouse would and report what is EXPLAINED and what is not: every piece of text
+    // on it, whether hovering it says anything, and — the part that matters — every label that uses a word the
+    // glossary knows while offering no hover at all. A name with no explanation is the thing this checks for.
+    private async System.Threading.Tasks.Task SmokeTooltips()
+    {
+        // Get into a fight first: combat is where the most named things are on screen at once.
+        var session = Session;
+        var play = Play;
+        for (var step = 0; step < 400 && session is not null && play is not null; step++)
+        {
+            if (play.CombatDriver?.Current is not null && session.Run.VisitedNodes.Count > 1)
+                break;
+            if (play.CombatDriver?.Current is { } fight)
+            {
+                if (!fight.IsHeroTurn)
+                    break;
+                var hero = fight.State.GetCombatant(fight.HeroId);
+                var card = fight.Hand.FirstOrDefault(c =>
+                    !c.DefinitionId.value.Contains("red_tape") && CanPay(hero, c.DefinitionId.value));
+                var target = fight.State.Combatants
+                    .FirstOrDefault(c => c.Id != fight.HeroId && c.IsAlive
+                        && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
+                if (card is not null)
+                    play.CombatDriver.PlayCard(card.Id, target);
+                else
+                    play.CombatDriver.EndTurn();
+            }
+            else if (session.IsAwaitingNodeChoice)
+                session.PickNode(session.PendingNodeChoices
+                    .FirstOrDefault(n => n.HasTag(MapNodeTags.Combat))?.Id.Value
+                    ?? session.PendingNodeChoices[0].Id.Value);
+            else if (session.IsAwaitingInterlude)
+                session.Continue();
+            else if (session.IsAwaitingEntities)
+                session.PickEntities([0]);
+            else if (session.IsAwaitingChoice)
+                session.Pick(session.PendingChoices[^1].Id);
+            else
+                break;
+        }
+        Rebuild();
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        ReportTooltips("combat");
+        GetTree().Quit();
+    }
+
+    // What on this screen is explained, and what names something without offering a hover.
+    private void ReportTooltips(string screen)
+    {
+        var explained = 0;
+        var mute = new List<string>();
+        var samples = new List<string>();
+        var all = 0;
+        Walk(this, "");
+
+        // `inherited` is the tooltip the mouse would actually find: a label that lets the pointer through
+        // (MouseFilter.Ignore, the default for a Label) is hovered as whatever sits beneath it, so a card's
+        // rules text is explained by the card's own hover and must not be counted as mute.
+        void Walk(Godot.Node node, string inherited)
+        {
+            foreach (var child in node.GetChildren())
+            {
+                var passed = inherited;
+                if (child is Control control)
+                {
+                    if (!string.IsNullOrWhiteSpace(control.TooltipText))
+                        passed = control.TooltipText;
+                    if (TextOf(control) is { Length: > 0 } text)
+                    {
+                        all++;
+                        if (!string.IsNullOrWhiteSpace(passed))
+                        {
+                            explained++;
+                            if (passed.Contains(" — ", StringComparison.Ordinal))
+                                samples.Add(passed);
+                        }
+                        else if (Glossary.In(text, limit: 1).Count > 0)
+                            mute.Add(text.Replace("\n", " · "));
+                    }
+                }
+                Walk(child, passed);
+            }
+        }
+
+        GD.Print($"smoke-tooltips [{screen}]: {all} labelled controls, {explained} with a hover, "
+            + $"{mute.Count} naming something the glossary knows with no hover at all");
+        foreach (var line in mute.Distinct().Take(15))
+            GD.Print($"  UNEXPLAINED: {line}");
+        // A couple of the actual hovers, so the check reports what a player would READ, not just that a
+        // string is non-empty.
+        foreach (var sample in samples.Distinct().Take(3))
+            GD.Print($"  EXAMPLE ⟨{sample.Replace("\n", " ⏎ ")}⟩");
+    }
+
+    private static string? TextOf(Control control) => control switch
+    {
+        Button button => button.Text,
+        Label label => label.Text,
+        _ => null,
+    };
 
     // Play the WHOLE game — both acts, every room the route holds, to the last boss — through the real screens
     // (every answer goes through the same Rebuild the player sees). What it proves is that the frontend holds
@@ -239,7 +342,16 @@ public partial class SessionScreen : Control
         Rebuild();
         GD.Print($"smoke-room {role}: choice={session?.IsAwaitingChoice} entities={session?.IsAwaitingEntities} "
             + $"error={session?.Error ?? Play?.Error ?? "none"}");
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        ReportTooltips(role);
         await CaptureThenQuit(file);
+    }
+
+    private async System.Threading.Tasks.Task MapShot()
+    {
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        ReportTooltips("map");
+        await CaptureThenQuit("smoke-map.png");
     }
 
     // Auto-play greedily until the first reward/entity pick, then screenshot it (verifies reward
@@ -288,6 +400,8 @@ public partial class SessionScreen : Control
         Rebuild();
         GD.Print($"smoke-reward: awaiting={session?.IsAwaitingEntities} "
             + $"displays={(session?.PendingEntities is { } e ? string.Join(" | ", e.Displays) : "-")}");
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        ReportTooltips("reward");
         await CaptureThenQuit("smoke-reward.png");
     }
 
@@ -702,11 +816,14 @@ public partial class SessionScreen : Control
             return;
         }
 
-        Title(Say(situation.TextKey ?? situation.Id));
+        var prose = Say(situation.TextKey ?? situation.Id);
+        Title(prose);
+        Explained(prose);
         foreach (var choice in session.PendingChoices)
         {
             var id = choice.Id;
-            AddButton(Say(choice.TextKey ?? id), () => session.Pick(id));
+            var text = Say(choice.TextKey ?? id);
+            AddButton(text, () => session.Pick(id)).TooltipText = Glossary.Explain(null, text);
         }
     }
 
@@ -756,21 +873,23 @@ public partial class SessionScreen : Control
         string choiceId, string name, int price, string description = "")
     {
         var canBuy = affordable.ContainsKey(choiceId);
-        var row = new VBoxContainer();
+        var hover = Glossary.Explain(canBuy ? null : "Not enough gold.", $"{name} {description}");
+        // On the whole row, so the rules line under the button explains its own words too.
+        var row = new VBoxContainer { TooltipText = hover, MouseFilter = MouseFilterEnum.Pass };
         row.AddThemeConstantOverride("separation", 0);
         var button = new Button { Text = $"{name}   —   {price} gold", Disabled = !canBuy };
         button.Pressed += () => session.Pick(choiceId);
+        button.TooltipText = hover;
         if (!canBuy)
-        {
-            button.TooltipText = "Not enough gold.";
             button.AddThemeColorOverride("font_disabled_color", MoonvineTheme.TextMuted);
-        }
         row.AddChild(button);
         if (!string.IsNullOrWhiteSpace(description))
         {
             var text = MutedLabel(description);
             text.HorizontalAlignment = HorizontalAlignment.Center;
             text.AddThemeFontSizeOverride("font_size", 12);
+            text.MouseFilter = MouseFilterEnum.Stop;
+            text.TooltipText = hover;
             row.AddChild(text);
         }
         _main.AddChild(row);
@@ -852,7 +971,11 @@ public partial class SessionScreen : Control
     // pick shows WHAT each card does. The whole panel is clickable via a transparent overlay button.
     private static Control EntityOption(string name, string description, bool selected, Action onPressed)
     {
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(0, 0) };
+        var panel = new PanelContainer
+        {
+            CustomMinimumSize = new Vector2(0, 0),
+            TooltipText = Glossary.Explain(null, $"{name} {description}"),
+        };
         panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
             selected ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
             selected ? MoonvineTheme.AccentLight : new Color(MoonvineTheme.Accent, 0.3f)));
@@ -1282,6 +1405,9 @@ public partial class SessionScreen : Control
                     + $"{RogueDeck.Scenario.Authoring.IntentDisplay.KindWord(intent.Kind)}\n{intent.Label}",
                 HorizontalAlignment = HorizontalAlignment.Center,
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                // What it is about to do names things; hovering says what they are.
+                MouseFilter = MouseFilterEnum.Stop,
+                TooltipText = Glossary.Explain(null, intent.Label),
             };
             intentLabel.AddThemeColorOverride("font_color", MoonvineTheme.IntentColor(intent.Kind));
             box.AddChild(intentLabel);
@@ -1340,7 +1466,13 @@ public partial class SessionScreen : Control
         var affordable = CanPay(hero, definition);
         var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definition);
 
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(CardVisuals.CardW, CardVisuals.CardH) };
+        // The hover sits on the CARD, not only on the click overlay: wherever the pointer lands on it — the
+        // name, the cost, the clipped rules text — the same explanation comes up.
+        var panel = new PanelContainer
+        {
+            CustomMinimumSize = new Vector2(CardVisuals.CardW, CardVisuals.CardH),
+            TooltipText = Glossary.Explain(presentation?.FlavorText),
+        };
         panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
             new Color("0a0a0c"),
             highlighted ? MoonvineTheme.AccentLight : affordable ? new Color(MoonvineTheme.Accent, 0.5f) : new Color(MoonvineTheme.TextMuted, 0.25f), 6));
@@ -1395,7 +1527,7 @@ public partial class SessionScreen : Control
         {
             Flat = true,
             Disabled = !affordable,
-            TooltipText = presentation?.FlavorText ?? "",
+            TooltipText = Glossary.Explain(presentation?.FlavorText),
         };
         overlay.SetAnchorsPreset(LayoutPreset.FullRect);
         overlay.Pressed += () => onClick();
@@ -1563,8 +1695,8 @@ public partial class SessionScreen : Control
             {
                 var label = MutedLabel($"• {relic.Definition.DisplayName}{(relic.Enabled ? "" : " (off)")}");
                 label.MouseFilter = MouseFilterEnum.Stop; // tooltips need a hit-testable control
-                label.TooltipText = GameHost.Instance.Blueprint.Presentation.Relics
-                    .GetValueOrDefault(relic.Id.Value)?.FlavorText ?? "";
+                label.TooltipText = Glossary.Explain(GameHost.Instance.Blueprint.Presentation.Relics
+                    .GetValueOrDefault(relic.Id.Value)?.FlavorText);
                 _sidebar.AddChild(label);
             }
         }
@@ -1572,14 +1704,27 @@ public partial class SessionScreen : Control
         {
             _sidebar.AddChild(new Label { Text = "Consumables" });
             foreach (var consumable in run.Consumables)
-                _sidebar.AddChild(MutedLabel($"• {consumable.DefinitionId.Value}"));
+            {
+                var label = MutedLabel($"• {ConsumableName(consumable.DefinitionId.Value)}");
+                label.MouseFilter = MouseFilterEnum.Stop;
+                label.TooltipText = Glossary.Explain(GameHost.Instance.Blueprint.Presentation.Consumables
+                    .GetValueOrDefault(consumable.DefinitionId.Value)?.FlavorText);
+                _sidebar.AddChild(label);
+            }
         }
 
         _sidebar.AddChild(new Label { Text = $"Deck ({run.Deck.Count})" });
         foreach (var group in run.Deck
-            .GroupBy(card => CardName(card.DefinitionId.value) + new string('+', card.UpgradeLevel))
-            .OrderBy(g => g.Key, StringComparer.Ordinal))
-            _sidebar.AddChild(MutedLabel(group.Count() > 1 ? $"{group.Key} ×{group.Count()}" : group.Key));
+            .GroupBy(card => (Name: CardName(card.DefinitionId.value) + new string('+', card.UpgradeLevel),
+                Definition: card.DefinitionId.value))
+            .OrderBy(g => g.Key.Name, StringComparer.Ordinal))
+        {
+            var label = MutedLabel(group.Count() > 1 ? $"{group.Key.Name} ×{group.Count()}" : group.Key.Name);
+            label.MouseFilter = MouseFilterEnum.Stop;
+            label.TooltipText = Glossary.Explain(GameHost.Instance.Blueprint.Presentation.Cards
+                .GetValueOrDefault(group.Key.Definition)?.FlavorText);
+            _sidebar.AddChild(label);
+        }
     }
 
     private void Title(string text, Color? color = null)
@@ -1592,6 +1737,21 @@ public partial class SessionScreen : Control
     }
 
     private void Muted(string text) => _main.AddChild(MutedLabel(text));
+
+    // Prose has no hover of its own, so the words IT uses are explained under it — the same lines a tooltip
+    // would have shown, for the one place in the game that is read rather than pointed at.
+    private void Explained(string prose)
+    {
+        var terms = Glossary.In(prose, limit: 3);
+        if (terms.Count == 0)
+            return;
+        foreach (var term in terms)
+        {
+            var label = MutedLabel(term);
+            label.AddThemeFontSizeOverride("font_size", 12);
+            _main.AddChild(label);
+        }
+    }
 
     private static Label MutedLabel(string text)
     {
@@ -1702,7 +1862,7 @@ public partial class SessionScreen : Control
             {
                 Text = StatusText(status, definition),
                 MouseFilter = Control.MouseFilterEnum.Pass, // let the targeting overlay keep the click
-                TooltipText = StatusTooltip(status, definition),
+                TooltipText = Glossary.Explain(StatusTooltip(status, definition), definition?.DescriptionKey),
             };
             chip.AddThemeColorOverride("font_color", status.Polarity switch
             {
@@ -1759,6 +1919,13 @@ public partial class SessionScreen : Control
     }
 
     // "scheduled_the_collapse" → "Scheduled the collapse". Only ever seen when content forgot a name.
+    // A consumable's authored name, falling back to a readable form of its id.
+    private static string ConsumableName(string definition) =>
+        GameHost.Instance.Blueprint.Consumables.FirstOrDefault(c => c.Id == definition)?.DisplayName
+            is { Length: > 0 } name
+            ? name
+            : Humanized(definition);
+
     private static string Humanized(string id)
     {
         var text = id.Replace("standard.", "", StringComparison.Ordinal)

@@ -36,6 +36,8 @@ public partial class GameHost : Godot.Node
         {
             var json = Godot.FileAccess.GetFileAsString("res://content/game.roguedeck.json");
             Blueprint = RunJson.BlueprintFromJson(json, RunJson.CreateOptions());
+            // What every named thing in the document MEANS, ready before the first screen asks.
+            Glossary.Build(Blueprint);
         }
         catch (System.Exception ex)
         {
