@@ -38,9 +38,9 @@ public partial class Boot : Control
             return;
         }
         // Any session smoke boots straight into a seeded run; SessionScreen runs the matching probe + quits.
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite"))
         {
-            host.StartNewRun(seed: 7);
+            host.StartNewRun(seed: 7, health: userArgs.Contains("--smoke-marathon") ? 9999 : null);
             CallDeferred(nameof(GoToSession));
             return;
         }

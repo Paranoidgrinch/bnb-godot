@@ -29,6 +29,9 @@ public partial class SessionScreen : Control
     private CardInstanceId? _armedCard; // the hand card waiting for a target click
     private int _seenProblems;
 
+    // The act the screen has already announced, so the title card shows once per act rather than every redraw.
+    private int _announcedAct;
+
     // Draw animation: which hand cards were already on screen last render (so newly-drawn cards fly in from
     // the deck), the card nodes queued for that fly-in, and the deck pile's top node (their start point).
     private readonly HashSet<string> _shownHandIds = [];
@@ -98,6 +101,145 @@ public partial class SessionScreen : Control
             _ = SmokeReward();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-statuses"))
             SmokeStatuses();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-shop"))
+            _ = SmokeRoom(MapNodeTags.Shop, "smoke-shop.png");
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-event"))
+            _ = SmokeRoom(MapNodeTags.Event, "smoke-event.png");
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-rest"))
+            _ = SmokeRoom(MapNodeTags.Rest, "smoke-rest.png");
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-ambush"))
+            _ = SmokeRoom(MapNodeTags.MultiCombat, "smoke-ambush.png");
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-elite"))
+            _ = SmokeRoom(MapNodeTags.Elite, "smoke-elite.png");
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-marathon"))
+            SmokeMarathon();
+    }
+
+    // Play the WHOLE game — both acts, every room the route holds, to the last boss — through the real screens
+    // (every answer goes through the same Rebuild the player sees). What it proves is that the frontend holds
+    // up all the way: the map redraws for the second act, the act title card fires, no screen throws twenty
+    // rooms in. The engine-side coverage lives in bnb-content's own walk; this one is about the UI.
+    private void SmokeMarathon()
+    {
+        var session = Session;
+        var play = Play;
+        var rooms = new List<string>();
+        var acts = 1;
+        string? lastRoom = null;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        for (var step = 0; step < 20000 && session is not null && play is not null && !session.IsComplete; step++)
+        {
+            if (session.Error is not null || play.Error is not null)
+                break;
+            if (session.Run.CurrentNodeId?.Value is { } here && here != lastRoom)
+            {
+                lastRoom = here;
+                var node = session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == here);
+                rooms.Add($"{session.Run.ActNumber}:{MapView.Role(node ?? throw new InvalidOperationException(here))}");
+                acts = Math.Max(acts, session.Run.ActNumber);
+                // The latency curve, room by room: under the replay model every answer re-runs the whole run,
+                // so what this prints is how the game FEELS as it gets longer.
+                GD.Print($"  [{clock.Elapsed.TotalSeconds,7:0.0}s, {step,5} answers] "
+                    + $"act {session.Run.ActNumber} {here} {rooms[^1].Split(':')[1]}");
+            }
+
+            if (play.CombatDriver is { Current: not null } driver)
+            {
+                if (driver.PendingOptionChoice is { } options)
+                    driver.SupplyOptionChoice(
+                        [.. Enumerable.Range(0, Math.Min(driver.PendingOptionChoiceCount, options.Count))]);
+                else if (driver.PendingCardChoice is { } cards)
+                    driver.SupplyCardChoice([.. cards.Take(driver.PendingCardChoiceCount).Select(c => c.Id)]);
+                else if (driver.Current!.IsHeroTurn)
+                {
+                    var combat = driver.Current;
+                    var hero = combat.State.GetCombatant(combat.HeroId);
+                    var card = combat.Hand.FirstOrDefault(c =>
+                        !c.DefinitionId.value.Contains("red_tape") && !c.DefinitionId.value.Contains("unsigned_form")
+                        && CanPay(hero, c.DefinitionId.value));
+                    var target = combat.State.Combatants
+                        .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive
+                            && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
+                    if (card is not null)
+                        driver.PlayCard(card.Id, target);
+                    else
+                        driver.EndTurn();
+                }
+                else
+                    break; // the enemy turn resolves synchronously under replay — it never parks here
+            }
+            else if (session.IsAwaitingNodeChoice)
+                session.PickNode(session.PendingNodeChoices[^1].Id.Value);
+            else if (session.IsAwaitingEntities && session.PendingEntities is { } entities)
+                session.PickEntities([.. Enumerable.Range(0, Math.Min(entities.Count, entities.Displays.Count))]);
+            else if (session.IsAwaitingChoice)
+                session.Pick(session.PendingChoices[0].Id);
+            else if (session.IsAwaitingInterlude)
+                session.Continue();
+            else
+                break;
+        }
+
+        var byAct = rooms.GroupBy(r => r.Split(':')[0])
+            .Select(g => $"act {g.Key}: {g.Count()} rooms ({string.Join(" ", g.GroupBy(x => x.Split(':')[1]).Select(k => $"{k.Key}×{k.Count()}"))})");
+        GD.Print($"smoke-marathon: result={session?.Run.Result} acts={acts} rooms={rooms.Count} "
+            + $"error={session?.Error ?? Play?.Error ?? "none"}");
+        foreach (var line in byAct)
+            GD.Print($"  {line}");
+        GetTree().Quit();
+    }
+
+    // Walk toward the nearest room of one KIND and screenshot it as the player would meet it. The rooms that
+    // are not fights — shop, campfire, a door — are the ones nothing else in the smoke suite ever looks at.
+    private async System.Threading.Tasks.Task SmokeRoom(string role, string file)
+    {
+        var session = Session;
+        var play = Play;
+        for (var step = 0; step < 600 && session is not null && play is not null; step++)
+        {
+            var here = session.Run.CurrentNodeId is { } id
+                ? session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == id.Value)
+                : null;
+            // Parked at a room of the wanted kind, with something on screen to look at.
+            if (here is not null && here.HasTag(role)
+                && (session.IsAwaitingChoice || session.IsAwaitingEntities || play.CombatDriver?.Current is not null))
+                break;
+
+            if (play.CombatDriver?.Current is { } combat)
+            {
+                if (!combat.IsHeroTurn)
+                    break;
+                var hero = combat.State.GetCombatant(combat.HeroId);
+                var card = combat.Hand.FirstOrDefault(c =>
+                    !c.DefinitionId.value.Contains("red_tape") && CanPay(hero, c.DefinitionId.value));
+                var target = combat.State.Combatants
+                    .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
+                if (card is not null)
+                    play.CombatDriver.PlayCard(card.Id, target);
+                else
+                    play.CombatDriver.EndTurn();
+            }
+            else if (session.IsAwaitingNodeChoice)
+            {
+                // Steer toward the wanted kind; otherwise take the shortest way on.
+                var wanted = session.PendingNodeChoices.FirstOrDefault(n => n.HasTag(role))
+                    ?? session.PendingNodeChoices[0];
+                session.PickNode(wanted.Id.Value);
+            }
+            else if (session.IsAwaitingInterlude)
+                session.Continue();
+            else if (session.IsAwaitingEntities)
+                session.PickEntities([0]);
+            else if (session.IsAwaitingChoice)
+                session.Pick(session.PendingChoices[^1].Id);
+            else
+                break;
+        }
+        Rebuild();
+        GD.Print($"smoke-room {role}: choice={session?.IsAwaitingChoice} entities={session?.IsAwaitingEntities} "
+            + $"error={session?.Error ?? Play?.Error ?? "none"}");
+        await CaptureThenQuit(file);
     }
 
     // Auto-play greedily until the first reward/entity pick, then screenshot it (verifies reward
@@ -281,7 +423,7 @@ public partial class SessionScreen : Control
 
         GD.Print("smoke-full: "
             + $"result={session?.Run.Result} "
-            + $"visited={session?.Run.VisitedNodes.Count}/{GameHost.Instance.Blueprint.Map.Nodes.Count} "
+            + $"visited={session?.Run.VisitedNodes.Count}/{session?.Run.Map.Nodes.Count} "
             + $"hp={session?.Run.Health.Current}/{session?.Run.Health.Max} "
             + $"gold={session?.Run.GetResource(StandardRunIds.Gold)} "
             + $"deck={session?.Run.Deck.Count} relics={session?.Run.Relics.Count} "
@@ -499,24 +641,180 @@ public partial class SessionScreen : Control
 
         RenderSidebar(session);
         _log.Text = string.Join("\n", session.Run.Log.TakeLast(60).Select(entry => entry.Message));
+        AnnounceAct(session);
+    }
+
+    // Crossing into the next act is the biggest thing that happens outside a fight, and the engine does it by
+    // itself: the map simply becomes a different map. Say it out loud, once, the first time the run renders
+    // inside an act it was not in before.
+    private void AnnounceAct(InteractiveRunSession session)
+    {
+        var act = session.Run.ActNumber;
+        if (act == _announcedAct)
+            return;
+        _announcedAct = act;
+        if (act <= 1)
+            return; // the first act needs no announcement — the run just started in it
+
+        var acts = GameHost.Instance.Blueprint.Acts;
+        var name = acts is not null && session.Run.ActIndex < acts.Count
+            ? acts[session.Run.ActIndex].NameKey ?? acts[session.Run.ActIndex].Id
+            : $"Act {act}";
+        Banner(name);
+    }
+
+    // A title card that fades away by itself: the whole screen dimmed, the act's name across it.
+    private void Banner(string text)
+    {
+        if (!IsInsideTree())
+            return; // a headless probe can redraw on its way out of the tree; there is nobody to show it to
+
+        var veil = new ColorRect { Color = new Color(MoonvineTheme.Bg, 0.82f), MouseFilter = MouseFilterEnum.Ignore };
+        veil.SetAnchorsPreset(LayoutPreset.FullRect);
+        var label = new Label
+        {
+            Text = text,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        label.SetAnchorsPreset(LayoutPreset.FullRect);
+        label.AddThemeFontSizeOverride("font_size", 34);
+        label.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
+        veil.AddChild(label);
+        AddChild(veil);
+
+        var fade = CreateTween();
+        fade.TweenInterval(2.2);
+        fade.TweenProperty(veil, "modulate:a", 0.0f, 0.8);
+        fade.TweenCallback(Callable.From(veil.QueueFree));
     }
 
     // ── run-level states ─────────────────────────────────────────────────────────
 
     private void RenderChoices(InteractiveRunSession session, EventSituation situation)
     {
-        Title(situation.TextKey ?? situation.Id);
+        // A shop is an event situation like any other, but its choices are only the AFFORDABLE ones — so a
+        // player with no gold saw an empty room. It gets its own screen, drawn off the live shelf.
+        if (session.PendingShopShelf is { } shelf)
+        {
+            RenderShop(session, shelf);
+            return;
+        }
+
+        Title(Say(situation.TextKey ?? situation.Id));
         foreach (var choice in session.PendingChoices)
         {
             var id = choice.Id;
-            AddButton(choice.TextKey ?? id, () => session.Pick(id));
+            AddButton(Say(choice.TextKey ?? id), () => session.Pick(id));
         }
     }
 
+    // The shop, as a shopkeeper would lay it out: everything standing on the shelf with its price, whether or
+    // not the purse can reach it. What is affordable is a button; what is not is greyed and still readable —
+    // knowing what you cannot yet buy is most of what a shop is for.
+    private void RenderShop(InteractiveRunSession session, ShopShelf shelf)
+    {
+        var run = session.Run;
+        var gold = run.GetResource(StandardRunIds.Gold);
+        var affordable = session.PendingChoices.ToDictionary(c => c.Id, c => c, StringComparer.Ordinal);
+
+        Title("The shop");
+        Muted($"Gold: {gold}");
+
+        foreach (var group in shelf.Slots.GroupBy(slot => slot.GroupId))
+        {
+            _main.AddChild(MutedLabel(Say(group.Key)));
+            foreach (var slot in group)
+                AddShopRow(session, affordable, slot.Entry.Id, slot.Entry.TextKey ?? slot.Entry.Id, slot.Price,
+                    WhatItDoes(slot.Entry.Payload));
+        }
+
+        foreach (var service in shelf.Services.Where(s => !shelf.IsServiceUsed(s)))
+            AddShopRow(session, affordable, service.Id, Say(service.TextKey ?? service.Id), shelf.PriceOf(service));
+
+        if (ShopHere() is { Reroll: { } reroll })
+            AddShopRow(session, affordable, ShopNodeResolver.RerollChoiceId, "Restock the shelves", reroll.Price);
+
+        AddButton("Leave", () => session.Pick(ShopNodeResolver.LeaveChoiceId));
+    }
+
+    // The shop definition the run is standing in, read off the map node it entered (for the prices of things
+    // the player cannot afford — those never reach the choice list).
+    private static ShopDefinition? ShopHere()
+    {
+        if (Session is not { } session || session.Run.CurrentNodeId is not { } id)
+            return null;
+        var node = session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == id.Value);
+        return node?.Payload is ShopRef shop
+            ? GameHost.Instance.Blueprint.Shops.GetValueOrDefault(shop.Id.Value)
+            : null;
+    }
+
+    private void AddShopRow(
+        InteractiveRunSession session, IReadOnlyDictionary<string, EventChoice> affordable,
+        string choiceId, string name, int price, string description = "")
+    {
+        var canBuy = affordable.ContainsKey(choiceId);
+        var row = new VBoxContainer();
+        row.AddThemeConstantOverride("separation", 0);
+        var button = new Button { Text = $"{name}   —   {price} gold", Disabled = !canBuy };
+        button.Pressed += () => session.Pick(choiceId);
+        if (!canBuy)
+        {
+            button.TooltipText = "Not enough gold.";
+            button.AddThemeColorOverride("font_disabled_color", MoonvineTheme.TextMuted);
+        }
+        row.AddChild(button);
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            var text = MutedLabel(description);
+            text.HorizontalAlignment = HorizontalAlignment.Center;
+            text.AddThemeFontSizeOverride("font_size", 12);
+            row.AddChild(text);
+        }
+        _main.AddChild(row);
+    }
+
+    // What a purchase actually gives you, read off the effects behind it rather than off its id — the shelf
+    // labels a slot with a name and a price, and the rules text lives with the card or relic it grants.
+    private static string WhatItDoes(IReadOnlyList<IRunEffectRequest> payload)
+    {
+        var presentation = GameHost.Instance.Blueprint.Presentation;
+        foreach (var effect in payload)
+            switch (effect)
+            {
+                case AddCardToDeckRunEffect card
+                    when presentation.Cards.GetValueOrDefault(card.Card.value)?.FlavorText is { } cardText:
+                    return cardText;
+                case AddRelicByIdRunEffect relic
+                    when presentation.Relics.GetValueOrDefault(relic.Relic.Value)?.FlavorText is { } relicText:
+                    return relicText;
+            }
+        return "";
+    }
+
+    // The engine's own situation/choice keys are ids, not sentences ("event.shop.leave"). Give the handful the
+    // player can meet a voice; anything else falls back to a readable form of the key itself, so a content gap
+    // shows up as words rather than as a dotted id.
+    private static string Say(string key) => key switch
+    {
+        "event.shop" => "The shop",
+        "event.shop.leave" => "Leave",
+        "event.shop.reroll" => "Restock the shelves",
+        "event.shop.remove-card" => "Have a card struck from your deck",
+        "cards" => "Cards",
+        "relics" => "Relics",
+        "stock" => "For sale",
+        "reward" => "Your reward",
+        "spoils" => "The spoils",
+        _ => key.Contains('.') || key.Contains('-') || key.Contains('_') ? Humanized(key) : key,
+    };
+
     private void RenderEntityPick(InteractiveRunSession session, EntitySelectionRequest entities)
     {
-        Title(entities.Purpose);
-        Muted($"Pick {entities.Count}");
+        Title(Say(entities.Purpose));
+        Muted(entities.Displays.Count <= entities.Count ? "Yours:" : $"Pick {entities.Count}");
         for (var i = 0; i < entities.Displays.Count; i++)
         {
             var index = i;
@@ -582,6 +880,7 @@ public partial class SessionScreen : Control
 
     private void RenderNodeFork(InteractiveRunSession session)
     {
+        ActHeading(session);
         Title("Choose your path");
         Muted("Pick a highlighted room to travel to.");
         AddMap(session.PendingNodeChoices.Select(n => n.Id.Value), session.PickNode);
@@ -589,6 +888,7 @@ public partial class SessionScreen : Control
 
     private void RenderInterlude(InteractiveRunSession session)
     {
+        ActHeading(session);
         Title("Between rooms");
         foreach (var consumable in session.Run.Consumables.Where(c => c.UseEffects.Count > 0))
         {
@@ -600,17 +900,83 @@ public partial class SessionScreen : Control
         AddMap(null, null);
     }
 
+    // Which act this is, and how far through it the run stands. Without this the player crosses from the city
+    // into the archives and is never told — the map simply becomes a different map.
+    private void ActHeading(InteractiveRunSession session)
+    {
+        var run = session.Run;
+        var acts = GameHost.Instance.Blueprint.Acts;
+        var name = acts is not null && run.ActIndex < acts.Count
+            ? acts[run.ActIndex].NameKey ?? acts[run.ActIndex].Id
+            : null;
+        if (name is not null)
+        {
+            var label = new Label { Text = name, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+            label.AddThemeFontSizeOverride("font_size", 15);
+            label.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
+            _main.AddChild(label);
+        }
+        if (run.Map.Nodes.Count > 0)
+            Muted($"Room {run.VisitedNodes.Count} of about {LongestRoute(run.Map)}");
+    }
+
+    // The most rooms any route through this act asks for — "about", because the routes differ.
+    private static int LongestRoute(RunMap map)
+    {
+        var depth = map.Nodes.ToDictionary(n => n.Id.Value, _ => 1);
+        for (var pass = 0; pass < map.Nodes.Count; pass++)
+            foreach (var edge in map.Edges)
+                if (depth.TryGetValue(edge.From.Value, out var from) && depth.TryGetValue(edge.To.Value, out var to)
+                    && to < from + 1)
+                    depth[edge.To.Value] = from + 1;
+        return depth.Count == 0 ? 0 : depth.Values.Max();
+    }
+
     // Drop the map graph into the main column: reachable ids are the clickable rooms (a fork), or null
     // for a read-only "you are here" overview (an interlude).
+    //
+    // The map is the RUN's (RunState.Map = the act being walked), never the blueprint's: in a generated game
+    // the blueprint carries map RULES and its own Map is empty, so drawing that drew nothing at all.
     private void AddMap(IEnumerable<string>? reachable, Action<string>? onPick)
     {
         if (Session is not { } session)
             return;
-        var map = new MapView(GameHost.Instance.Blueprint.Map, session.Run, reachable, onPick)
+        var map = new MapView(session.Run.Map, session.Run, reachable, onPick)
         {
             SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
         };
         _main.AddChild(map);
+        _main.AddChild(MapLegend());
+        // Keep the room the run stands in on screen — an act's map is taller than the window.
+        CallDeferred(nameof(ScrollToCurrentRoom), map);
+    }
+
+    private void ScrollToCurrentRoom(MapView map)
+    {
+        // Nothing walked yet (the run is at its entry fork) ⇒ the top of the map IS where to look. Scrolling to
+        // a room that does not exist used to drop the player into the middle of the act.
+        if (!IsInstanceValid(map) || map.CurrentRoomPosition == Vector2.Zero || _mainScroll.Size.Y <= 0)
+            return;
+        var target = (int)(map.Position.Y + map.CurrentRoomPosition.Y - _mainScroll.Size.Y / 2);
+        _mainScroll.ScrollVertical = Math.Max(0, target);
+    }
+
+    private static Control MapLegend()
+    {
+        var row = new HBoxContainer { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
+        row.AddThemeConstantOverride("separation", 12);
+        foreach (var role in new[]
+                 {
+                     MapNodeTags.Combat, MapNodeTags.MultiCombat, MapNodeTags.Elite, MapNodeTags.Event,
+                     MapNodeTags.Rest, MapNodeTags.Treasure, MapNodeTags.Shop, MapNodeTags.Boss,
+                 })
+        {
+            var label = new Label { Text = $"{MapView.Icon(role)} {MapView.Label(role)}" };
+            label.AddThemeFontSizeOverride("font_size", 11);
+            label.AddThemeColorOverride("font_color", MapView.RoleColor(role));
+            row.AddChild(label);
+        }
+        return row;
     }
 
     private void RenderComplete(InteractiveRunSession session)
@@ -1000,20 +1366,37 @@ public partial class SessionScreen : Control
         var rule = new HSeparator();
         column.AddChild(rule);
 
+        // The rules text lives in a window of its OWN, fixed height. A Label sizes to whatever it wraps to, and
+        // a card container sizes to its label — so the wordiest card in the hand used to grow past the bottom
+        // of the screen and take the whole row's alignment with it. A plain Control reports only its minimum
+        // size, whatever it holds, so every card in the hand is the same card-shaped block. What does not fit
+        // is on the tooltip.
+        var window = new Control
+        {
+            CustomMinimumSize = new Vector2(CardVisuals.CardW - 12, CardVisuals.CardH - 66),
+            ClipContents = true,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
         var effect = new Label
         {
             Text = presentation?.FlavorText ?? "",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            SizeFlagsVertical = SizeFlags.ExpandFill,
         };
+        effect.SetAnchorsPreset(LayoutPreset.TopWide);
         effect.AddThemeColorOverride("font_color", affordable ? MoonvineTheme.TextSoft : MoonvineTheme.TextMuted);
         effect.AddThemeFontSizeOverride("font_size", 11);
-        column.AddChild(effect);
+        window.AddChild(effect);
+        column.AddChild(window);
 
         margin.AddChild(column);
         panel.AddChild(margin);
 
-        var overlay = new Button { Flat = true, Disabled = !affordable };
+        var overlay = new Button
+        {
+            Flat = true,
+            Disabled = !affordable,
+            TooltipText = presentation?.FlavorText ?? "",
+        };
         overlay.SetAnchorsPreset(LayoutPreset.FullRect);
         overlay.Pressed += () => onClick();
         panel.AddChild(overlay);
@@ -1378,7 +1761,9 @@ public partial class SessionScreen : Control
     // "scheduled_the_collapse" → "Scheduled the collapse". Only ever seen when content forgot a name.
     private static string Humanized(string id)
     {
-        var text = id.Replace("standard.", "", StringComparison.Ordinal).Replace('_', ' ');
+        var text = id.Replace("standard.", "", StringComparison.Ordinal)
+            .Replace("event.", "", StringComparison.Ordinal)
+            .Replace('.', ' ').Replace('-', ' ').Replace('_', ' ');
         return text.Length == 0 ? id : char.ToUpperInvariant(text[0]) + text[1..];
     }
 }

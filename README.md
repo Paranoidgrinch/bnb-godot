@@ -14,7 +14,9 @@ presentation manifest.
   (the reference host object); turns its synchronous `onChanged` into a deferred `StateChanged` signal.
 - `scripts/SessionScreen.cs` — the run screen: one dispatcher over the session state (event/shop/
   workbench choices, entity picks, path forks, interlude+save, combat, completion) plus inventory + log.
-- `scripts/MapView.cs` — the act map as a navigable graph.
+- `scripts/MapView.cs` — the ACT's map as a navigable graph: entry at the top, boss at the bottom, each room
+  drawn as the role it was generated for. It draws `RunState.Map` (the map generated for the act being
+  walked) — the blueprint's own `Map` is empty in a generated game.
 - `scripts/Boot.cs` — the title screen (game identity + unlock-gated character select + New/Continue).
 - `scripts/MoonvineTheme.cs` — the Moonvine Forge look (tokens mirrored from the Studio's `studio.css`).
 - `scripts/GodotMetaStore.cs` — the cross-run profile in `user://` (permanent unlocks / discoveries).
@@ -31,6 +33,16 @@ godot --headless -- --smoke        # boot: prints "loaded: …" and quits
 godot --headless -- --smoke-full    # auto-plays the first rooms and reports the state
 godot --headless -- --smoke-timing  # per-action latency (~17 ms/action)
 godot --headless -- --smoke-statuses # carried state reads as its authored name, not its id
+godot --headless -- --smoke-marathon # play the WHOLE game (both acts) and report rooms + latency
+```
+Windowed screenshot checks (each walks to the room it names, then captures it to `user://`):
+```
+godot -- --smoke-map      # the act map at the entry fork
+godot -- --smoke-shop     # the shelf, with prices, including what is unaffordable
+godot -- --smoke-event    # a door
+godot -- --smoke-ambush   # a multi-enemy fight
+godot -- --smoke-elite    # an elite
+godot -- --smoke-reward   # the card reward
 ```
 
 ## Building desktop binaries

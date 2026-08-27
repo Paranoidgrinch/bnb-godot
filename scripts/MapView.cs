@@ -5,21 +5,30 @@ using RunNode = RogueDeck.Run.Node;
 
 namespace BnbGodot;
 
-// The run map as a graph: every node drawn at its authored (or auto-laid-out) position, edges as lines,
-// each node colored by kind and by run state (visited / current / reachable). During a path fork the
-// reachable nodes (the session's PendingNodeChoices) are the clickable buttons; otherwise the map is a
-// read-only "you are here" overview. Self-contained so SessionScreen just drops it in during the
-// interlude and fork states.
+// The act's map as a navigable graph: the entry at the top, the boss at the bottom, every room drawn where its
+// depth puts it, edges as lines, each room colored by what it IS and by how the run stands to it (walked /
+// standing here / open). During a path fork the reachable rooms are the clickable buttons; otherwise the map is
+// a read-only "you are here".
+//
+// Two things this must get right, because both would lie to the player:
+//   • The map it draws is the RUN's — RunState.Map, the map generated for the act being walked. The blueprint's
+//     own Map is empty in a generated game, and drawing that showed nothing at all.
+//   • A room says what its TAG says (the role it was generated for), not what its id or payload look like: a
+//     generated boss room is an ordinary combat node, and only the tag knows it is the boss. The one deliberate
+//     lie is the mimic — it is tagged "mimic" and is a fight, and it must read as a treasure until it bites.
 public partial class MapView : Control
 {
     private readonly RunMap _map;
     private readonly RunState _run;
     private readonly System.Collections.Generic.HashSet<string> _reachable;
     private readonly Action<string>? _onPick;
-    private System.Collections.Generic.Dictionary<NodeId, (int X, int Y)> _positions = new();
+    private System.Collections.Generic.Dictionary<NodeId, Vector2> _positions = new();
 
-    private const int NodeW = 130;
-    private const int NodeH = 46;
+    private const int NodeW = 116;
+    private const int NodeH = 40;
+    private const int LaneW = 132; // horizontal step between two rooms of the same depth
+    private const int RowH = 66;   // vertical step between one depth and the next
+    private const int Margin = 14;
 
     public MapView(
         RunMap map, RunState run,
@@ -32,35 +41,68 @@ public partial class MapView : Control
         _onPick = onPick;
     }
 
+    // The room the run is standing at, for the screen to scroll to.
+    public Vector2 CurrentRoomPosition { get; private set; }
+
     public override void _Ready()
     {
-        _positions = new System.Collections.Generic.Dictionary<NodeId, (int X, int Y)>(MapGraphLayout.Resolve(_map));
-        var (width, height) = MapGraphLayout.CanvasSize(_positions);
+        _positions = Layout(_map);
+        var width = _positions.Count == 0 ? NodeW : (int)_positions.Values.Max(p => p.X) + NodeW + Margin;
+        var height = _positions.Count == 0 ? NodeH : (int)_positions.Values.Max(p => p.Y) + NodeH + Margin;
         CustomMinimumSize = new Vector2(width, height);
 
         foreach (var node in _map.Nodes)
         {
             var pos = _positions[node.Id];
             var isReachable = _reachable.Contains(node.Id.Value);
+            var role = Role(node);
             var button = new Button
             {
-                Text = $"{Icon(node)} {ShortLabel(node)}",
-                Position = new Vector2(pos.X, pos.Y),
+                Text = $"{Icon(role)}\n{Label(role)}",
+                Position = pos,
                 Size = new Vector2(NodeW, NodeH),
                 Disabled = !isReachable || _onPick is null,
-                TooltipText = node.Id.Value,
+                TooltipText = Tooltip(role),
+                AutowrapMode = TextServer.AutowrapMode.Off,
             };
-            Style(button, node, isReachable);
+            Style(button, node, role, isReachable);
             if (isReachable && _onPick is { } pick)
             {
                 var id = node.Id.Value;
                 button.Pressed += () => pick(id);
             }
             AddChild(button);
+            if (_run.CurrentNodeId?.Value == node.Id.Value)
+                CurrentRoomPosition = pos;
         }
     }
 
-    // Edges drawn beneath the node buttons (children draw on top of _Draw).
+    // Depth downward, lanes across — the shape a run map is read in. The engine's layered layout already knows
+    // each node's depth (longest path from an entry); this turns its columns into rows and centres each row.
+    private static System.Collections.Generic.Dictionary<NodeId, Vector2> Layout(RunMap map)
+    {
+        var resolved = MapGraphLayout.Resolve(map);
+        var depth = new System.Collections.Generic.Dictionary<NodeId, int>();
+        var lane = new System.Collections.Generic.Dictionary<NodeId, int>();
+        foreach (var (id, position) in resolved)
+        {
+            depth[id] = position.X / MapGraphLayout.CellWidth;
+            lane[id] = position.Y / MapGraphLayout.CellHeight;
+        }
+
+        var widest = depth.Count == 0 ? 1 : depth.Values.Distinct().Max(d => lane.Count(l => depth[l.Key] == d));
+        var result = new System.Collections.Generic.Dictionary<NodeId, Vector2>();
+        foreach (var node in map.Nodes)
+        {
+            var row = depth[node.Id];
+            var inRow = lane.Count(l => depth[l.Key] == row);
+            var offset = (widest - inRow) * LaneW / 2f;
+            result[node.Id] = new Vector2(Margin + offset + lane[node.Id] * LaneW, Margin + row * RowH);
+        }
+        return result;
+    }
+
+    // Edges drawn beneath the room buttons (children draw on top of _Draw).
     public override void _Draw()
     {
         var traveled = new Color(MoonvineTheme.AccentDark, 0.9f);
@@ -77,11 +119,11 @@ public partial class MapView : Control
         }
     }
 
-    private void Style(Button button, RunNode node, bool reachable)
+    private void Style(Button button, RunNode node, string role, bool reachable)
     {
         var visited = _run.VisitedNodes.Any(n => n.Value == node.Id.Value);
         var current = _run.CurrentNodeId?.Value == node.Id.Value;
-        var accent = KindColor(node);
+        var accent = RoleColor(role);
 
         var fill = current ? MoonvineTheme.BgControl
             : visited ? MoonvineTheme.BgPanelStrong
@@ -97,49 +139,76 @@ public partial class MapView : Control
         button.AddThemeStyleboxOverride("hover", MoonvineTheme.Panel(MoonvineTheme.BgControl, MoonvineTheme.Accent, 8));
         button.AddThemeStyleboxOverride("pressed", style);
         button.AddThemeStyleboxOverride("disabled", style);
-        button.AddThemeColorOverride("font_color", visited && !current ? MoonvineTheme.TextMuted : MoonvineTheme.TextSoft);
-        button.AddThemeColorOverride("font_disabled_color", visited ? MoonvineTheme.TextMuted : MoonvineTheme.TextSoft);
-        button.AddThemeFontSizeOverride("font_size", 12);
+        var text = visited && !current ? MoonvineTheme.TextMuted : reachable || current ? MoonvineTheme.Text : accent;
+        button.AddThemeColorOverride("font_color", text);
+        button.AddThemeColorOverride("font_disabled_color", text);
+        button.AddThemeFontSizeOverride("font_size", 11);
     }
 
-    // ── node kind → icon / color / short label ───────────────────────────────────
+    // ── what a room is ───────────────────────────────────────────────────────────
 
-    private static bool IsBoss(RunNode node) => node.Id.Value.Contains("boss");
-
-    private static string EventKind(RunNode node) =>
-        node.Payload is EventRef reference
-            ? reference.Id.Value.Split(':')[0]
-            : "event";
-
-    private static string Icon(RunNode node) => node.Type.Value switch
+    // The role the room was generated for. A mimic reads as a treasure: the player is meant to find out by
+    // opening it. Anything untagged (an authored map) falls back to its node type.
+    public static string Role(RunNode node)
     {
-        "combat" => IsBoss(node) ? "☠" : "⚔",
-        "shop" => "🛒",
-        "workbench" => "🔨",
-        "event" => EventKind(node) switch { "rest" => "🛏", "treasure" => "📦", _ => "❓" },
+        ArgumentNullException.ThrowIfNull(node);
+        var tag = node.Tags.Count > 0 ? node.Tags[0] : node.Type.Value;
+        return tag == MapNodeTags.Mimic ? MapNodeTags.Treasure : tag;
+    }
+
+    public static string Icon(string role) => role switch
+    {
+        MapNodeTags.Combat => "⚔",
+        MapNodeTags.MultiCombat => "⚔⚔",
+        MapNodeTags.Elite => "☣",
+        MapNodeTags.Boss => "☠",
+        MapNodeTags.Shop => "🛒",
+        MapNodeTags.Rest => "🛏",
+        MapNodeTags.Treasure => "📦",
+        MapNodeTags.Workbench => "🔨",
+        MapNodeTags.Event => "❓",
         _ => "•",
     };
 
-    private static string ShortLabel(RunNode node) => node.Type.Value switch
+    public static string Label(string role) => role switch
     {
-        "combat" => IsBoss(node) ? "Boss" : "Fight",
-        "shop" => "Shop",
-        "workbench" => "Craft",
-        "event" => EventKind(node) switch { "rest" => "Rest", "treasure" => "Treasure", _ => "Event" },
-        _ => node.Type.Value,
+        MapNodeTags.Combat => "Fight",
+        MapNodeTags.MultiCombat => "Ambush",
+        MapNodeTags.Elite => "Elite",
+        MapNodeTags.Boss => "Boss",
+        MapNodeTags.Shop => "Shop",
+        MapNodeTags.Rest => "Rest",
+        MapNodeTags.Treasure => "Treasure",
+        MapNodeTags.Workbench => "Craft",
+        MapNodeTags.Event => "Unknown",
+        _ => role,
     };
 
-    private static Color KindColor(RunNode node) => node.Type.Value switch
+    private static string Tooltip(string role) => role switch
     {
-        "combat" => IsBoss(node) ? new Color("e07070") : new Color("d9a066"),
-        "shop" => new Color("e0c98a"),
-        "workbench" => MoonvineTheme.Accent,
-        "event" => EventKind(node) switch
-        {
-            "rest" => new Color("8ab6e0"),
-            "treasure" => new Color("e0c98a"),
-            _ => new Color("c79ae0"),
-        },
+        MapNodeTags.Combat => "A fight.",
+        MapNodeTags.MultiCombat => "Several of them at once.",
+        MapNodeTags.Elite => "A hard fight — and a better reward.",
+        MapNodeTags.Boss => "The one who ends the act.",
+        MapNodeTags.Shop => "Spend gold on cards, relics, and having a card struck from the deck.",
+        MapNodeTags.Rest => "Recover, or improve a card.",
+        MapNodeTags.Treasure => "Something is filed here. Probably.",
+        MapNodeTags.Workbench => "Craft.",
+        MapNodeTags.Event => "A door. No telling what is behind it.",
+        _ => role,
+    };
+
+    public static Color RoleColor(string role) => role switch
+    {
+        MapNodeTags.Combat => new Color("d9a066"),
+        MapNodeTags.MultiCombat => new Color("d98a5c"),
+        MapNodeTags.Elite => new Color("e07070"),
+        MapNodeTags.Boss => new Color("e05050"),
+        MapNodeTags.Shop => new Color("e0c98a"),
+        MapNodeTags.Rest => new Color("8ab6e0"),
+        MapNodeTags.Treasure => new Color("e0c98a"),
+        MapNodeTags.Workbench => MoonvineTheme.Accent,
+        MapNodeTags.Event => new Color("c79ae0"),
         _ => MoonvineTheme.TextMuted,
     };
 }

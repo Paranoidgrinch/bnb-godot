@@ -46,12 +46,25 @@ public partial class GameHost : Godot.Node
 
     public string GameTitle => Blueprint?.Presentation.Game?.FlavorText ?? "RogueDeck game";
 
-    public void StartNewRun(int seed, string? characterId = null)
+    public void StartNewRun(int seed, string? characterId = null, int? health = null)
     {
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
-        Play.Start(Blueprint, seed, interactive: true, characterId);
+        Play.Start(health is { } hp ? WithHealth(Blueprint, hp) : Blueprint, seed, interactive: true, characterId);
         EmitChanged();
+    }
+
+    // A body that survives the whole game, for the headless marathon check only: a walk that dies in the first
+    // act never renders the second one, and what that check is for is proving the SCREENS hold up all the way
+    // to the last boss. Never reachable from the title — it takes an argument no player passes.
+    private static RunBlueprint WithHealth(RunBlueprint blueprint, int health)
+    {
+        RunStart Raise(RunStart start) => start with { MaxHealth = health, StartingHealth = health };
+        return blueprint with
+        {
+            Start = Raise(blueprint.Start),
+            Characters = [.. blueprint.Characters.Select(c => c with { Start = Raise(c.Start) })],
+        };
     }
 
     public bool HasSave => Godot.FileAccess.FileExists(SavePath);
