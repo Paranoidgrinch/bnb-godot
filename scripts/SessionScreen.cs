@@ -231,10 +231,39 @@ public partial class SessionScreen : Control
         string? lastRoom = null;
         var clock = System.Diagnostics.Stopwatch.StartNew();
 
+        var reason = "the run finished";
+
+        // The greedy player's three guards, learned the hard way by bnb-content's RunWalker: a play the engine
+        // REFUSED must not be tried again, a play that moved NOTHING on the table must not be repeated (a card
+        // is allowed to put a fresh copy of itself back in your hand — Act III's Make Amends does it on purpose
+        // — and a greedy player will then play it for ever), and both a turn and a fight need a ceiling. A
+        // probe without them does not fail: it spends its whole step budget in one room and reports "Ongoing".
+        // Note what a fight is NOT identified by: the InteractiveCombat object. Under the replay model the
+        // fight is rebuilt from the blueprint on every single answer, so comparing instances says "a new fight"
+        // every step and silently resets every counter below. A fight begins when the driver has one and ends
+        // when it no longer does; turns are counted where this probe itself ends them.
+        var inFight = false;
+        var turn = 0;
+        var playsThisTurn = 0;
+        var refused = new HashSet<CardInstanceId>();
+        var barren = new HashSet<string>(StringComparer.Ordinal);
+        string? lastPlayed = null;
+        var tableBeforeThePlay = "";
+        void NewTurn()
+        {
+            playsThisTurn = 0;
+            lastPlayed = null;
+            refused.Clear();
+            barren.Clear();
+        }
+
         for (var step = 0; step < 20000 && session is not null && play is not null && !session.IsComplete; step++)
         {
             if (session.Error is not null || play.Error is not null)
+            {
+                reason = "an error was raised";
                 break;
+            }
             if (session.Run.CurrentNodeId?.Value is { } here && here != lastRoom)
             {
                 lastRoom = here;
@@ -247,8 +276,16 @@ public partial class SessionScreen : Control
                     + $"act {session.Run.ActNumber} {here} {rooms[^1].Split(':')[1]}");
             }
 
+            if (play.CombatDriver?.Current is null && inFight)
+            {
+                inFight = false;
+                turn = 0;
+                NewTurn();
+            }
+
             if (play.CombatDriver is { Current: not null } driver)
             {
+                inFight = true;
                 if (driver.PendingOptionChoice is { } options)
                     driver.SupplyOptionChoice(
                         [.. Enumerable.Range(0, Math.Min(driver.PendingOptionChoiceCount, options.Count))]);
@@ -257,20 +294,57 @@ public partial class SessionScreen : Control
                 else if (driver.Current!.IsHeroTurn)
                 {
                     var combat = driver.Current;
+
+                    // A play only FINISHES here: a card that asks a question parks halfway through its own
+                    // resolution, so a reading taken the moment PlayCard returns straddles an open question.
+                    if (lastPlayed is { } finished)
+                    {
+                        if (TableState(combat) == tableBeforeThePlay)
+                            barren.Add(finished);
+                        lastPlayed = null;
+                    }
+
                     var hero = combat.State.GetCombatant(combat.HeroId);
                     var card = combat.Hand.FirstOrDefault(c =>
                         !c.DefinitionId.value.Contains("red_tape") && !c.DefinitionId.value.Contains("unsigned_form")
+                        && !refused.Contains(c.Id) && !barren.Contains(c.DefinitionId.value)
                         && CanPay(hero, c.DefinitionId.value));
                     var target = combat.State.Combatants
                         .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive
                             && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
                     if (card is not null)
+                    {
+                        var stepsBefore = combat.Steps.Count;
+                        tableBeforeThePlay = TableState(combat);
+                        lastPlayed = card.DefinitionId.value;
                         driver.PlayCard(card.Id, target);
+                        if (Refused(driver.Current, stepsBefore))
+                            refused.Add(card.Id);
+                        if (++playsThisTurn >= PlaysInATurnNobodyMakes)
+                        {
+                            reason = $"a turn at {Where(session)} played {playsThisTurn} cards without ending "
+                                + $"— last '{card.DefinitionId.value}'";
+                            break;
+                        }
+                    }
                     else
+                    {
                         driver.EndTurn();
+                        NewTurn();
+                        if (++turn >= TurnsAFightShouldNotNeed)
+                        {
+                            reason = $"the fight at {Where(session)} did not end in {turn} turns";
+                            break;
+                        }
+                    }
                 }
                 else
-                    break; // the enemy turn resolves synchronously under replay — it never parks here
+                {
+                    // The enemy turn resolves synchronously under replay, so parking here means the fight is
+                    // waiting for something this probe does not know how to answer. Say which fight, and say so.
+                    reason = $"the fight at {Where(session)} parked on the enemy's turn";
+                    break;
+                }
             }
             else if (session.IsAwaitingNodeChoice)
                 session.PickNode(session.PendingNodeChoices[^1].Id.Value);
@@ -281,16 +355,69 @@ public partial class SessionScreen : Control
             else if (session.IsAwaitingInterlude)
                 session.Continue();
             else
+            {
+                reason = $"nothing at {Where(session)} was awaiting an answer";
                 break;
+            }
+
+            if (step == 19999)
+                reason = $"the step limit ran out at {Where(session)}";
         }
 
         var byAct = rooms.GroupBy(r => r.Split(':')[0])
             .Select(g => $"act {g.Key}: {g.Count()} rooms ({string.Join(" ", g.GroupBy(x => x.Split(':')[1]).Select(k => $"{k.Key}×{k.Count()}"))})");
         GD.Print($"smoke-marathon: result={session?.Run.Result} acts={acts} rooms={rooms.Count} "
-            + $"error={session?.Error ?? Play?.Error ?? "none"}");
+            + $"error={session?.Error ?? Play?.Error ?? "none"} stopped because {reason}");
         foreach (var line in byAct)
             GD.Print($"  {line}");
         GetTree().Quit();
+    }
+
+    private const int PlaysInATurnNobodyMakes = 50;
+    private const int TurnsAFightShouldNotNeed = 100;
+
+    // Everything about the table a play could visibly move. The EXHAUST PILE is deliberately not in it: a card
+    // that burns itself and puts a fresh copy back in hand grows that pile on every play, which would make
+    // exactly the loop this reading exists to find look busy for ever. Statuses count their STACKS as well as
+    // their number, because paying a debt down usually moves the stack and not the count.
+    private static string TableState(InteractiveCombat combat)
+    {
+        var hero = combat.State.GetCombatant(combat.HeroId);
+        var energy = hero.Resources.TryGetValue(StandardCombatIds.EnergyResource, out var pool) ? pool.Current : 0;
+        var enemies = combat.State.Combatants.Where(c => c.Id != combat.HeroId).ToList();
+        var zones = combat.State.GetCardZones(combat.HeroId);
+        int Count(CardZone zone) => zones.GetCardsInZone(zone).Count;
+        static int Stacks(IEnumerable<StatusInstance> statuses) => statuses.Sum(status => status.Stacks);
+        return $"{energy}/{hero.Health.Current}/{hero.Statuses.Count}/{Stacks(hero.Statuses)}/"
+            + $"{Count(CardZone.Hand)}/{Count(CardZone.DiscardPile)}/{Count(CardZone.DrawPile)}/"
+            + $"{enemies.Sum(e => e.Health.Current)}/{enemies.Sum(e => e.Statuses.Count)}/"
+            + $"{enemies.Sum(e => Stacks(e.Statuses))}";
+    }
+
+    // Did the play go through? The fight records every attempt as a step, and a refused one carries the reason;
+    // nothing new at all means the driver dropped it (a prompt opened, say).
+    private static bool Refused(InteractiveCombat? combat, int stepsBefore)
+    {
+        if (combat is null)
+            return false;
+        var steps = combat.Steps;
+        return steps.Count <= stepsBefore || steps.Skip(stepsBefore).Any(step => step.HasProblems);
+    }
+
+    // Where the run stands, in the two names that identify a room: its map id and what is being fought there.
+    private static string Where(InteractiveRunSession session)
+    {
+        var here = session.Run.CurrentNodeId?.Value ?? "nowhere";
+        var node = session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == here);
+        var content = node?.Payload switch
+        {
+            EncounterRef fight => fight.Id.Value,
+            EventRef door => door.Id.Value,
+            ShopRef shop => shop.Id.Value,
+            { } payload => payload.GetType().Name,
+            _ => "—",
+        };
+        return $"act {session.Run.ActNumber} {here} ({content})";
     }
 
     // Walk toward the nearest room of one KIND and screenshot it as the player would meet it. The rooms that

@@ -29,7 +29,9 @@ public static class CardVisuals
                 Expand = true,
                 CustomMinimumSize = new Vector2(CardW, CardH),
             };
-            video.Play();
+            // No Play() here: Autoplay already starts the clip the moment the player enters the tree, and
+            // calling it before that only prints "Condition !is_inside_tree() is true" — once per card back,
+            // which under a headless probe is often enough to bury everything else the run has to say.
             return Framed(video);
         }
         var still = new TextureRect
