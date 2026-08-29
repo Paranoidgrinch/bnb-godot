@@ -30,6 +30,8 @@ done
 desktop="$HOME/Desktop"; [[ -d "$HOME/Schreibtisch" ]] && desktop="$HOME/Schreibtisch"
 out=${out:-$desktop/bnb-run-logs/$(date +%Y%m%d-%H%M%S)}
 mkdir -p "$out" || exit 1
+# The instructions live NEXT TO the logs, refreshed on every batch, so the folder explains itself.
+[[ -f tools/run-logs-README.md ]] && cp tools/run-logs-README.md "$(dirname "$out")/ANLEITUNG.md"
 
 dotnet build -v q --nologo >"$out/build.log" 2>&1 || { echo "build failed — see $out/build.log"; exit 1; }
 echo "simulating $count runs (seeds $seed_from..$((seed_from + count - 1)), ${health:-authored health}, $jobs at a time)"

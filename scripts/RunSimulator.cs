@@ -49,8 +49,22 @@ public partial class SessionScreen : Control
         var fights = 0;
         var reason = "the run finished";
         var crash = "";
+        var hpAtActBoss = new Dictionary<int, int>();   // what each act's boss cost to REACH
+        var hpBeforeRoom = 0;
 
-        GD.Print($"sim: seed={seed} character={SimCharacter ?? "—"} "
+        if (SimStringArg("--sim-policy") is { } policyPath)
+        {
+            _policy = SimPolicy.Load(policyPath);
+            if (_policy is null)
+            {
+                GD.Print($"sim: could not read the policy at {policyPath}");
+                GetTree().Quit(2);
+                return;
+            }
+        }
+        var policy = _policy;
+
+        GD.Print($"sim: policy={policy?.Name ?? "random"} seed={seed} character={SimCharacter ?? "—"} "
             + $"hp={session?.Run.Health.Current}/{session?.Run.Health.Max} deck={session?.Run.Deck.Count} "
             + $"relics={string.Join(",", session?.Run.Relics.Select(r => r.Id.Value) ?? [])}");
 
@@ -98,8 +112,12 @@ public partial class SessionScreen : Control
                     var role = node is null ? "?" : MapView.Role(node);
                     rooms.Add($"{session.Run.ActNumber}:{role}");
                     acts = Math.Max(acts, session.Run.ActNumber);
+                    var spent = hpBeforeRoom == 0 ? 0 : hpBeforeRoom - session.Run.Health.Current;
+                    hpBeforeRoom = session.Run.Health.Current;
+                    if (node is not null && node.HasTag(MapNodeTags.Boss))
+                        hpAtActBoss[session.Run.ActNumber] = session.Run.Health.Current;
                     GD.Print($"[{clock.Elapsed.TotalSeconds,6:0.0}s {step,5}] ROOM {Where(session)} {role} "
-                        + $"hp={session.Run.Health.Current}/{session.Run.Health.Max} "
+                        + $"cost={spent} hp={session.Run.Health.Current}/{session.Run.Health.Max} "
                         + $"gold={session.Run.GetResource(StandardRunIds.Gold)} "
                         + $"deck={session.Run.Deck.Count} relics={session.Run.Relics.Count}");
                 }
@@ -157,12 +175,27 @@ public partial class SessionScreen : Control
                             .ToList();
                         // A random player ends the turn early sometimes — the same hand played to the last
                         // point every time never shows what a held card does on the enemy's turn.
-                        var card = playable.Count > 0 && rng.NextDouble() > 0.12
-                            ? playable[rng.Next(playable.Count)]
-                            : null;
+                        CardInstance? card;
+                        if (policy is null)
+                            card = playable.Count > 0 && rng.NextDouble() > 0.12
+                                ? playable[rng.Next(playable.Count)]
+                                : null;
+                        else
+                        {
+                            // The best card in hand, and a turn that ends when the best is not worth it.
+                            var best = playable
+                                .Select(c => (card: c, score: Score(policy, c.DefinitionId.value)))
+                                .OrderByDescending(x => x.score)
+                                .FirstOrDefault();
+                            card = best.card is not null && best.score >= policy.EndTurnBelow ? best.card : null;
+                        }
                         if (card is not null)
                         {
-                            var target = living.Count > 0 ? living[rng.Next(living.Count)].Id : (CombatantId?)null;
+                            var target = living.Count == 0 ? (CombatantId?)null
+                                : policy is null ? living[rng.Next(living.Count)].Id
+                                : rng.NextDouble() < policy.TargetLowestHp
+                                    ? living.OrderBy(e => e.Health.Current).First().Id
+                                    : living.OrderByDescending(e => e.Health.Current).First().Id;
                             var stepsBefore = combat.Steps.Count;
                             tableBeforeThePlay = TableState(combat);
                             lastPlayed = card.DefinitionId.value;
@@ -218,7 +251,9 @@ public partial class SessionScreen : Control
                 else if (session.IsAwaitingNodeChoice)
                 {
                     var forks = session.PendingNodeChoices;
-                    var pick = forks[rng.Next(forks.Count)];
+                    var pick = policy is null
+                        ? forks[rng.Next(forks.Count)]
+                        : forks.OrderByDescending(n => PathWeight(policy, n)).First();
                     GD.Print($"  fork -> {pick.Id.Value} {MapView.Role(pick)} "
                         + $"(of {string.Join(" ", forks.Select(n => MapView.Role(n)))})");
                     session.PickNode(pick.Id.Value);
@@ -227,7 +262,7 @@ public partial class SessionScreen : Control
                 {
                     // A skippable offer is skipped now and then, on purpose: a deck that takes every card
                     // and a deck that refuses one are different games.
-                    var take = entities.AllowSkip && rng.NextDouble() < 0.2
+                    var take = entities.AllowSkip && (policy is null ? rng.NextDouble() < 0.2 : policy.RewardSkip > 0.5)
                         ? []
                         : SimPick(rng, entities.Displays.Count, entities.Count);
                     GD.Print($"  pick [{entities.Purpose}] -> "
@@ -238,7 +273,7 @@ public partial class SessionScreen : Control
                 else if (session.IsAwaitingChoice && session.PendingSituation is { } situation)
                 {
                     var choices = session.PendingChoices;
-                    var choice = choices[rng.Next(choices.Count)];
+                    var choice = choices[PickChoice(policy, rng, choices)];
                     GD.Print($"  choice [{situation.Id}] -> {choice.Id} "
                         + $"(of {string.Join(" ", choices.Select(c => c.Id))})");
                     session.Pick(choice.Id);
@@ -267,6 +302,13 @@ public partial class SessionScreen : Control
             $"act {g.Key}: {g.Count()} rooms ({string.Join(" ", g.GroupBy(x => x.Split(':')[1]).Select(k => $"{k.Key}×{k.Count()}"))})");
         foreach (var line in byAct)
             GD.Print($"  {line}");
+        var reachedActThreeBoss = hpAtActBoss.ContainsKey(3);
+        GD.Print($"sim-fitness: policy={policy?.Name ?? "random"} seed={seed} "
+            + $"reachedAct3Boss={reachedActThreeBoss} "
+            + $"hpAtAct3Boss={(reachedActThreeBoss ? hpAtActBoss[3] : -1)} "
+            + $"hpLost={(session is null ? -1 : session.Run.Health.Max - (reachedActThreeBoss ? hpAtActBoss[3] : session.Run.Health.Current))} "
+            + $"actBossHp={string.Join(",", hpAtActBoss.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}:{kv.Value}"))} "
+            + $"rooms={rooms.Count} result={session?.Run.Result}");
         GD.Print($"sim-result: seed={seed} result={session?.Run.Result} acts={acts} rooms={rooms.Count} "
             + $"fights={fights} hp={session?.Run.Health.Current}/{session?.Run.Health.Max} "
             + $"problems={problems} error={error} seconds={clock.Elapsed.TotalSeconds:0.0} "
@@ -277,6 +319,20 @@ public partial class SessionScreen : Control
         var clean = crash.Length == 0 && error == "none" && problems == 0
             && (session?.IsComplete ?? false);
         GetTree().Quit(clean ? 0 : 1);
+    }
+
+    // Which door a runner takes. A shop is answered as a shop — how eagerly it spends is a weight of its
+    // own — and every other situation by one knob: the first option, the last, or somewhere in between.
+    private static int PickChoice(SimPolicy? policy, Random rng, IReadOnlyList<EventChoice> choices)
+    {
+        if (policy is null)
+            return rng.Next(choices.Count);
+        var buys = Enumerable.Range(0, choices.Count)
+            .Where(i => choices[i].Id.StartsWith("buy-", StringComparison.Ordinal)).ToList();
+        var leave = choices.ToList().FindIndex(c => c.Id == "leave");
+        if (leave >= 0)
+            return buys.Count > 0 && rng.NextDouble() < policy.ShopBuy ? buys[rng.Next(buys.Count)] : leave;
+        return Math.Clamp((int)Math.Round(policy.EventLate * (choices.Count - 1)), 0, choices.Count - 1);
     }
 
     // `count` distinct indices out of `available`, in random order (never more than there are).
@@ -292,4 +348,108 @@ public partial class SessionScreen : Control
         }
         return picked;
     }
+
+    // ── the trained runner ────────────────────────────────────────────────────────────────────────
+    // A policy is what makes one runner different from another: a handful of weights that decide which
+    // card is worth playing, when a turn is over, which enemy to hit, which way to walk and what to buy.
+    // No policy = the dice player above. `--sim-policy <file.json>` loads one; `tools/train.py` breeds them.
+    // The fitness they are bred for is the balance question itself: starting at 9999 hp, how much health
+    // does the whole game take off a runner on its way to the act-III boss?
+    public sealed class SimPolicy
+    {
+        public string Name { get; set; } = "unnamed";
+        // What a card is worth, per thing its program does (counted once from the document).
+        public double WDamage { get; set; }
+        public double WBlock { get; set; }
+        public double WStatus { get; set; }
+        public double WDraw { get; set; }
+        public double WResource { get; set; }
+        public double WCost { get; set; }
+        public double EndTurnBelow { get; set; }      // a hand whose best card scores under this is done
+        public double TargetLowestHp { get; set; }    // 1 = finish the weakest, 0 = hit the strongest
+        // Which room to walk into, by the role the map generated it for.
+        public double PathCombat { get; set; }
+        public double PathElite { get; set; }
+        public double PathShop { get; set; }
+        public double PathRest { get; set; }
+        public double PathEvent { get; set; }
+        public double PathTreasure { get; set; }
+        public double RewardSkip { get; set; }        // > 0.5: decline what may be declined
+        public double ShopBuy { get; set; }           // how eagerly gold is spent
+        public double EventLate { get; set; }         // 0 = always the first door, 1 = always the last
+
+        public static SimPolicy? Load(string path)
+        {
+            using var file = Godot.FileAccess.Open(path, Godot.FileAccess.ModeFlags.Read);
+            if (file is null)
+                return null;
+            return System.Text.Json.JsonSerializer.Deserialize<SimPolicy>(file.GetAsText(),
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+    }
+
+    private static SimPolicy? _policy;
+
+    private static string? SimStringArg(string name)
+    {
+        var args = OS.GetCmdlineUserArgs();
+        var at = Array.IndexOf(args, name);
+        return at >= 0 && at + 1 < args.Length ? args[at + 1] : null;
+    }
+
+    // What each card DOES, read once out of the shipped document: how often its program deals damage,
+    // raises a guard, puts something on somebody, draws, or pays. The policy weighs these counts.
+    private static Dictionary<string, double[]>? _cardFeatures;
+
+    private static double[] Features(string cardId)
+    {
+        if (_cardFeatures is null)
+        {
+            _cardFeatures = new Dictionary<string, double[]>(StringComparer.Ordinal);
+            var document = Godot.FileAccess.GetFileAsString("res://content/game.roguedeck.json");
+            using var json = System.Text.Json.JsonDocument.Parse(document);
+            if (json.RootElement.TryGetProperty("Cards", out var cards))
+                foreach (var card in cards.EnumerateArray())
+                {
+                    var id = card.GetProperty("Id").GetString() ?? "";
+                    var text = card.GetRawText();
+                    int Count(string kind)
+                    {
+                        var found = 0;
+                        for (var at = text.IndexOf(kind, StringComparison.Ordinal); at >= 0;
+                             at = text.IndexOf(kind, at + 1, StringComparison.Ordinal))
+                            found++;
+                        return found;
+                    }
+                    _cardFeatures[id] =
+                    [
+                        Count("node.dealDamage"),
+                        Count("node.gainBlock") + Count("node.modifyDefensivePool"),
+                        Count("node.applyStatus") + Count("node.modifyStatusStacks"),
+                        Count("node.drawCards") + Count("node.moveCardToZone"),
+                        Count("node.gainResource"),
+                    ];
+                }
+        }
+        return _cardFeatures.TryGetValue(cardId, out var features) ? features : [0, 0, 0, 0, 0];
+    }
+
+    private double Score(SimPolicy policy, string cardId)
+    {
+        var f = Features(cardId);
+        var cost = FullCosts(cardId).Sum(c => c.Amount);
+        return policy.WDamage * f[0] + policy.WBlock * f[1] + policy.WStatus * f[2]
+            + policy.WDraw * f[3] + policy.WResource * f[4] + policy.WCost * cost;
+    }
+
+    // The role weight of a room, so a runner can prefer elites (more spoils, more damage) or avoid them.
+    private static double PathWeight(SimPolicy policy, RogueDeck.Run.Node node) => MapView.Role(node) switch
+    {
+        "elite" => policy.PathElite,
+        "shop" => policy.PathShop,
+        "rest" => policy.PathRest,
+        "event" => policy.PathEvent,
+        "treasure" => policy.PathTreasure,
+        _ => policy.PathCombat,
+    };
 }

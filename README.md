@@ -73,6 +73,24 @@ A run is flagged when something could not be answered for: an engine error, a st
 never ended, a wall, an exception. NOT flagged (they are the engine working): a card the rules refuse — a
 random player will try a curse — and a card that parks to ask its own question.
 
+## Training a runner for balance
+The same simulator can be given a POLICY — 17 weights that decide which card is worth playing, when a turn
+is over, which enemy to hit, which room to walk into and what to buy (`SimPolicy` in `RunSimulator.cs`).
+`tools/train.py` breeds them against the balance question itself: starting at 9999 hp, **how much health
+does the whole game take off a runner on the way to the act-III boss?** Least lost wins; never arriving is
+worse than any arrival.
+```
+tools/train.py                                    # 5 generations × 8 runners × 2 seeds
+tools/train.py --generations 10 --population 12 --seeds 3 --jobs 8
+tools/train.py --resume ~/Desktop/bnb-balance-training/<stamp>
+tools/train.py --health 220 --generations 2 --population 3 --seeds 1   # a fast shakedown, not a training
+godot --headless -- --sim --sim-immortal --sim-policy <policy.json>    # watch one runner play
+```
+Output in `~/Desktop/bnb-balance-training/<timestamp>/`: `best-policy.json`, `leaderboard.csv`, and one
+folder per generation holding each runner's policy, ranking and full run log. Every ROOM line carries
+`cost=` — the health that room took — so the logs answer the other half of the balance question: which
+encounter is expensive. Reckon 4–10 minutes per immortal run.
+
 ## Building desktop binaries
 Requires the **Godot 4.7 (.NET) export templates** — install them once via the editor
 (*Editor → Manage Export Templates → Download and Install*), then:
