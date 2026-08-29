@@ -2,8 +2,20 @@
 
 ## Die Frage, auf die trainiert wird
 Jeder Runner startet mit **9999 HP** (nichts kann ihn töten) und läuft durch das ganze Spiel. Gewertet wird
-**wie viel Leben er bis zur Ankunft am Akt-III-Boss verloren hat** — wenig verloren = guter Runner. Wer dort
-nie ankommt, ist schlechter als jeder, der ankommt, egal wie wenig er unterwegs verloren hat.
+**wie viel Schaden er bis zur Ankunft am Akt-III-Boss insgesamt genommen hat** — wenig = guter Runner. Wer
+dort nie ankommt, ist schlechter als jeder, der ankommt, egal wie wenig er unterwegs eingesteckt hat.
+
+**Aufsummierter Schaden, nicht Rest-HP.** Es gibt keine Vollheilung nach einem Akt — aber der Content heilt
+sehr wohl (Relikte, Rastplätze, und die Tür `perpetual_borrower`/settle in Akt II heilt *auf voll*). Rest-HP
+würde damit einen Runner belohnen, der zufällig durch eine Heiltür gelaufen ist, statt zu messen, was das
+Spiel kostet. Beispiel aus einem echten Run (Seed 1000): Rest-HP sagte 540 verloren — tatsächlich genommen
+hatte er **1075** Schaden, 535 davon waren weggeheilt worden.
+
+In `sim-fitness:` stehen deshalb beide Zahlen plus die Aufschlüsselung pro Akt:
+```
+damageToAct3Boss=1075  damageTaken=1182  healed=535  actBossDamage=1:137,2:538,3:1075  hpAtAct3Boss=9459
+```
+`actBossDamage` ist kumulativ — Akt I kostete 137, Akt II weitere 401, Akt III bis zum Boss weitere 537.
 
 Damit ist die Zahl gleichzeitig die Balance-Antwort: *was kostet dieses Spiel einen Spieler, der es gut spielt?*
 
@@ -43,7 +55,7 @@ Vergleich fair ist.
         ├── g0-p3-seed1000.log      ← ihr vollständiges Run-Log (wie bei den normalen Sim-Runs)
         └── ranking.json            ← die Rangliste dieser Generation
 ```
-`score` = mittlerer HP-Verlust bis zum Akt-III-Boss. Ein Score über 1.000.000 heißt: dort nie angekommen.
+`score` = mittlerer aufsummierter Schaden bis zum Akt-III-Boss. Ein Score über 1.000.000 heißt: dort nie angekommen.
 
 ## Den besten Runner ansehen
 ```bash

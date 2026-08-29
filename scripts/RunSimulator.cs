@@ -51,6 +51,15 @@ public partial class SessionScreen : Control
         var crash = "";
         var hpAtActBoss = new Dictionary<int, int>();   // what each act's boss cost to REACH
         var hpBeforeRoom = 0;
+        // The number the balance question actually wants: every point of health the run has taken off,
+        // ADDED UP. A remaining-health reading cannot be it — the content heals, and one door in act II
+        // ("perpetual_borrower", settle) puts a runner back to full, which would erase everything the act
+        // had cost up to there. Healing is counted on its own, because a game that hurts a lot and heals a
+        // lot is not the same game as one that does neither.
+        var damageTaken = 0;
+        var healed = 0;
+        var damageAtActBoss = new Dictionary<int, int>();
+        var hpLastSeen = session?.Run.Health.Current ?? 0;
 
         if (SimStringArg("--sim-policy") is { } policyPath)
         {
@@ -105,6 +114,13 @@ public partial class SessionScreen : Control
                 if (step % 20 == 19)
                     await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
 
+                var hpNow = session.Run.Health.Current;
+                if (hpNow < hpLastSeen)
+                    damageTaken += hpLastSeen - hpNow;
+                else if (hpNow > hpLastSeen)
+                    healed += hpNow - hpLastSeen;
+                hpLastSeen = hpNow;
+
                 if (session.Run.CurrentNodeId?.Value is { } here && here != lastRoom)
                 {
                     lastRoom = here;
@@ -115,7 +131,10 @@ public partial class SessionScreen : Control
                     var spent = hpBeforeRoom == 0 ? 0 : hpBeforeRoom - session.Run.Health.Current;
                     hpBeforeRoom = session.Run.Health.Current;
                     if (node is not null && node.HasTag(MapNodeTags.Boss))
+                    {
                         hpAtActBoss[session.Run.ActNumber] = session.Run.Health.Current;
+                        damageAtActBoss[session.Run.ActNumber] = damageTaken;
+                    }
                     GD.Print($"[{clock.Elapsed.TotalSeconds,6:0.0}s {step,5}] ROOM {Where(session)} {role} "
                         + $"cost={spent} hp={session.Run.Health.Current}/{session.Run.Health.Max} "
                         + $"gold={session.Run.GetResource(StandardRunIds.Gold)} "
@@ -305,8 +324,10 @@ public partial class SessionScreen : Control
         var reachedActThreeBoss = hpAtActBoss.ContainsKey(3);
         GD.Print($"sim-fitness: policy={policy?.Name ?? "random"} seed={seed} "
             + $"reachedAct3Boss={reachedActThreeBoss} "
+            + $"damageToAct3Boss={(reachedActThreeBoss ? damageAtActBoss[3] : -1)} "
+            + $"damageTaken={damageTaken} healed={healed} "
             + $"hpAtAct3Boss={(reachedActThreeBoss ? hpAtActBoss[3] : -1)} "
-            + $"hpLost={(session is null ? -1 : session.Run.Health.Max - (reachedActThreeBoss ? hpAtActBoss[3] : session.Run.Health.Current))} "
+            + $"actBossDamage={string.Join(",", damageAtActBoss.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}:{kv.Value}"))} "
             + $"actBossHp={string.Join(",", hpAtActBoss.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}:{kv.Value}"))} "
             + $"rooms={rooms.Count} result={session?.Run.Result}");
         GD.Print($"sim-result: seed={seed} result={session?.Run.Result} acts={acts} rooms={rooms.Count} "

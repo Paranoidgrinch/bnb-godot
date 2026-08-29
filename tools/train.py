@@ -55,11 +55,12 @@ def play(policy_file, seed, log_file, timeout, health):
     text = Path(log_file).read_text(errors="replace")
     line = next((l for l in text.splitlines() if l.startswith("sim-fitness:")), None)
     if not line:
-        return {"reached": False, "hpLost": UNREACHED, "rooms": 0, "note": "no fitness line — the run died"}
+        return {"reached": False, "damage": UNREACHED, "rooms": 0, "note": "no fitness line — the run died"}
     f = dict(re.findall(r"(\w+)=(\S+)", line))
     reached = f.get("reachedAct3Boss") == "True"
     return {"reached": reached,
-            "hpLost": int(f.get("hpLost", UNREACHED)) if reached else UNREACHED,
+            # Damage ADDED UP, not health remaining: the content heals, and one act-II door heals to full.
+            "damage": int(f.get("damageToAct3Boss", UNREACHED)) if reached else UNREACHED,
             "rooms": int(f.get("rooms", 0)),
             "note": "" if reached else "never reached the act-III boss"}
 
@@ -82,7 +83,7 @@ def evaluate(policies, seeds, gen_dir, jobs, timeout, health):
         runs = scored[policy["Name"]]
         arrivals = sum(1 for r in runs if r["reached"])
         # A miss is penalised by how far it got, so a runner that walks further ranks above one that stalls.
-        score = sum(r["hpLost"] if r["reached"] else UNREACHED - r["rooms"] * 100 for r in runs) / len(runs)
+        score = sum(r["damage"] if r["reached"] else UNREACHED - r["rooms"] * 100 for r in runs) / len(runs)
         table.append({"policy": policy, "score": round(score, 1), "arrivals": f"{arrivals}/{len(runs)}",
                       "rooms": round(sum(r["rooms"] for r in runs) / len(runs), 1),
                       "note": "; ".join(sorted({r["note"] for r in runs if r["note"]}))})
@@ -127,7 +128,7 @@ def main():
 
     board = out / "leaderboard.csv"
     with board.open("w", newline="") as f:
-        csv.writer(f).writerow(["generation", "policy", "score (mean hp lost)", "arrivals", "mean rooms", "note"])
+        csv.writer(f).writerow(["generation", "policy", "score (mean damage taken to the act-III boss)", "arrivals", "mean rooms", "note"])
 
     print(f"training in {out}")
     print(f"  {args.generations} generations × {args.population} runners × {len(seeds)} seeds "
