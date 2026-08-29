@@ -47,6 +47,8 @@ godot -- --smoke-shop     # the shelf, with prices, including what is unaffordab
 godot -- --smoke-event    # a door
 godot -- --smoke-ambush   # a multi-enemy fight
 godot -- --smoke-elite    # an elite
+godot -- --smoke-crowd    # the widest fight it can reach: does the enemy row still fit on the screen?
+godot -- --smoke-boss 2   # walk to that act's BOSS and capture it (the phase banner, the dial, the chips)
 godot -- --smoke-reward   # the card reward
 ```
 

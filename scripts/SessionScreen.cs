@@ -37,6 +37,8 @@ public partial class SessionScreen : Control
     private readonly HashSet<string> _shownHandIds = [];
     private readonly List<Control> _cardsToAnimate = [];
     private Control? _deckTopNode;
+    private static bool _fastForward;   // a smoke probe is walking: draw the screen, do not animate it
+    private Control? _enemyRow;   // the live enemy row, so a probe can measure what the layout did with it
 
     private static RunPlayback? Play => GameHost.Instance.Play;
     private static InteractiveRunSession? Session => Play?.Session;
@@ -85,6 +87,8 @@ public partial class SessionScreen : Control
         GameHost.Instance.StateChanged += Rebuild;
         Rebuild();
 
+        _fastForward = OS.GetCmdlineUserArgs().Any(a => a.StartsWith("--smoke", StringComparison.Ordinal));
+
         if (OS.GetCmdlineUserArgs().Contains("--smoke-run"))
             SmokeRun();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-target"))
@@ -112,7 +116,11 @@ public partial class SessionScreen : Control
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-elite"))
             _ = SmokeRoom(MapNodeTags.Elite, "smoke-elite.png");
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-marathon"))
-            SmokeMarathon();
+            _ = SmokeMarathon();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-crowd"))
+            _ = SmokeCrowd();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-boss"))
+            _ = SmokeBoss(BossActArgument());
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-tooltips"))
             _ = SmokeTooltips();
     }
@@ -222,7 +230,7 @@ public partial class SessionScreen : Control
     // (every answer goes through the same Rebuild the player sees). What it proves is that the frontend holds
     // up all the way: the map redraws for the second act, the act title card fires, no screen throws twenty
     // rooms in. The engine-side coverage lives in bnb-content's own walk; this one is about the UI.
-    private void SmokeMarathon()
+    private async System.Threading.Tasks.Task SmokeMarathon()
     {
         var session = Session;
         var play = Play;
@@ -264,6 +272,13 @@ public partial class SessionScreen : Control
                 reason = "an error was raised";
                 break;
             }
+            // Let the engine breathe. Every answer rebuilds this screen out of fresh Control nodes and frees
+            // the old ones with QueueFree, which is DEFERRED: a walk that never yields never lets the tree
+            // collect anything, and the whole game's worth of discarded screens is 14 GB of resident memory —
+            // the marathon printed its Victory line and was then killed by the OOM killer on the way out.
+            // One frame every twenty answers costs nothing and keeps it under a normal footprint.
+            if (step % 20 == 19)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             if (session.Run.CurrentNodeId?.Value is { } here && here != lastRoom)
             {
                 lastRoom = here;
@@ -418,6 +433,255 @@ public partial class SessionScreen : Control
             _ => "—",
         };
         return $"act {session.Run.ActNumber} {here} ({content})";
+    }
+
+    // THE WIDEST FIGHT THE GAME CAN PUT ON ONE SCREEN, which nothing had ever looked at. A boss with three
+    // volumes standing beside it is four enemy bodies plus the hero, and this is the one thing a fight cannot
+    // report about itself: every rule resolves correctly while the fifth column sits past the right edge with
+    // its health bar and its intent on it.
+    //
+    // So the probe walks to a crowd, measures what the layout actually did — the row's own width against the
+    // room it was given — and says whether anything is off the screen. Then it captures the frame, because
+    // "it fits" and "it reads" are two different questions and only one of them is arithmetic.
+    private async System.Threading.Tasks.Task SmokeCrowd()
+    {
+        const int Wanted = 3;   // three enemies + the hero = the four bodies G-5 asks about; four is the most
+        var crowded = new[] { MapNodeTags.MultiCombat, MapNodeTags.Elite, MapNodeTags.Boss };
+
+        // Which fights an act fields is drawn per run, so ONE seed is not a search: seed 7 walks both acts
+        // without ever meeting a third body. Try a handful and stop at the first crowd — this probe exists to
+        // look at a wide fight, and a run that has none has nothing to say about how a wide fight is drawn.
+        var best = 0;
+        foreach (var seed in new[] { 5, 7, 1, 2, 3, 4, 6, 8 })   // 5 is the one this search first found
+        {
+            GameHost.Instance.StartNewRun(seed, health: 9999);
+            best = Math.Max(best, await WalkUntil(
+                stop: () => Enemies().Count >= Wanted,
+                prefer: node => crowded.Any(node.HasTag),
+                budget: 700));
+            if (Enemies().Count >= Wanted)
+            {
+                GD.Print($"  crowd found on seed {seed}");
+                break;
+            }
+        }
+
+        Rebuild();
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        var bodies = Enemies().Count;
+        var row = _enemyRow;
+        var rowWidth = row is not null && IsInstanceValid(row) ? row.Size.X : -1;
+        var rowRight = row is not null && IsInstanceValid(row) ? row.GlobalPosition.X + rowWidth : -1;
+        var screen = GetViewportRect().Size.X;
+
+        GD.Print($"smoke-crowd: enemies={bodies} (widest reached {best}) row={rowWidth:0} "
+            + $"right={rowRight:0}/{screen:0} offscreen={(rowRight > screen + 1 ? "YES" : "no")} "
+            + $"error={Session?.Error ?? Play?.Error ?? "none"}");
+        GD.Print($"  facing: {Facing()}");
+        if (bodies < Wanted)
+            GD.Print($"  NOTE no fight of {Wanted}+ bodies was reached inside the budget");
+
+        ReportTooltips("crowd");
+        await CaptureThenQuit("smoke-crowd.png");
+    }
+
+    // The eyes-on pass the presentation work is judged by: stand in a named act's BOSS fight and capture it.
+    // A boss is the only place the phase banner, the dial and a five-body row can all be wrong at once, and
+    // walking there is the only way to see them — the fight cannot report its own layout.
+    private async System.Threading.Tasks.Task SmokeBoss(int act)
+    {
+        await WalkUntil(
+            stop: () => Session is { } s && s.Run.ActNumber >= act
+                && Play?.CombatDriver?.Current is not null && AtABoss(),
+            prefer: node => node.HasTag(MapNodeTags.Boss),
+            budget: 5000);
+
+        Rebuild();
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        var combat = Play?.CombatDriver?.Current;
+        GD.Print($"smoke-boss {act}: act={Session?.Run.ActNumber} boss={(AtABoss() ? "yes" : "NO")} "
+            + $"round={combat?.Round} ended={_walkEnded} error={Session?.Error ?? Play?.Error ?? "none"}");
+        GD.Print($"  facing: {Facing()}");
+        if (combat is not null)
+            foreach (var body in combat.State.Combatants)
+                GD.Print($"  [{Name(body, combat)}] {StatusLine(combat, body)}");
+
+        ReportTooltips($"boss{act}");
+        await CaptureThenQuit($"smoke-boss{act}.png");
+    }
+
+    // `--smoke-boss 3` — the act to walk to, defaulting to the first.
+    private static int BossActArgument()
+    {
+        var args = OS.GetCmdlineUserArgs();
+        var at = Array.IndexOf(args, "--smoke-boss");
+        return at >= 0 && at + 1 < args.Length && int.TryParse(args[at + 1], out var act) ? act : 1;
+    }
+
+    private bool AtABoss() =>
+        Session?.Run.CurrentNodeId?.Value is { } id
+        && Session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == id) is { } node
+        && node.HasTag(MapNodeTags.Boss);
+
+    private IReadOnlyList<CombatantState> Enemies() =>
+        Play?.CombatDriver?.Current is { } fight
+            ? [.. fight.State.Combatants.Where(c => c.Id != fight.HeroId && c.TeamId == StandardCombatIds.EnemyTeam)]
+            : [];
+
+    private string Facing() =>
+        Play?.CombatDriver?.Current is { } fight
+            ? string.Join(", ", Enemies().Select(c => Name(c, fight)))
+            : "-";
+
+    // ONE greedy walker for both probes: `stop` is what this probe came to look at, `prefer` steers the map.
+    // Returns the widest fight it met on the way.
+    //
+    // Under the replay model every answer re-runs the whole run, so a walk is quadratic in its own length and
+    // the budget is a real cost, not a formality. The three guards below are the marathon's, learned the hard
+    // way: a play the engine REFUSED must not be retried, a play that moved nothing on the table must not be
+    // repeated (a card may put a fresh copy of itself in your hand, and a greedy player will then play it for
+    // ever), and a turn needs a ceiling.
+    private string _walkEnded = "-";
+
+    private async System.Threading.Tasks.Task<int> WalkUntil(
+        Func<bool> stop, Func<RogueDeck.Run.Node, bool> prefer, int budget)
+    {
+        _walkEnded = "the budget ran out";
+        var session = Session;
+        var play = Play;
+        var best = 0;
+        var playsThisTurn = 0;
+        var refused = new HashSet<CardInstanceId>();
+        var barren = new HashSet<string>(StringComparer.Ordinal);
+        var timesPlayed = new Dictionary<string, int>(StringComparer.Ordinal);
+        string? lastPlayed = null;
+        string? lastRoom = null;
+        var tableBeforeThePlay = "";
+        void NewTurn()
+        {
+            playsThisTurn = 0;
+            lastPlayed = null;
+            refused.Clear();
+            barren.Clear();
+            timesPlayed.Clear();
+        }
+
+        for (var step = 0; step < budget && session is not null && play is not null && !session.IsComplete; step++)
+        {
+            if (session.Error is not null || play.Error is not null)
+                break;
+            // Let the engine breathe. Every answer redraws this screen, and a redraw queues deferred layout
+            // work; a walk that never yields fills Godot's message queue and takes the process down with
+            // "Message queue out of memory" somewhere in the second act. One frame every twenty answers is
+            // cheap and is the difference between a probe that reaches Act III and one that dies on the way.
+            if (step % 20 == 19)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            best = Math.Max(best, Enemies().Count);
+            if (session.Run.CurrentNodeId?.Value is { } here && here != lastRoom)
+            {
+                lastRoom = here;
+                var node = session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == here);
+                GD.Print($"  [{step,5}] act {session.Run.ActNumber} {here} "
+                    + $"{(node is null ? "?" : MapView.Role(node))}");
+            }
+
+            if (play.CombatDriver is { Current: not null } driver)
+            {
+                // Stop only with the turn in the player's hands and nothing half-answered, or the screen the
+                // probe captures is a screen no player ever sees.
+                if (driver.PendingOptionChoice is null && driver.PendingCardChoice is null
+                    && driver.Current!.IsHeroTurn && stop())
+                {
+                    _walkEnded = "it found what it came for";
+                    break;
+                }
+
+                if (driver.PendingOptionChoice is { } options)
+                    driver.SupplyOptionChoice(
+                        [.. Enumerable.Range(0, Math.Min(driver.PendingOptionChoiceCount, options.Count))]);
+                else if (driver.PendingCardChoice is { } cards)
+                    driver.SupplyCardChoice([.. cards.Take(driver.PendingCardChoiceCount).Select(c => c.Id)]);
+                else if (driver.Current!.IsHeroTurn)
+                {
+                    var combat = driver.Current;
+                    if (lastPlayed is { } finished)
+                    {
+                        if (TableState(combat) == tableBeforeThePlay)
+                            barren.Add(finished);
+                        lastPlayed = null;
+                    }
+
+                    var hero = combat.State.GetCombatant(combat.HeroId);
+                    var card = combat.Hand.FirstOrDefault(c =>
+                        !c.DefinitionId.value.Contains("red_tape") && !c.DefinitionId.value.Contains("unsigned_form")
+                        && !refused.Contains(c.Id) && !barren.Contains(c.DefinitionId.value)
+                        && CanPay(hero, c.DefinitionId.value));
+                    var target = combat.State.Combatants
+                        .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive
+                            && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
+                    if (card is not null)
+                    {
+                        var stepsBefore = combat.Steps.Count;
+                        tableBeforeThePlay = TableState(combat);
+                        lastPlayed = card.DefinitionId.value;
+                        driver.PlayCard(card.Id, target);
+                        if (Refused(driver.Current, stepsBefore))
+                            refused.Add(card.Id);
+                        // A fourth guard the marathon's three do not cover: Act III's Make Amends puts a fresh
+                        // COPY of itself in your hand, so every play moves the table and none of them is
+                        // barren — a greedy player plays it fifty times and the walk dies in the elite before
+                        // the boss. Nobody plays one card six times in a turn.
+                        timesPlayed[card.DefinitionId.value] = timesPlayed.GetValueOrDefault(card.DefinitionId.value) + 1;
+                        if (timesPlayed[card.DefinitionId.value] >= 6)
+                            barren.Add(card.DefinitionId.value);
+                        // A turn that long is a greedy player, not a stuck one: by Act III a deck that makes
+                        // its own cards really can play fifty times. The marathon STOPS there because a walk
+                        // that never ends a turn is what it is looking for; this probe is trying to get
+                        // somewhere, so it ends the turn and carries on. The budget is still the ceiling.
+                        if (++playsThisTurn >= PlaysInATurnNobodyMakes)
+                        {
+                            driver.EndTurn();
+                            NewTurn();
+                        }
+                    }
+                    else
+                    {
+                        driver.EndTurn();
+                        NewTurn();
+                    }
+                }
+                else
+                {
+                    _walkEnded = "the fight parked on the enemy's turn";
+                    break;   // nothing this probe can answer
+                }
+            }
+            else if (session.IsAwaitingNodeChoice)
+            {
+                var wanted = session.PendingNodeChoices.FirstOrDefault(prefer)
+                    ?? session.PendingNodeChoices[^1];
+                session.PickNode(wanted.Id.Value);
+                NewTurn();
+            }
+            else if (session.IsAwaitingEntities && session.PendingEntities is { } entities)
+                session.PickEntities([.. Enumerable.Range(0, Math.Min(entities.Count, entities.Displays.Count))]);
+            else if (session.IsAwaitingChoice)
+                session.Pick(session.PendingChoices[^1].Id);   // the last option is the way OUT of a room
+            else if (session.IsAwaitingInterlude)
+                session.Continue();
+            else
+            {
+                _walkEnded = "nothing was awaiting an answer";
+                break;
+            }
+        }
+        if (session?.Error is not null || play?.Error is not null)
+            _walkEnded = "an error was raised";
+        return best;
     }
 
     // Walk toward the nearest room of one KIND and screenshot it as the player would meet it. The rooms that
@@ -852,6 +1116,7 @@ public partial class SessionScreen : Control
         _combatRoot.Visible = inCombat;
         _mainScroll.Visible = !inCombat;
         _deckTopNode = null;
+        _enemyRow = null;
         if (!inCombat)
             _shownHandIds.Clear(); // a fresh fight re-deals; its opening hand animates in
 
@@ -1058,6 +1323,12 @@ public partial class SessionScreen : Control
         "relics-normal" => "Relics",
         "stock" => "For sale",
         "reward" => "Your reward",
+        // A reward that knows what it is asks under its own name. The boss's relic used to arrive on the same
+        // screen, under the same word, as the card pick that came before it — the one thing the fight was for,
+        // with nothing to say so.
+        "reward-card" => "Your reward",
+        "reward-relic" => "The relic you won",
+        "reward-consumable" => "What you carry away",
         "spoils" => "The spoils",
         _ => key.Contains('.') || key.Contains('-') || key.Contains('_') ? Humanized(key) : key,
     };
@@ -1267,16 +1538,42 @@ public partial class SessionScreen : Control
 
         // Arena: hero far left, enemies far right, a stretchy gap between.
         var arena = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
-        var heroBox = CombatantBox(combat, hero, isHero: true);
+        var heroBox = CombatantBox(combat, hero, isHero: true, HeroColumn);
         heroBox.SizeFlagsVertical = SizeFlags.ShrinkCenter;
         arena.AddChild(heroBox);
-        arena.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-        var enemyRow = new HBoxContainer { SizeFlagsVertical = SizeFlags.ShrinkCenter };
-        enemyRow.AddThemeConstantOverride("separation", 24);
+        // The enemies take the rest of the room and stand at the far end of it. A FLOW row, not a fixed one:
+        // the widest fight in the game is four bodies beside the hero, and five 200-wide columns with their
+        // gaps do not fit across 1280 — a fixed row does not shrink, it simply walks off the right edge and
+        // takes a boss's intent with it. Wrapping costs the ordinary two-body fight nothing (a single line,
+        // right-aligned, exactly as before) and keeps the crowded one on the screen.
+        var enemyRow = new HFlowContainer
+        {
+            Alignment = FlowContainer.AlignmentMode.End,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ShrinkCenter,
+        };
+        enemyRow.AddThemeConstantOverride("h_separation", enemies.Count <= 2 ? ColumnGap : CrowdGap);
+        enemyRow.AddThemeConstantOverride("v_separation", CrowdGap);
+        var column = EnemyColumn(enemies.Count);
         foreach (var enemy in enemies)
-            enemyRow.AddChild(CombatantBox(combat, enemy, isHero: false));
+            enemyRow.AddChild(CombatantBox(combat, enemy, isHero: false, column));
         arena.AddChild(enemyRow);
-        col.AddChild(arena);
+        _enemyRow = enemyRow;
+
+        // The arena SCROLLS if it has to. A column is as tall as what the body is carrying, and by an Act-II
+        // boss the player can be wearing a dozen statuses: the column then grows past its share, and a
+        // VBoxContainer hands out minimum heights before it hands out the leftovers — so the hand, the deck
+        // and the End-turn button were pushed off the bottom of the screen by the very state this pass is
+        // about making readable. A scroll view has a small minimum of its own, so the hand keeps its place and
+        // nothing is hidden: what does not fit is reachable rather than gone.
+        var arenaView = new ScrollContainer
+        {
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        arena.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        arenaView.AddChild(arena);
+        col.AddChild(arenaView);
 
         // Bottom: a prompt the played card raised, the "resolving" note, or the hand + controls.
         //
@@ -1461,8 +1758,14 @@ public partial class SessionScreen : Control
         foreach (var card in cards)
             _shownHandIds.Add(card.Id.value);
 
-        if (_cardsToAnimate.Count > 0)
+        // …unless a probe is fast-forwarding. A walk to Act III rebuilds this screen a few thousand times, and
+        // every rebuild would queue a tween onto card nodes the NEXT rebuild frees: Godot fills the log with
+        // "object was deleted while awaiting a callback" and then segfaults. The flourish is worth nothing to
+        // a probe, and the frame it finally captures is a settled hand rather than one mid-flight.
+        if (_cardsToAnimate.Count > 0 && !_fastForward)
             CallDeferred(nameof(AnimateDraws));
+        else
+            _cardsToAnimate.Clear();
     }
 
     // Fly each freshly-drawn card from the deck to its hand slot with a mid-flight flip (back → face).
@@ -1501,14 +1804,47 @@ public partial class SessionScreen : Control
         _cardsToAnimate.Clear();
     }
 
+    private const int HeroColumn = 200;
+    private const int NarrowestColumn = 110;
+    private const int ColumnGap = 24;
+    private const int CrowdGap = 12;   // a crowd spends its room on the columns, not on the air between them
+
+    // How wide ONE enemy column may be, given how many of them there are.
+    //
+    // Five bodies at the hero's width do not fit across the combat pane, and a row of fixed columns does not
+    // shrink — it walks off the right edge and takes a boss's health bar and intent with it. So the crowd
+    // shares out the room it actually has: two bodies look exactly as they always did, and four make four
+    // narrower columns rather than four off-screen ones. The floor is what a name and an intent still read in;
+    // below it the flow row wraps instead, which is ugly but on the screen.
+    private int EnemyColumn(int count)
+    {
+        if (count <= 2)
+            return HeroColumn;
+        // The pane's own width, not the window's: the sidebar takes a third of the screen. It is last frame's
+        // measurement, which is stable — the pane does not resize between rounds.
+        var pane = _combatRoot is { } root && root.Size.X > 100 ? root.Size.X : GetViewportRect().Size.X * 0.72f;
+        var room = pane - 48 - (HeroColumn + 32) - ColumnGap;   // margins, the hero's column, the gap after it
+        var each = (room - ((count - 1) * CrowdGap)) / count - 32;   // 32 = the panel's own border and padding
+        return (int)Math.Clamp(each, NarrowestColumn, HeroColumn);
+    }
+
     // A combatant's column: name, a stick-figure placeholder, an HP bar, energy (hero) or intent (enemy),
     // and its status chips. When a card is armed, an enemy box becomes a clickable target.
-    private Control CombatantBox(InteractiveCombat combat, CombatantState combatant, bool isHero)
+    private Control CombatantBox(InteractiveCombat combat, CombatantState combatant, bool isHero, int width)
     {
-        var box = new VBoxContainer { CustomMinimumSize = new Vector2(200, 0) };
+        var box = new VBoxContainer { CustomMinimumSize = new Vector2(width, 0) };
         box.AddThemeConstantOverride("separation", 4);
 
-        var name = new Label { Text = Name(combatant, combat), HorizontalAlignment = HorizontalAlignment.Center };
+        // The name WRAPS. Without that it is the widest thing in the column and its full length becomes the
+        // column's floor, which quietly defeats every attempt to make a crowd fit: "Lower Appellate Step" is
+        // 190 px of minimum width that no share-out can argue with.
+        var name = new Label
+        {
+            Text = Name(combatant, combat),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(width, 0),
+        };
         name.AddThemeFontSizeOverride("font_size", 16);
         box.AddChild(name);
 
@@ -1517,7 +1853,11 @@ public partial class SessionScreen : Control
         { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
         box.AddChild(figure);
 
-        box.AddChild(HealthBar(combatant));
+        box.AddChild(HealthBar(combatant, width - 30));
+
+        // The phase goes directly above what the body is about to do, because that is the line it corrects.
+        if (PhaseBanner(combat, combatant) is { } phase)
+            box.AddChild(phase);
 
         if (isHero)
         {
@@ -1546,7 +1886,7 @@ public partial class SessionScreen : Control
         }
 
         if (StatusChips(combat, combatant) is { } chips)
-            box.AddChild(chips);
+            box.AddChild(Bounded(chips, combatant, width));
 
         // A framed panel around the column; enemies highlight + become clickable when a card is armed.
         var panel = new PanelContainer();
@@ -1567,9 +1907,9 @@ public partial class SessionScreen : Control
         return panel;
     }
 
-    private static Control HealthBar(CombatantState combatant)
+    private static Control HealthBar(CombatantState combatant, int width)
     {
-        var holder = new Control { CustomMinimumSize = new Vector2(170, 22) };
+        var holder = new Control { CustomMinimumSize = new Vector2(width, 22) };
         var bg = new ColorRect { Color = new Color("2a1414") };
         bg.SetAnchorsPreset(LayoutPreset.FullRect);
         holder.AddChild(bg);
@@ -1968,6 +2308,77 @@ public partial class SessionScreen : Control
     private static int Block(CombatantState combatant) =>
         combatant.DefensivePools.TryGetValue(StandardCombatIds.BlockDefensivePool, out var pool) ? pool.Current : 0;
 
+    // A long chip list gets its own scroll instead of making the whole column taller.
+    //
+    // By an Act-III boss the player can be wearing two dozen statuses, and a column as tall as its chip list
+    // pushes everything below the arena off the screen — or, once the arena itself scrolls, pushes the ENEMY's
+    // health bar and intent below the fold at round one, which is the same fault wearing a different hat. The
+    // chips are the part that grows without limit, so the chips are the part that is bounded; a body carrying
+    // an ordinary handful is untouched.
+    private static Control Bounded(Control chips, CombatantState combatant, int width)
+    {
+        const int TallEnoughToBound = 8;
+        // The same set the chips are drawn from: the phase is not one of them (it is a banner now), so a
+        // body wearing one must not be counted as one chip taller than it looks.
+        if (combatant.Statuses.Count(s => s.Visibility == StatusVisibility.Visible && !IsPhase(s))
+            <= TallEnoughToBound)
+            return chips;
+
+        var view = new ScrollContainer
+        {
+            CustomMinimumSize = new Vector2(width, 150),
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        chips.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        view.AddChild(chips);
+        return view;
+    }
+
+    // WHICH BOSS THIS IS NOW, over the top of what it is about to do.
+    //
+    // A phased boss rotates ONE intent list, so a slot keeps its Phase-I name for the whole fight: the Warden
+    // still telegraphs "Inspect the Claim" while that slot means the Phase-II thing now. Read against a chip
+    // filed after the stacks and the countdowns, that looks like a wrong label; read against a banner sitting
+    // on the intent, it looks like the boss changing, which is what it is.
+    //
+    // WHICH statuses are phases is the document's word, not this frontend's guess: the presentation manifest
+    // tags them. A game that tags none loses nothing — every status simply stays a chip, as before.
+    private static Control? PhaseBanner(InteractiveCombat combat, CombatantState combatant)
+    {
+        var registry = combat.State.DefinitionRegistry;
+        var phases = combatant.Statuses
+            .Where(status => status.Visibility == StatusVisibility.Visible && IsPhase(status))
+            .ToList();
+        if (phases.Count == 0)
+            return null;
+
+        var column = new VBoxContainer();
+        column.AddThemeConstantOverride("separation", 2);
+        foreach (var status in phases)
+        {
+            StatusDefinition? definition = null;
+            registry?.TryGetStatus(status.DefinitionId, out definition);
+            var label = new Label
+            {
+                Text = $"▸ {StatusText(status, definition)}",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                MouseFilter = Control.MouseFilterEnum.Pass, // the targeting overlay keeps the click
+                TooltipText = Glossary.Explain(StatusTooltip(status, definition), definition?.DescriptionKey),
+            };
+            label.AddThemeFontSizeOverride("font_size", 15);
+            label.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
+            column.AddChild(label);
+        }
+        return column;
+    }
+
+    // The document's word on whether a status is a phase. Unknown ids are not phases — a status with no
+    // presentation entry is an ordinary chip, which is what every status was before this existed.
+    private static bool IsPhase(StatusInstance status) =>
+        GameHost.Instance.Blueprint.Presentation.Statuses
+            .GetValueOrDefault(status.DefinitionId.value)?.Tags.Contains("phase") == true;
+
     // What a combatant is CARRYING, one chip per status. Everything a fight in this game turns on lives here —
     // an Act-II boss is built out of visible state (Authority, Custody, the seals, the filed hours), so a chip
     // says the status's authored NAME, not the id it is stored under, and its rules text on hover.
@@ -1978,7 +2389,11 @@ public partial class SessionScreen : Control
     private static Control? StatusChips(InteractiveCombat combat, CombatantState combatant)
     {
         var registry = combat.State.DefinitionRegistry;
-        var shown = combatant.Statuses.Where(s => s.Visibility == StatusVisibility.Visible).ToList();
+        // …minus the phase, which is not one fact among the others: it says what all of them are FOR, and it
+        // is drawn above the intent instead.
+        var shown = combatant.Statuses
+            .Where(s => s.Visibility == StatusVisibility.Visible && !IsPhase(s))
+            .ToList();
         if (shown.Count == 0)
             return null;
 
