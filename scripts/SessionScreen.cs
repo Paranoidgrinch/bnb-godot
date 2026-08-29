@@ -1049,8 +1049,13 @@ public partial class SessionScreen : Control
         "event.shop.leave" => "Leave",
         "event.shop.reroll" => "Restock the shelves",
         "event.shop.remove-card" => "Have a card struck from your deck",
-        "cards" => "Cards",
-        "relics" => "Relics",
+        // The shop's four shelves (BnB_Run_Systems_Master §4.1). Each is named for what stands on it, because
+        // "3 General cards and 4 Character cards" is a promise the player can only see kept if the headings
+        // say which is which.
+        "cards-general" => "Cards",
+        "cards-character" => "Bureaucrat cards",
+        "relics-shop" => "Shop relics",
+        "relics-normal" => "Relics",
         "stock" => "For sale",
         "reward" => "Your reward",
         "spoils" => "The spoils",
