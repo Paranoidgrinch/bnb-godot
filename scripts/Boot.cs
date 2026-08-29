@@ -38,6 +38,19 @@ public partial class Boot : Control
             return;
         }
         // Any session smoke boots straight into a seeded run; SessionScreen runs the matching probe + quits.
+        // The run simulator: a seeded random walk over the real screens, one run per process.
+        if (userArgs.Contains("--sim"))
+        {
+            var seed = SessionScreen.SimArg("--sim-seed", 1);
+            var roster = host.AvailableCharacters;
+            var character = roster.Count > 0 ? roster[new Random(seed).Next(roster.Count)].Id : null;
+            SessionScreen.SimCharacter = character;
+            host.StartNewRun(seed, character,
+                health: userArgs.Contains("--sim-immortal") ? 9999
+                    : SessionScreen.SimArg("--sim-health", 0) is > 0 and var hp ? hp : null);
+            CallDeferred(nameof(GoToSession));
+            return;
+        }
         if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips"))
         {
             host.StartNewRun(seed: 7,

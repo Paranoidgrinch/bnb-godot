@@ -87,9 +87,12 @@ public partial class SessionScreen : Control
         GameHost.Instance.StateChanged += Rebuild;
         Rebuild();
 
-        _fastForward = OS.GetCmdlineUserArgs().Any(a => a.StartsWith("--smoke", StringComparison.Ordinal));
+        _fastForward = OS.GetCmdlineUserArgs().Any(a => a.StartsWith("--smoke", StringComparison.Ordinal))
+            || IsSimulating;
 
-        if (OS.GetCmdlineUserArgs().Contains("--smoke-run"))
+        if (IsSimulating)
+            _ = SimulateRun();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-run"))
             SmokeRun();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-target"))
             SmokeTarget();

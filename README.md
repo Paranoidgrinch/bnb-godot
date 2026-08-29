@@ -52,6 +52,27 @@ godot -- --smoke-boss 2   # walk to that act's BOSS and capture it (the phase ba
 godot -- --smoke-reward   # the card reward
 ```
 
+## Simulating runs (bug hunting)
+A player made of dice: `scripts/RunSimulator.cs` walks the REAL screens — every answer goes through the same
+session/driver the mouse drives — but answers at random (random fork, random door, random card at a random
+enemy, random pick from every offer, and now and then an early end of turn or a skipped reward). It plays
+badly on purpose; what it is for is BREADTH, so a batch touches content no careful player would reach.
+```
+godot --headless -- --sim [--sim-seed N] [--sim-health N | --sim-immortal] [--sim-steps N]
+tools/simulate.sh                  # 20 runs, 400 hp, 4 processes at a time
+tools/simulate.sh 100 --jobs 8     # a hundred of them
+tools/simulate.sh 50 --immortal    # nothing can kill them: the deepest reach into acts II/III
+tools/simulate.sh 50 --real        # the game's own health (most runs die in act I)
+```
+Logs land in `~/Desktop/bnb-run-logs/<timestamp>/run-<seed>.log`, one process per run so a crash costs that
+run and not the batch — the log IS the reproduction (seed + character at the top, then every room, choice
+and play in order, with the engine's own narration folded in; `--sim --sim-seed N` replays it). `summary.txt`
+lists each run's verdict, the outcomes, **which runs are worth reading**, and what the batch touched.
+
+A run is flagged when something could not be answered for: an engine error, a step that threw, a turn that
+never ended, a wall, an exception. NOT flagged (they are the engine working): a card the rules refuse — a
+random player will try a curse — and a card that parks to ask its own question.
+
 ## Building desktop binaries
 Requires the **Godot 4.7 (.NET) export templates** — install them once via the editor
 (*Editor → Manage Export Templates → Download and Install*), then:
