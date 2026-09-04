@@ -77,13 +77,15 @@ random player will try a curse — and a card that parks to ask its own question
 The same simulator can be given a POLICY — 17 weights that decide which card is worth playing, when a turn
 is over, which enemy to hit, which room to walk into and what to buy (`SimPolicy` in `RunSimulator.cs`).
 `tools/train.py` breeds them against the balance question itself: starting at 9999 hp, **how much damage does
-the whole game take off a runner on the way to the act-III boss?** Least taken wins; never arriving is worse
-than any arrival. Damage ADDED UP, not health remaining: no act heals you at its end, but the content heals
+the game take off a runner on the way to a named act's boss?** Which act is `--target-act`, and it defaults
+to the last one the game has (`LAST_ACT` in `train.py`); the simulator's own fitness line names no act, only
+the per-act table (`actBossDamage`). Least taken wins; never arriving is worse than any arrival. Damage ADDED UP, not health remaining: no act heals you at its end, but the content heals
 plenty (one act-II door heals to full), and remaining health would credit a runner for the door it happened
 to walk through — on seed 1000 that reads 540 lost where 1075 was actually taken.
 ```
 tools/train.py                                    # 5 generations × 8 runners × 2 seeds
 tools/train.py --generations 10 --population 12 --seeds 3 --jobs 8
+tools/train.py --target-act 3                     # measure to an earlier act's boss instead
 tools/train.py --resume ~/Desktop/bnb-balance-training/<stamp>
 tools/train.py --health 220 --generations 2 --population 3 --seeds 1   # a fast shakedown, not a training
 godot --headless -- --sim --sim-immortal --sim-policy <policy.json>    # watch one runner play

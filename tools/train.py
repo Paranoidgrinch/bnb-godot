@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Breed runners for the balance question: starting at 9999 hp, how much health does the whole game take
-off a player on the way to the act-III boss?
+"""Breed runners for the balance question: starting at 9999 hp, how much health does the game take off a
+player on the way to a named act's boss?
+
+WHICH act is `--target-act`, and it defaults to the last one the game has. It used to be act III because act
+III was the end of the game; the simulator no longer names an act of its own either (it reports the whole
+per-act table), so moving the measurement to a new act is this flag and nothing else.
 
 A runner is a policy — the weights in scripts/RunSimulator.cs's SimPolicy — and a generation is a handful of
-them, each played over the same content seeds so the comparison is fair. The ones that arrive at the act-III
+them, each played over the same content seeds so the comparison is fair. The ones that arrive at the target
 boss having lost the least survive and are mutated into the next generation. A runner that never gets there
 is worse than any that does, however little it lost on the way.
 
     tools/train.py                                   # 5 generations of 8, 2 seeds each, 4 at a time
+    tools/train.py --target-act 3                    # measure to an EARLIER act's boss instead
     tools/train.py --generations 10 --population 12 --seeds 3 --jobs 8
     tools/train.py --resume ~/Desktop/bnb-balance-training/<stamp>   # keep breeding from its best
 
@@ -26,7 +31,10 @@ GENES = {
     "PathCombat": (0, 1), "PathElite": (0, 1), "PathShop": (0, 1), "PathRest": (0, 1),
     "PathEvent": (0, 1), "PathTreasure": (0, 1), "RewardSkip": (0, 1), "ShopBuy": (0, 1), "EventLate": (0, 1),
 }
-UNREACHED = 1_000_000   # never arriving at the act-III boss is worse than any arrival
+UNREACHED = 1_000_000   # never arriving at the target boss is worse than any arrival
+# The last act the game has, and so the default thing to measure to. One number, kept next to the flag that
+# reads it, because "the end of the game" is a fact about the content and moves when the content does.
+LAST_ACT = 4
 
 
 def random_policy(rng, name):
@@ -43,7 +51,7 @@ def mutate(rng, parent, name, sigma):
     return child
 
 
-def play(policy_file, seed, log_file, timeout, health):
+def play(policy_file, seed, log_file, timeout, health, target_act):
     with open(log_file, "w") as log:
         try:
             subprocess.run(
@@ -57,15 +65,20 @@ def play(policy_file, seed, log_file, timeout, health):
     if not line:
         return {"reached": False, "damage": UNREACHED, "rooms": 0, "note": "no fitness line — the run died"}
     f = dict(re.findall(r"(\w+)=(\S+)", line))
-    reached = f.get("reachedAct3Boss") == "True"
+    # actBossDamage="1:120,2:310,3:604" — what the run had lost, added up, when it entered each act's boss
+    # room. The target act's entry is the measurement; its absence is the miss.
+    table = dict(
+        (int(a), int(b))
+        for a, b in (pair.split(":") for pair in f.get("actBossDamage", "").split(",") if ":" in pair))
+    reached = target_act in table
     return {"reached": reached,
             # Damage ADDED UP, not health remaining: the content heals, and one act-II door heals to full.
-            "damage": int(f.get("damageToAct3Boss", UNREACHED)) if reached else UNREACHED,
+            "damage": table[target_act] if reached else UNREACHED,
             "rooms": int(f.get("rooms", 0)),
-            "note": "" if reached else "never reached the act-III boss"}
+            "note": "" if reached else f"never reached the act-{target_act} boss"}
 
 
-def evaluate(policies, seeds, gen_dir, jobs, timeout, health):
+def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act):
     """Every policy over every seed, in parallel; a policy's score is its mean hp lost."""
     work = []
     for policy in policies:
@@ -74,7 +87,7 @@ def evaluate(policies, seeds, gen_dir, jobs, timeout, health):
         for seed in seeds:
             work.append((policy, path, seed, gen_dir / f"{policy['Name']}-seed{seed}.log"))
     with ThreadPoolExecutor(max_workers=jobs) as pool:
-        results = list(pool.map(lambda w: play(w[1], w[2], w[3], timeout, health), work))
+        results = list(pool.map(lambda w: play(w[1], w[2], w[3], timeout, health, target_act), work))
     scored = {}
     for (policy, _, seed, _), result in zip(work, results):
         scored.setdefault(policy["Name"], []).append(result)
@@ -103,6 +116,8 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--health", type=int, default=0,
                     help="a body of this size instead of the immortal 9999 — only for shaking the trainer out")
+    ap.add_argument("--target-act", type=int, default=LAST_ACT,
+                    help="which act's boss the runners are measured to (default: the game's last act)")
     ap.add_argument("--resume", default=None, help="a previous training folder to keep breeding from")
     args = ap.parse_args()
 
@@ -128,16 +143,18 @@ def main():
 
     board = out / "leaderboard.csv"
     with board.open("w", newline="") as f:
-        csv.writer(f).writerow(["generation", "policy", "score (mean damage taken to the act-III boss)", "arrivals", "mean rooms", "note"])
+        csv.writer(f).writerow(["generation", "policy",
+                                f"score (mean damage taken to the act-{args.target_act} boss)",
+                                "arrivals", "mean rooms", "note"])
 
-    print(f"training in {out}")
+    print(f"training in {out}  (measured to the act-{args.target_act} boss)")
     print(f"  {args.generations} generations × {args.population} runners × {len(seeds)} seeds "
           f"= {args.generations * args.population * len(seeds)} runs, {args.jobs} at a time")
     for generation in range(args.generations):
         gen_dir = out / f"gen-{generation:02d}"
         gen_dir.mkdir(exist_ok=True)
         started = time.time()
-        table = evaluate(population, seeds, gen_dir, args.jobs, args.timeout, health)
+        table = evaluate(population, seeds, gen_dir, args.jobs, args.timeout, health, args.target_act)
         with board.open("a", newline="") as f:
             writer = csv.writer(f)
             for row in table:

@@ -321,12 +321,14 @@ public partial class SessionScreen : Control
             $"act {g.Key}: {g.Count()} rooms ({string.Join(" ", g.GroupBy(x => x.Split(':')[1]).Select(k => $"{k.Key}×{k.Count()}"))})");
         foreach (var line in byAct)
             GD.Print($"  {line}");
-        var reachedActThreeBoss = hpAtActBoss.ContainsKey(3);
+        // The fitness line names no act of its own any more. It used to answer one question — "what did the
+        // act-III boss cost to reach?" — and Act IV made that the wrong question by not being the last act.
+        // What it states instead is the DEEPEST act whose boss room the run entered, plus the whole per-act
+        // table; whoever is measuring says which act they are measuring to (tools/train.py --target-act).
+        var deepestActBoss = hpAtActBoss.Count == 0 ? 0 : hpAtActBoss.Keys.Max();
         GD.Print($"sim-fitness: policy={policy?.Name ?? "random"} seed={seed} "
-            + $"reachedAct3Boss={reachedActThreeBoss} "
-            + $"damageToAct3Boss={(reachedActThreeBoss ? damageAtActBoss[3] : -1)} "
+            + $"deepestActBoss={deepestActBoss} "
             + $"damageTaken={damageTaken} healed={healed} "
-            + $"hpAtAct3Boss={(reachedActThreeBoss ? hpAtActBoss[3] : -1)} "
             + $"actBossDamage={string.Join(",", damageAtActBoss.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}:{kv.Value}"))} "
             + $"actBossHp={string.Join(",", hpAtActBoss.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}:{kv.Value}"))} "
             + $"rooms={rooms.Count} result={session?.Run.Result}");

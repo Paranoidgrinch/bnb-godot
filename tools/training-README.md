@@ -2,8 +2,14 @@
 
 ## Die Frage, auf die trainiert wird
 Jeder Runner startet mit **9999 HP** (nichts kann ihn töten) und läuft durch das ganze Spiel. Gewertet wird
-**wie viel Schaden er bis zur Ankunft am Akt-III-Boss insgesamt genommen hat** — wenig = guter Runner. Wer
-dort nie ankommt, ist schlechter als jeder, der ankommt, egal wie wenig er unterwegs eingesteckt hat.
+**wie viel Schaden er bis zur Ankunft am Boss eines bestimmten Akts insgesamt genommen hat** — wenig = guter
+Runner. Wer dort nie ankommt, ist schlechter als jeder, der ankommt, egal wie wenig er unterwegs eingesteckt
+hat.
+
+**Welcher Akt das ist, sagt `--target-act`** — Standard ist der letzte, den das Spiel hat (aktuell **Akt IV**;
+die Zahl steht als `LAST_ACT` oben in `tools/train.py` und wandert mit dem Content). Früher war Akt III fest
+verdrahtet, weil Akt III das Ende war; die `sim-fitness:`-Zeile nennt inzwischen selbst keinen Akt mehr,
+sondern nur noch die Tabelle über alle.
 
 **Aufsummierter Schaden, nicht Rest-HP.** Es gibt keine Vollheilung nach einem Akt — aber der Content heilt
 sehr wohl (Relikte, Rastplätze, und die Tür `perpetual_borrower`/settle in Akt II heilt *auf voll*). Rest-HP
@@ -11,11 +17,13 @@ würde damit einen Runner belohnen, der zufällig durch eine Heiltür gelaufen i
 Spiel kostet. Beispiel aus einem echten Run (Seed 1000): Rest-HP sagte 540 verloren — tatsächlich genommen
 hatte er **1075** Schaden, 535 davon waren weggeheilt worden.
 
-In `sim-fitness:` stehen deshalb beide Zahlen plus die Aufschlüsselung pro Akt:
+In `sim-fitness:` steht deshalb beides plus die Aufschlüsselung pro Akt:
 ```
-damageToAct3Boss=1075  damageTaken=1182  healed=535  actBossDamage=1:137,2:538,3:1075  hpAtAct3Boss=9459
+deepestActBoss=3  damageTaken=1182  healed=535  actBossDamage=1:137,2:538,3:1075  actBossHp=1:9862,2:9461,3:9459
 ```
 `actBossDamage` ist kumulativ — Akt I kostete 137, Akt II weitere 401, Akt III bis zum Boss weitere 537.
+`deepestActBoss` ist der tiefste Akt, dessen Boss-Raum der Run überhaupt betreten hat; der Trainer liest
+seinen Wert aus `actBossDamage[--target-act]` und wertet ein fehlendes Feld als „nicht angekommen".
 
 Damit ist die Zahl gleichzeitig die Balance-Antwort: *was kostet dieses Spiel einen Spieler, der es gut spielt?*
 
@@ -33,6 +41,7 @@ Damit ist die Zahl gleichzeitig die Balance-Antwort: *was kostet dieses Spiel ei
 cd ~/bnb-godot
 tools/train.py                                       # 5 Generationen × 8 Runner × 2 Seeds
 tools/train.py --generations 10 --population 12 --seeds 3 --jobs 8
+tools/train.py --target-act 3                         # zu einem FRÜHEREN Akt-Boss messen
 tools/train.py --resume ~/Desktop/bnb-balance-training/<stamp>    # vom bisher Besten weiterzüchten
 tools/train.py --health 200 --generations 2 --population 3 --seeds 1   # nur zum Ausprobieren, schnell
 ```
@@ -40,7 +49,8 @@ Jede Generation: die besten `--survivors` (Standard 3) überleben unverändert, 
 (`--sigma` = Mutationsgröße). Alle Runner einer Generation spielen **dieselben Content-Seeds**, damit der
 Vergleich fair ist.
 
-**Dauer:** ein unsterblicher Run geht durch alle drei Akte — rechne mit 4–10 min pro Run. 8 Runner × 2 Seeds
+**Dauer:** ein unsterblicher Run geht durch alle vier Akte, und Akt IV ist der längste — rechne mit
+10–20 min pro Run. 8 Runner × 2 Seeds
 = 16 Runs pro Generation; bei `--jobs 8` also ~15 min je Generation. Fang klein an.
 
 ## Wo alles rauskommt
@@ -55,7 +65,7 @@ Vergleich fair ist.
         ├── g0-p3-seed1000.log      ← ihr vollständiges Run-Log (wie bei den normalen Sim-Runs)
         └── ranking.json            ← die Rangliste dieser Generation
 ```
-`score` = mittlerer aufsummierter Schaden bis zum Akt-III-Boss. Ein Score über 1.000.000 heißt: dort nie angekommen.
+`score` = mittlerer aufsummierter Schaden bis zum Boss des Ziel-Akts (`--target-act`). Ein Score über 1.000.000 heißt: dort nie angekommen.
 
 ## Den besten Runner ansehen
 ```bash

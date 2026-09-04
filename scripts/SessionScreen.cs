@@ -238,8 +238,14 @@ public partial class SessionScreen : Control
         var session = Session;
         var play = Play;
         var rooms = new List<string>();
+        // What each room COST to answer, in wall-clock seconds and in answers. Every answer replays the run
+        // from its baseline, so this is the one number that says whether a fourth act is affordable — a per-act
+        // mean the report can state rather than a hundred room lines somebody has to read.
+        var roomCost = new List<(int Act, double Seconds, int Answers)>();
         var acts = 1;
         string? lastRoom = null;
+        var roomOpenedAt = 0.0;
+        var roomOpenedAtStep = 0;
         var clock = System.Diagnostics.Stopwatch.StartNew();
 
         var reason = "the run finished";
@@ -287,6 +293,10 @@ public partial class SessionScreen : Control
                 lastRoom = here;
                 var node = session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == here);
                 rooms.Add($"{session.Run.ActNumber}:{MapView.Role(node ?? throw new InvalidOperationException(here))}");
+                if (rooms.Count > 1)
+                    roomCost.Add((acts, clock.Elapsed.TotalSeconds - roomOpenedAt, step - roomOpenedAtStep));
+                roomOpenedAt = clock.Elapsed.TotalSeconds;
+                roomOpenedAtStep = step;
                 acts = Math.Max(acts, session.Run.ActNumber);
                 // The latency curve, room by room: under the replay model every answer re-runs the whole run,
                 // so what this prints is how the game FEELS as it gets longer.
@@ -382,9 +392,19 @@ public partial class SessionScreen : Control
                 reason = $"the step limit ran out at {Where(session)}";
         }
 
+        var costByAct = roomCost.GroupBy(c => c.Act).ToDictionary(
+            g => g.Key.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            g => (Seconds: g.Sum(c => c.Seconds), Rooms: g.Count(), Answers: g.Sum(c => c.Answers)));
         var byAct = rooms.GroupBy(r => r.Split(':')[0])
-            .Select(g => $"act {g.Key}: {g.Count()} rooms ({string.Join(" ", g.GroupBy(x => x.Split(':')[1]).Select(k => $"{k.Key}×{k.Count()}"))})");
+            .Select(g =>
+            {
+                var cost = costByAct.GetValueOrDefault(g.Key);
+                var perRoom = cost.Rooms == 0 ? 0 : cost.Seconds / cost.Rooms;
+                return $"act {g.Key}: {g.Count()} rooms ({string.Join(" ", g.GroupBy(x => x.Split(':')[1]).Select(k => $"{k.Key}×{k.Count()}"))}) "
+                    + $"— {cost.Seconds:0.0}s, {perRoom:0.0}s/room over {cost.Answers} answers";
+            });
         GD.Print($"smoke-marathon: result={session?.Run.Result} acts={acts} rooms={rooms.Count} "
+            + $"seconds={clock.Elapsed.TotalSeconds:0.0} "
             + $"error={session?.Error ?? Play?.Error ?? "none"} stopped because {reason}");
         foreach (var line in byAct)
             GD.Print($"  {line}");
