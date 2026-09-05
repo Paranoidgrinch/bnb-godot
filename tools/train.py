@@ -34,7 +34,11 @@ GENES = {
 UNREACHED = 1_000_000   # never arriving at the target boss is worse than any arrival
 # The last act the game has, and so the default thing to measure to. One number, kept next to the flag that
 # reads it, because "the end of the game" is a fact about the content and moves when the content does.
-LAST_ACT = 4
+#
+# It moved to 5 at V-0, when Act V became a walkable act. ⚠ Until V-1 … V-6 replace them, Act V's six gods are
+# PLACEHOLDER fights, so a generation bred against act 5 is breeding against content that is about to change:
+# `--target-act 4` is still the meaningful balance question, and V-7 is the step that makes 5 the real one.
+LAST_ACT = 5
 
 
 def random_policy(rng, name):

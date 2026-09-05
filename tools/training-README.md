@@ -6,10 +6,14 @@ Jeder Runner startet mit **9999 HP** (nichts kann ihn töten) und läuft durch d
 Runner. Wer dort nie ankommt, ist schlechter als jeder, der ankommt, egal wie wenig er unterwegs eingesteckt
 hat.
 
-**Welcher Akt das ist, sagt `--target-act`** — Standard ist der letzte, den das Spiel hat (aktuell **Akt IV**;
+**Welcher Akt das ist, sagt `--target-act`** — Standard ist der letzte, den das Spiel hat (seit V-0 **Akt V**;
 die Zahl steht als `LAST_ACT` oben in `tools/train.py` und wandert mit dem Content). Früher war Akt III fest
 verdrahtet, weil Akt III das Ende war; die `sim-fitness:`-Zeile nennt inzwischen selbst keinen Akt mehr,
 sondern nur noch die Tabelle über alle.
+
+⚠ **Solange Akt V Platzhalter ist** (bis V-1 … V-6 die sechs Götter wirklich schreiben), misst man sinnvoll
+weiter mit `--target-act 4`: eine Generation, die gegen Content züchtet, der gleich ausgetauscht wird, lernt
+nichts, was hält. Schritt **V-7** macht Akt V zur echten Zielmarke.
 
 **Aufsummierter Schaden, nicht Rest-HP.** Es gibt keine Vollheilung nach einem Akt — aber der Content heilt
 sehr wohl (Relikte, Rastplätze, und die Tür `perpetual_borrower`/settle in Akt II heilt *auf voll*). Rest-HP

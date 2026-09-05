@@ -229,10 +229,11 @@ public partial class SessionScreen : Control
         _ => null,
     };
 
-    // Play the WHOLE game — both acts, every room the route holds, to the last boss — through the real screens
+    // Play the WHOLE game — every act, every room the route holds, to the last god — through the real screens
     // (every answer goes through the same Rebuild the player sees). What it proves is that the frontend holds
-    // up all the way: the map redraws for the second act, the act title card fires, no screen throws twenty
-    // rooms in. The engine-side coverage lives in bnb-content's own walk; this one is about the UI.
+    // up all the way: the map redraws for each new act, the act title card fires, the gauntlet's roll call and
+    // divine rule area appear where they should, no screen throws a hundred rooms in. The engine-side coverage
+    // lives in bnb-content's own walk; this one is about the UI.
     private async System.Threading.Tasks.Task SmokeMarathon()
     {
         var session = Session;
@@ -529,12 +530,40 @@ public partial class SessionScreen : Control
         GD.Print($"smoke-boss {act}: act={Session?.Run.ActNumber} boss={(AtABoss() ? "yes" : "NO")} "
             + $"round={combat?.Round} ended={_walkEnded} error={Session?.Error ?? Play?.Error ?? "none"}");
         GD.Print($"  facing: {Facing()}");
+        // The Divine Rule Area, read back out of the tree it was built into: a headless probe cannot take a
+        // screenshot, so this is the only way to say that the one UI surface Act V's design REQUIRES is
+        // actually on the screen and not merely a method that returned without throwing.
+        GD.Print($"  divine rule area: {DivineRuleOnScreen() ?? "none"}");
         if (combat is not null)
             foreach (var body in combat.State.Combatants)
                 GD.Print($"  [{Name(body, combat)}] {StatusLine(combat, body)}");
 
         ReportTooltips($"boss{act}");
         await CaptureThenQuit($"smoke-boss{act}.png");
+    }
+
+    // What the Divine Rule Area currently says, read out of the LIVE labels rather than out of the document,
+    // so a panel that was never added to the tree reads as "none".
+    private string? DivineRuleOnScreen()
+    {
+        var lines = new List<string>();
+        void Collect(Godot.Node node)
+        {
+            if (node is Label label && !string.IsNullOrWhiteSpace(label.Text))
+                lines.Add(label.Text);
+            foreach (var child in node.GetChildren())
+                Collect(child);
+        }
+        Collect(_combatRoot);
+
+        var titles = GameHost.Instance.Blueprint.Presentation.Encounters.Values
+            .Select(e => e.Extra.GetValueOrDefault("divineRuleTitle"))
+            .Where(title => !string.IsNullOrEmpty(title))
+            .ToHashSet();
+        var at = lines.FindIndex(titles.Contains!);
+        if (at < 0)
+            return null;
+        return at + 1 < lines.Count ? $"{lines[at]} — {lines[at + 1]}" : lines[at];
     }
 
     // `--smoke-boss 3` — the act to walk to, defaulting to the first.
@@ -1189,6 +1218,11 @@ public partial class SessionScreen : Control
         var name = acts is not null && session.Run.ActIndex < acts.Count
             ? acts[session.Run.ActIndex].NameKey ?? acts[session.Run.ActIndex].Id
             : $"Act {act}";
+        // A GAUNTLET SAYS WHO IS COMING, and the title card is where "from the beginning of the act" actually
+        // is: Act V draws three gods of six, and the design requires the three and their order to be visible
+        // before the first of them is fought, not after.
+        if (RollCall(session.Run) is { Count: > 1 } gods)
+            name += $"\n\n{string.Join("  ▸  ", gods)}";
         Banner(name);
     }
 
@@ -1467,6 +1501,29 @@ public partial class SessionScreen : Control
         }
         if (run.Map.Nodes.Count > 0)
             Muted($"Room {run.VisitedNodes.Count} of about {LongestRoute(run.Map)}");
+
+        // A GAUNTLET SAYS WHO IS COMING. Act V draws three gods of six and the design requires that the three
+        // and their order are visible from the beginning of the act — an act with no rooms to read ahead has
+        // nothing else to tell the player what it is going to be.
+        if (RollCall(run) is { Count: > 1 } gods)
+            Muted($"{gods.Count} bosses, in this order: {string.Join("  ▸  ", gods)}");
+    }
+
+    // The named fights of an act whose map is nothing but bosses, in the order the run will meet them. Empty
+    // for an ordinary act, whose one boss is not announced in advance.
+    private static IReadOnlyList<string> RollCall(RunState run)
+    {
+        var bosses = run.Map.Nodes.Where(n => n.HasTag(MapNodeTags.Boss)).ToList();
+        if (bosses.Count <= 1)
+            return [];
+        var presentation = GameHost.Instance.Blueprint.Presentation;
+        return
+        [
+            .. bosses
+                .Select(n => n.Payload is EncounterRef fight
+                    ? presentation.Encounters.GetValueOrDefault(fight.Id.Value)?.FlavorText ?? fight.Id.Value
+                    : MapView.Label(MapNodeTags.Boss)),
+        ];
     }
 
     // The most rooms any route through this act asks for — "about", because the routes differ.
@@ -1558,6 +1615,12 @@ public partial class SessionScreen : Control
         var round = new Label { Text = $"Round {combat.Round}", HorizontalAlignment = HorizontalAlignment.Center };
         round.AddThemeFontSizeOverride("font_size", 18);
         col.AddChild(round);
+
+        // THE DIVINE RULE AREA, if this fight has one. Directly under the round and over the arena: the same
+        // place in every one of Act V's fights, which is the whole of the design's shared rule for the act —
+        // the player must be able to look at one spot and read what reality currently means here.
+        if (DivineRuleArea() is { } divine)
+            col.AddChild(divine);
 
         // Arena: hero far left, enemies far right, a stretchy gap between.
         var arena = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
@@ -2355,6 +2418,54 @@ public partial class SessionScreen : Control
         chips.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         view.AddChild(chips);
         return view;
+    }
+
+    // ACT V'S ONE SHARED RULE, and it is a UI rule (boss master §Act V §4): each god owns a prominent area
+    // that always sits in the same place and says what reality currently means in its fight. Its words come
+    // from the fight's own presentation (ActFive: `divineRuleTitle` + `divineRule`), so a frontend needs no
+    // table of gods and an act that has none — every fight in Acts I–IV — simply shows no panel.
+    private static Control? DivineRuleArea()
+    {
+        if (Session is not { } session || session.Run.CurrentNodeId is not { } id)
+            return null;
+        var node = session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == id.Value);
+        if (node?.Payload is not EncounterRef fight)
+            return null;
+        var extra = GameHost.Instance.Blueprint.Presentation.Encounters
+            .GetValueOrDefault(fight.Id.Value)?.Extra;
+        if (extra is null || extra.GetValueOrDefault("divineRule") is not { Length: > 0 } rule)
+            return null;
+
+        var panel = new PanelContainer();
+        panel.AddThemeStyleboxOverride("panel",
+            MoonvineTheme.Panel(MoonvineTheme.BgPanelStrong, MoonvineTheme.AccentLight, 8));
+        var pad = new MarginContainer();
+        foreach (var side in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })
+            pad.AddThemeConstantOverride(side, 10);
+        panel.AddChild(pad);
+
+        var column = new VBoxContainer();
+        column.AddThemeConstantOverride("separation", 2);
+        pad.AddChild(column);
+
+        var heading = new Label
+        {
+            Text = extra.GetValueOrDefault("divineRuleTitle") ?? "The divine rule",
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        heading.AddThemeFontSizeOverride("font_size", 16);
+        heading.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
+        column.AddChild(heading);
+
+        var body = new Label
+        {
+            Text = rule,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        body.AddThemeFontSizeOverride("font_size", 13);
+        column.AddChild(body);
+        return panel;
     }
 
     // WHICH BOSS THIS IS NOW, over the top of what it is about to do.

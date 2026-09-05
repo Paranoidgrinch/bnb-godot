@@ -25,6 +25,7 @@ public partial class MapView : Control
     private System.Collections.Generic.Dictionary<NodeId, Vector2> _positions = new();
 
     private const int NodeW = 116;
+    private const int NamedNodeW = 240; // a boss room that wears its own name needs the room to write it in
     private const int NodeH = 40;
     private const int LaneW = 132; // horizontal step between two rooms of the same depth
     private const int RowH = 66;   // vertical step between one depth and the next
@@ -41,13 +42,28 @@ public partial class MapView : Control
         _onPick = onPick;
     }
 
+    // The fight a room runs, by the name the document gives it. Falls back to the encounter id, so a missing
+    // presentation entry shows up as words rather than as an empty button.
+    private static string? NameOf(RunNode node) =>
+        node.Payload is EncounterRef fight
+            ? GameHost.Instance.Blueprint.Presentation.Encounters
+                .GetValueOrDefault(fight.Id.Value)?.FlavorText ?? fight.Id.Value
+            : null;
+
     // The room the run is standing at, for the screen to scroll to.
     public Vector2 CurrentRoomPosition { get; private set; }
 
     public override void _Ready()
     {
         _positions = Layout(_map);
-        var width = _positions.Count == 0 ? NodeW : (int)_positions.Values.Max(p => p.X) + NodeW + Margin;
+
+        // An act with SEVERAL boss rooms is a gauntlet, and its whole shape is which bosses stand in it and in
+        // what order — so those rooms wear their names rather than the word "Boss" three times over. An
+        // ordinary act's single boss stays unnamed: finding out who ends the act is part of walking it.
+        var named = _map.Nodes.Count(n => Role(n) == MapNodeTags.Boss) > 1;
+
+        var roomW = named ? NamedNodeW : NodeW;
+        var width = _positions.Count == 0 ? roomW : (int)_positions.Values.Max(p => p.X) + roomW + Margin;
         var height = _positions.Count == 0 ? NodeH : (int)_positions.Values.Max(p => p.Y) + NodeH + Margin;
         CustomMinimumSize = new Vector2(width, height);
 
@@ -56,14 +72,15 @@ public partial class MapView : Control
             var pos = _positions[node.Id];
             var isReachable = _reachable.Contains(node.Id.Value);
             var role = Role(node);
+            var name = named && role == MapNodeTags.Boss ? NameOf(node) : null;
             var button = new Button
             {
-                Text = $"{Icon(role)}\n{Label(role)}",
+                Text = name is null ? $"{Icon(role)}\n{Label(role)}" : $"{Icon(role)}  {name}",
                 Position = pos,
-                Size = new Vector2(NodeW, NodeH),
+                Size = new Vector2(name is null ? NodeW : NamedNodeW, NodeH),
                 Disabled = !isReachable || _onPick is null,
-                TooltipText = Tooltip(role),
-                AutowrapMode = TextServer.AutowrapMode.Off,
+                TooltipText = name is null ? Tooltip(role) : $"{name} — {Tooltip(role)}",
+                AutowrapMode = name is null ? TextServer.AutowrapMode.Off : TextServer.AutowrapMode.WordSmart,
             };
             Style(button, node, role, isReachable);
             if (isReachable && _onPick is { } pick)

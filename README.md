@@ -35,7 +35,7 @@ godot --headless -- --smoke        # boot: prints "loaded: …" and quits
 godot --headless -- --smoke-full    # auto-plays the first rooms and reports the state
 godot --headless -- --smoke-timing  # per-action latency (~17 ms/action)
 godot --headless -- --smoke-statuses # carried state reads as its authored name, not its id
-godot --headless -- --smoke-marathon # play the WHOLE game (both acts) and report rooms + latency
+godot --headless -- --smoke-marathon # play the WHOLE game (all five acts) and report rooms + latency
 godot --headless -- --smoke-tooltips # audit a combat screen: is anything NAMED but not explained?
 ```
 Every screenshot check below also prints its own tooltip audit, so "a name with no explanation" cannot
@@ -61,7 +61,7 @@ badly on purpose; what it is for is BREADTH, so a batch touches content no caref
 godot --headless -- --sim [--sim-seed N] [--sim-health N | --sim-immortal] [--sim-steps N]
 tools/simulate.sh                  # 20 runs, 400 hp, 4 processes at a time
 tools/simulate.sh 100 --jobs 8     # a hundred of them
-tools/simulate.sh 50 --immortal    # nothing can kill them: the deepest reach into acts II/III
+tools/simulate.sh 50 --immortal    # nothing can kill them: the deepest reach into the later acts
 tools/simulate.sh 50 --real        # the game's own health (most runs die in act I)
 ```
 Logs land in `~/Desktop/bnb-run-logs/<timestamp>/run-<seed>.log`, one process per run so a crash costs that
@@ -78,8 +78,9 @@ The same simulator can be given a POLICY — 17 weights that decide which card i
 is over, which enemy to hit, which room to walk into and what to buy (`SimPolicy` in `RunSimulator.cs`).
 `tools/train.py` breeds them against the balance question itself: starting at 9999 hp, **how much damage does
 the game take off a runner on the way to a named act's boss?** Which act is `--target-act`, and it defaults
-to the last one the game has (`LAST_ACT` in `train.py`); the simulator's own fitness line names no act, only
-the per-act table (`actBossDamage`). Least taken wins; never arriving is worse than any arrival. Damage ADDED UP, not health remaining: no act heals you at its end, but the content heals
+to the last one the game has (`LAST_ACT` in `train.py`, Act V since V-0 — though while Act V's gods are still
+placeholders, `--target-act 4` is the measurement that means anything); the simulator's own fitness line names
+no act, only the per-act table (`actBossDamage`). Least taken wins; never arriving is worse than any arrival. Damage ADDED UP, not health remaining: no act heals you at its end, but the content heals
 plenty (one act-II door heals to full), and remaining health would credit a runner for the door it happened
 to walk through — on seed 1000 that reads 540 lost where 1075 was actually taken.
 ```
