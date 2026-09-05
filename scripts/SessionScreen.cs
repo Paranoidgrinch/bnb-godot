@@ -1189,7 +1189,15 @@ public partial class SessionScreen : Control
         else if (session.IsAwaitingNodeChoice)
             RenderNodeFork(session);
         else if (session.IsAwaitingInterlude)
-            RenderInterlude(session);
+        {
+            // NO BETWEEN-ROOMS SCREEN ANY MORE. It existed to give the run a moment it could be saved at, and
+            // the run now saves itself; all it did besides was make the player press Continue to be allowed to
+            // look at the map. So it is walked straight through, and what it offered — consumables, and the
+            // map itself — is on the room-choice screen the player lands on instead.
+            session.Continue();
+            GameHost.Instance.AutoSave();
+            return;
+        }
         else if (Play.CombatDriver?.Current is { } combat)
             RenderCombatGraphical(session, combat);
         else if (session.IsComplete)
@@ -1275,7 +1283,8 @@ public partial class SessionScreen : Control
         {
             var id = choice.Id;
             var text = Say(choice.TextKey ?? id);
-            AddButton(text, () => session.Pick(id)).TooltipText = Glossary.Explain(null, text);
+            AddButton(text, () => { session.Pick(id); GameHost.Instance.AutoSave(); })
+                .TooltipText = Glossary.Explain(null, text);
         }
     }
 
@@ -1469,7 +1478,14 @@ public partial class SessionScreen : Control
         ActHeading(session);
         Title("Choose your path");
         Muted("Pick a highlighted room to travel to.");
-        AddMap(session.PendingNodeChoices.Select(n => n.Id.Value), session.PickNode);
+        // What the between-rooms screen used to offer, now that there is no between-rooms screen.
+        foreach (var consumable in session.Run.Consumables.Where(c => c.UseEffects.Count > 0))
+        {
+            var id = consumable.Id;
+            AddButton($"Use {consumable.DefinitionId.Value}", () => session.UseConsumable(id));
+        }
+        AddMap(session.PendingNodeChoices.Select(n => n.Id.Value),
+            node => { session.PickNode(node); GameHost.Instance.AutoSave(); });
     }
 
     private void RenderInterlude(InteractiveRunSession session)
@@ -1771,7 +1787,13 @@ public partial class SessionScreen : Control
         var controls = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         controls.AddThemeConstantOverride("separation", 10);
         var endTurn = new Button { Text = "End turn ▸" };
-        endTurn.Pressed += () => { _armedCard = null; play.CombatDriver.EndTurn(); SurfaceNewProblems(); };
+        endTurn.Pressed += () =>
+        {
+            _armedCard = null;
+            play.CombatDriver.EndTurn();
+            SurfaceNewProblems();
+            GameHost.Instance.AutoSave();
+        };
         controls.AddChild(endTurn);
         foreach (var consumable in session.Run.Consumables.Where(c => c.CombatUse is not null))
         {

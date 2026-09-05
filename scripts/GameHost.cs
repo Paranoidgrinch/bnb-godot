@@ -72,6 +72,13 @@ public partial class GameHost : Godot.Node
     public bool HasSave => Godot.FileAccess.FileExists(SavePath);
 
     // Save the live run (valid only at a clean interlude — the engine guards this and reports why not).
+    // THE RUN SAVES ITSELF. Called at every point the player has settled something — a turn handed over, an
+    // option taken, a room chosen — because the engine can now capture a fight mid-flight, so there is no
+    // longer a moment the game has to ask them to stop at. Failures are swallowed on purpose: an autosave is a
+    // convenience, and a run must never be interrupted to be told one did not land. The manual Save run button
+    // still reports, because that one was asked for.
+    public void AutoSave() => SaveRun();
+
     public string? SaveRun()
     {
         var json = Play?.SaveJson();
