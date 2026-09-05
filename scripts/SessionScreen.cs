@@ -1237,6 +1237,9 @@ public partial class SessionScreen : Control
         var label = new Label
         {
             Text = text,
+            // A title card can name a rule — Act V's roll call is three gods called after the things they
+            // do — and the seconds it is up are seconds a player may reach for one of those names.
+            TooltipText = Glossary.Explain(null, text),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
@@ -1924,9 +1927,14 @@ public partial class SessionScreen : Control
         // The name WRAPS. Without that it is the widest thing in the column and its full length becomes the
         // column's floor, which quietly defeats every attempt to make a crowd fit: "Lower Appellate Step" is
         // 190 px of minimum width that no share-out can argue with.
+        // A body's NAME can itself be a rule — Act V's gods are named for the thing they do, and "Nisaba,
+        // Keeper of the First Tablet" says "the First Tablet" to a player who has never seen one. So the name
+        // carries the glossary hover for whatever it names, and nothing at all when it names nothing.
+        var named = Name(combatant, combat);
         var name = new Label
         {
-            Text = Name(combatant, combat),
+            Text = named,
+            TooltipText = Glossary.Explain(null, named),
             HorizontalAlignment = HorizontalAlignment.Center,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             CustomMinimumSize = new Vector2(width, 0),
@@ -2436,7 +2444,12 @@ public partial class SessionScreen : Control
         if (extra is null || extra.GetValueOrDefault("divineRule") is not { Length: > 0 } rule)
             return null;
 
-        var panel = new PanelContainer();
+        var title = extra.GetValueOrDefault("divineRuleTitle") ?? "The divine rule";
+
+        // The panel carries the rule as its HOVER as well as in its body. A Label lets the pointer through,
+        // so the heading is hovered as whatever is beneath it — this panel — and a player who reaches for the
+        // title of the area gets the same sentence rather than nothing at all.
+        var panel = new PanelContainer { TooltipText = $"{title} — {rule}" };
         panel.AddThemeStyleboxOverride("panel",
             MoonvineTheme.Panel(MoonvineTheme.BgPanelStrong, MoonvineTheme.AccentLight, 8));
         var pad = new MarginContainer();
@@ -2450,7 +2463,7 @@ public partial class SessionScreen : Control
 
         var heading = new Label
         {
-            Text = extra.GetValueOrDefault("divineRuleTitle") ?? "The divine rule",
+            Text = title,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
         heading.AddThemeFontSizeOverride("font_size", 16);
