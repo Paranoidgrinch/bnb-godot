@@ -517,13 +517,30 @@ public partial class SessionScreen : Control
     private async System.Threading.Tasks.Task SmokeBoss(int act)
     {
         var wanted = BossNameArgument();
-        await WalkUntil(
-            stop: () => Session is { } s && s.Run.ActNumber >= act
-                && Play?.CombatDriver?.Current is not null && AtABoss()
-                && (wanted.Length == 0 || Enemies().Any(e =>
-                    e.DefinitionId.value.Contains(wanted, StringComparison.OrdinalIgnoreCase))),
-            prefer: node => node.HasTag(MapNodeTags.Boss),
-            budget: 9000);
+
+        bool Found() => Session is { } s && s.Run.ActNumber >= act
+            && Play?.CombatDriver?.Current is not null && AtABoss()
+            && (wanted.Length == 0 || Enemies().Any(e =>
+                e.DefinitionId.value.Contains(wanted, StringComparison.OrdinalIgnoreCase)));
+
+        await WalkUntil(stop: Found, prefer: node => node.HasTag(MapNodeTags.Boss), budget: 9000);
+
+        // A NAMED boss may not be in this run at all: Act V fields THREE OF SIX gods, in an order the seed
+        // picks, so asking for one god and walking one run is asking for a one-in-two chance. The crowd probe
+        // learnt this first — one seed is not a search — and a god is the sharper case, because the whole
+        // point of aiming the probe is to look at a fight that is not the one the default seed happens to
+        // hold.
+        if (!Found() && wanted.Length > 0)
+            foreach (var seed in new[] { 5, 7, 1, 2, 3, 4, 6, 8, 9, 11 })
+            {
+                GameHost.Instance.StartNewRun(seed, health: 9999);
+                await WalkUntil(stop: Found, prefer: node => node.HasTag(MapNodeTags.Boss), budget: 9000);
+                if (Found())
+                {
+                    GD.Print($"  '{wanted}' found on seed {seed}");
+                    break;
+                }
+            }
 
         // Pass the requested rounds WITHOUT attacking: the probe is unkillable, so ending the turn is the one
         // way to let the fight develop without also ending it.
@@ -549,6 +566,9 @@ public partial class SessionScreen : Control
         // …and the same question for the stamp a fight puts on the CARDS. Inanna's whole decision is "which
         // of these is hers", and a mark the engine can see and the player cannot is not a decision.
         GD.Print($"  card stamps: {StampsOnScreen()}");
+        // …and how far into a boss's future the screen is actually showing. Nanshe's tablet promises three
+        // days at once, and until this step the screen drew one whatever the player had been granted.
+        GD.Print($"  forecast: {ForecastOnScreen()}");
         if (combat is not null)
             foreach (var body in combat.State.Combatants)
                 GD.Print($"  [{Name(body, combat)}] {StatusLine(combat, body)}");
@@ -578,6 +598,33 @@ public partial class SessionScreen : Control
         return labels.Count == 0 && marked == 0
             ? "none in hand"
             : $"{labels.Count} shown of {marked} marked — {string.Join(", ", labels.Distinct())}";
+    }
+
+    // How many of an enemy's coming actions are ON THE SCREEN, against how many the engine is willing to
+    // project. The two numbers disagreeing is the whole failure: a sight the player was granted and the
+    // screen never drew.
+    private string ForecastOnScreen()
+    {
+        if (Play?.CombatDriver?.Current is not { } fight)
+            return "no fight";
+
+        var enemy = fight.State.Combatants.FirstOrDefault(c => c.Id != fight.HeroId && c.IsAlive);
+        if (enemy is null)
+            return "no body";
+
+        var projected = fight.UpcomingIntentsFor(enemy.Id);
+        var labels = new List<string>();
+        void Collect(Godot.Node node)
+        {
+            if (node is Label label && projected.Any(i => label.Text.EndsWith(i.Label, StringComparison.Ordinal)))
+                labels.Add(label.Text.Replace("\n", " / "));
+            foreach (var child in node.GetChildren())
+                Collect(child);
+        }
+        if (_combatRoot is not null)
+            Collect(_combatRoot);
+
+        return $"{labels.Count} shown of {projected.Count} projected — {string.Join(" · ", labels)}";
     }
 
     // What the Divine Rule Area currently says, read out of the LIVE labels rather than out of the document,
@@ -2045,20 +2092,36 @@ public partial class SessionScreen : Control
             energy.AddThemeColorOverride("font_color", MoonvineTheme.Warning);
             box.AddChild(energy);
         }
-        else if (combatant.IsAlive && combat.UpcomingIntentFor(combatant.Id) is { } intent)
+        else if (combatant.IsAlive)
         {
-            var intentLabel = new Label
+            // WHAT IT IS ABOUT TO DO, AND AS FAR PAST THAT AS THE PLAYER CAN SEE. The engine has always been
+            // able to project an enemy's next several actions for a hero who has been granted the sight
+            // (the Article of Full Disclosure; Nanshe's Ration Tablet, which shows all three days of a
+            // Distribution before the first of them) — and this screen only ever drew the first one, so a
+            // faculty the player had been given reached nothing. The extra days are drawn dimmer and
+            // numbered, because they are a forecast and the first line is the promise.
+            var days = combat.UpcomingIntentsFor(combatant.Id);
+            for (var ahead = 0; ahead < days.Count; ahead++)
             {
-                Text = $"{RogueDeck.Scenario.Authoring.IntentDisplay.Glyph(intent.Kind)} "
-                    + $"{RogueDeck.Scenario.Authoring.IntentDisplay.KindWord(intent.Kind)}\n{intent.Label}",
-                HorizontalAlignment = HorizontalAlignment.Center,
-                AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                // What it is about to do names things; hovering says what they are.
-                MouseFilter = MouseFilterEnum.Stop,
-                TooltipText = Glossary.Explain(null, intent.Label),
-            };
-            intentLabel.AddThemeColorOverride("font_color", MoonvineTheme.IntentColor(intent.Kind));
-            box.AddChild(intentLabel);
+                var intent = days[ahead];
+                var head = ahead == 0
+                    ? $"{RogueDeck.Scenario.Authoring.IntentDisplay.Glyph(intent.Kind)} "
+                        + RogueDeck.Scenario.Authoring.IntentDisplay.KindWord(intent.Kind)
+                    : $"then {new string('I', ahead + 1)}";
+                var intentLabel = new Label
+                {
+                    Text = $"{head}\n{intent.Label}",
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                    // What it is about to do names things; hovering says what they are.
+                    MouseFilter = MouseFilterEnum.Stop,
+                    TooltipText = Glossary.Explain(null, intent.Label),
+                };
+                intentLabel.AddThemeColorOverride(
+                    "font_color",
+                    ahead == 0 ? MoonvineTheme.IntentColor(intent.Kind) : MoonvineTheme.TextMuted);
+                box.AddChild(intentLabel);
+            }
         }
 
         if (StatusChips(combat, combatant) is { } chips)

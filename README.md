@@ -39,6 +39,11 @@ godot --headless -- --smoke-marathon # play the WHOLE game (all five acts) and r
 godot --headless -- --smoke-tooltips # audit a combat screen: is anything NAMED but not explained?
 godot --headless -- --smoke-boss 5 --boss inanna --rounds 12   # a NAMED boss, N rounds in
 ```
+The boss probe reads three things back out of the LIVE tree rather than out of the document, because a
+headless run cannot take a screenshot and "the method returned" is not "it is on screen": the **Divine Rule
+Area**, the **card stamps** in hand, and the **forecast** — how many of the enemy's coming actions are drawn
+against how many the engine is willing to project for a hero who has been granted the sight.
+
 Every screenshot check below also prints its own tooltip audit, so "a name with no explanation" cannot
 quietly reappear on any screen.
 Windowed screenshot checks (each walks to the room it names, then captures it to `user://`):
