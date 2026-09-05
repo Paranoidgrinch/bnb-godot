@@ -516,11 +516,23 @@ public partial class SessionScreen : Control
     // walking there is the only way to see them — the fight cannot report its own layout.
     private async System.Threading.Tasks.Task SmokeBoss(int act)
     {
+        var wanted = BossNameArgument();
         await WalkUntil(
             stop: () => Session is { } s && s.Run.ActNumber >= act
-                && Play?.CombatDriver?.Current is not null && AtABoss(),
+                && Play?.CombatDriver?.Current is not null && AtABoss()
+                && (wanted.Length == 0 || Enemies().Any(e =>
+                    e.DefinitionId.value.Contains(wanted, StringComparison.OrdinalIgnoreCase))),
             prefer: node => node.HasTag(MapNodeTags.Boss),
-            budget: 5000);
+            budget: 9000);
+
+        // Pass the requested rounds WITHOUT attacking: the probe is unkillable, so ending the turn is the one
+        // way to let the fight develop without also ending it.
+        for (var round = 0; round < BossRoundsArgument() && Play?.CombatDriver?.Current is { } waiting; round++)
+        {
+            if (waiting.IsHeroTurn)
+                Play.CombatDriver.EndTurn();
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
 
         Rebuild();
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -534,12 +546,38 @@ public partial class SessionScreen : Control
         // screenshot, so this is the only way to say that the one UI surface Act V's design REQUIRES is
         // actually on the screen and not merely a method that returned without throwing.
         GD.Print($"  divine rule area: {DivineRuleOnScreen() ?? "none"}");
+        // …and the same question for the stamp a fight puts on the CARDS. Inanna's whole decision is "which
+        // of these is hers", and a mark the engine can see and the player cannot is not a decision.
+        GD.Print($"  card stamps: {StampsOnScreen()}");
         if (combat is not null)
             foreach (var body in combat.State.Combatants)
                 GD.Print($"  [{Name(body, combat)}] {StatusLine(combat, body)}");
 
         ReportTooltips($"boss{act}");
         await CaptureThenQuit($"smoke-boss{act}.png");
+    }
+
+    // Which stamps are on the hand as DRAWN — the labels themselves, not the marks the state carries. A card
+    // the engine has marked and the screen has not is exactly the failure this reports.
+    private string StampsOnScreen()
+    {
+        var labels = new List<string>();
+        void Collect(Godot.Node node)
+        {
+            if (node is Label label && CardMarks.Values.Any(m => m.Label == label.Text))
+                labels.Add(label.Text);
+            foreach (var child in node.GetChildren())
+                Collect(child);
+        }
+        if (_combatRoot is not null)
+            Collect(_combatRoot);
+
+        var marked = Play?.CombatDriver?.Current is { } fight
+            ? fight.Hand.Count(c => c.Marks.Any(m => CardMarks.ContainsKey(m.value)))
+            : 0;
+        return labels.Count == 0 && marked == 0
+            ? "none in hand"
+            : $"{labels.Count} shown of {marked} marked — {string.Join(", ", labels.Distinct())}";
     }
 
     // What the Divine Rule Area currently says, read out of the LIVE labels rather than out of the document,
@@ -572,6 +610,28 @@ public partial class SessionScreen : Control
         var args = OS.GetCmdlineUserArgs();
         var at = Array.IndexOf(args, "--smoke-boss");
         return at >= 0 && at + 1 < args.Length && int.TryParse(args[at + 1], out var act) ? act : 1;
+    }
+
+    // WHICH boss, when the act has several. Act V is three of six gods in an order the seed picks, so
+    // "--smoke-boss 5" always lands on whichever came first and the other two are unreachable — which is no
+    // use to a probe that exists to look at ONE fight's screen. `--boss <fragment>` walks past the gods it
+    // does not want (the probe is unkillable, so walking past means winning) until it is standing in front
+    // of the one it does. Empty = the first boss of the act, as before.
+    private static string BossNameArgument()
+    {
+        var args = OS.GetCmdlineUserArgs();
+        var at = Array.IndexOf(args, "--boss");
+        return at >= 0 && at + 1 < args.Length ? args[at + 1] : "";
+    }
+
+    // HOW LONG TO STAND THERE before the screen is read. A boss's opening round shows none of what makes it a
+    // boss: Inanna has claimed nothing yet, Nisaba's tablet is at its first counts, and a probe reporting
+    // round 1 is reporting the least interesting screen the fight has. `--rounds N` passes N turns first.
+    private static int BossRoundsArgument()
+    {
+        var args = OS.GetCmdlineUserArgs();
+        var at = Array.IndexOf(args, "--rounds");
+        return at >= 0 && at + 1 < args.Length && int.TryParse(args[at + 1], out var rounds) ? rounds : 0;
     }
 
     private bool AtABoss() =>
@@ -2048,6 +2108,16 @@ public partial class SessionScreen : Control
     }
 
     // A hand/choice card as a black block: name, cost, and its ability text. `onClick` arms/plays it.
+    // The marks a card may wear on its face. Content places marks freely and most of them are plumbing; these
+    // are the ones a fight asks the player to act on.
+    private static readonly Dictionary<string, (string Label, string Explanation)> CardMarks =
+        new(StringComparer.Ordinal)
+        {
+            ["eanna_claim"] = ("PROPERTY OF EANNA",
+                "Inanna has entered this copy in the Eanna Ledger. Its first play each turn costs 1 Energy "
+                + "less, and every use of it writes 1 Temple Due. Dedicating it settles 4."),
+        };
+
     private Control CardBlockButton(InteractiveCombat combat, CombatantState hero, CardInstance card, bool highlighted, Action onClick)
     {
         var definition = card.DefinitionId.value;
@@ -2076,6 +2146,19 @@ public partial class SessionScreen : Control
         cost.AddThemeColorOverride("font_color", MoonvineTheme.Warning);
         cost.AddThemeFontSizeOverride("font_size", 13);
         header.AddChild(cost);
+        // WHAT HAS BEEN DONE TO THIS COPY, and not what kind of card it is. A per-instance mark is content's
+        // way of making one copy of a card special — Inanna's claim is the first that the PLAYER is asked to
+        // plan around, and a stamp that only the engine can see is a rule nobody was told. Anything not named
+        // in the table below is a mark the player was never meant to read, and stays invisible.
+        foreach (var mark in card.Marks)
+        {
+            if (!CardMarks.TryGetValue(mark.value, out var stamp))
+                continue;
+            var badge = new Label { Text = stamp.Label, TooltipText = stamp.Explanation };
+            badge.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
+            badge.AddThemeFontSizeOverride("font_size", 10);
+            header.AddChild(badge);
+        }
         column.AddChild(header);
 
         var name = new Label { Text = CardName(definition), AutowrapMode = TextServer.AutowrapMode.WordSmart };

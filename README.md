@@ -37,6 +37,7 @@ godot --headless -- --smoke-timing  # per-action latency (~17 ms/action)
 godot --headless -- --smoke-statuses # carried state reads as its authored name, not its id
 godot --headless -- --smoke-marathon # play the WHOLE game (all five acts) and report rooms + latency
 godot --headless -- --smoke-tooltips # audit a combat screen: is anything NAMED but not explained?
+godot --headless -- --smoke-boss 5 --boss inanna --rounds 12   # a NAMED boss, N rounds in
 ```
 Every screenshot check below also prints its own tooltip audit, so "a name with no explanation" cannot
 quietly reappear on any screen.
