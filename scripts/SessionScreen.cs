@@ -2260,7 +2260,11 @@ public partial class SessionScreen : Control
     private Control CardBlockButton(InteractiveCombat combat, CombatantState hero, CardInstance card, bool highlighted, Action onClick)
     {
         var definition = card.DefinitionId.value;
-        var affordable = CanPay(hero, definition);
+        // TWO SEPARATE REASONS A CARD CANNOT BE PLAYED, and the card face has to show both. The purse is one
+        // the screen can work out for itself; a RULE that forbids the play is not — a decree that caps the
+        // turn at four cards, or forbids a kind following its own kind, makes the fifth card genuinely
+        // unavailable, and a card refused only when it is clicked is a rule the player was never shown.
+        var affordable = CanPay(hero, definition) && combat.CanPlay(card.Id);
         var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definition);
 
         // The hover sits on the CARD, not only on the click overlay: wherever the pointer lands on it — the
