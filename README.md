@@ -38,6 +38,11 @@ godot --headless -- --smoke-statuses # carried state reads as its authored name,
 godot --headless -- --smoke-marathon # play the WHOLE game (all five acts) and report rooms + latency
 godot --headless -- --smoke-tooltips # audit a combat screen: is anything NAMED but not explained?
 godot --headless -- --smoke-boss 5 --boss inanna --rounds 12   # a NAMED boss, N rounds in
+godot --headless -- --smoke-boss 5 --boss nanna_sin --rounds 6 --plays 3  # …playing 3 cards a round,
+                                                              # for a fight whose state is what the player did
+godot --headless -- --smoke-boss 5 --boss nanna_sin --seed 1 --rounds 6 --plays 3  # …on a KNOWN seed: one
+                                                              # walk instead of one per seed searched
+                                                              # (nanna_sin is on 1, inanna on 5)
 ```
 The boss probe reads three things back out of the LIVE tree rather than out of the document, because a
 headless run cannot take a screenshot and "the method returned" is not "it is on screen": the **Divine Rule

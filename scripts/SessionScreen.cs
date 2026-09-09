@@ -518,6 +518,12 @@ public partial class SessionScreen : Control
     {
         var wanted = BossNameArgument();
 
+        // A KNOWN SEED SKIPS THE SEARCH. Finding a named god costs one whole five-act walk per seed tried,
+        // so the search below is minutes of walking to reach a fight somebody already knows where to find.
+        // `--seed <n>` is the answer written down: nanna_sin is on 1, inanna on 5.
+        if (BossSeedArgument() is { } pinned)
+            GameHost.Instance.StartNewRun(pinned, health: 9999);
+
         bool Found() => Session is { } s && s.Run.ActNumber >= act
             && Play?.CombatDriver?.Current is not null && AtABoss()
             && (wanted.Length == 0 || Enemies().Any(e =>
@@ -530,7 +536,7 @@ public partial class SessionScreen : Control
         // learnt this first — one seed is not a search — and a god is the sharper case, because the whole
         // point of aiming the probe is to look at a fight that is not the one the default seed happens to
         // hold.
-        if (!Found() && wanted.Length > 0)
+        if (!Found() && wanted.Length > 0 && BossSeedArgument() is null)
             foreach (var seed in new[] { 5, 7, 1, 2, 3, 4, 6, 8, 9, 11 })
             {
                 GameHost.Instance.StartNewRun(seed, health: 9999);
@@ -544,10 +550,53 @@ public partial class SessionScreen : Control
 
         // Pass the requested rounds WITHOUT attacking: the probe is unkillable, so ending the turn is the one
         // way to let the fight develop without also ending it.
+        //
+        // …unless the fight's state is a consequence of what the PLAYER does, which `--plays N` is for.
+        // Inanna claims a card whether or not anybody moves, so watching her needed nothing; Nanna-Sin counts
+        // the Nth card played in a turn, and a probe that never plays a card counts nothing and reports an
+        // empty hand — which would read as "the stamp never reaches the screen" when the truth is that the
+        // probe never gave it anything to stamp.
         for (var round = 0; round < BossRoundsArgument() && Play?.CombatDriver?.Current is { } waiting; round++)
         {
             if (waiting.IsHeroTurn)
-                Play.CombatDriver.EndTurn();
+            {
+                for (var played = 0; played < BossPlaysArgument(); played++)
+                {
+                    if (Play?.CombatDriver is not { } driver || driver.Current is not { } fight
+                        || !fight.IsHeroTurn)
+                        break;
+                    // A card that asks a question parks the whole fight until it is answered — and an
+                    // unanswered question refuses every End Turn after it, so a probe that plays without
+                    // answering passes one round and reports six.
+                    if (driver.PendingOptionChoice is { } options)
+                    {
+                        driver.SupplyOptionChoice(
+                            [.. Enumerable.Range(0, Math.Min(driver.PendingOptionChoiceCount, options.Count))]);
+                        continue;
+                    }
+                    if (driver.PendingCardChoice is { } cards)
+                    {
+                        driver.SupplyCardChoice([.. cards.Take(driver.PendingCardChoiceCount).Select(c => c.Id)]);
+                        continue;
+                    }
+                    var hand = fight.State.GetCombatant(fight.HeroId);
+                    var playable = fight.Hand.FirstOrDefault(c =>
+                        !c.DefinitionId.value.Contains("red_tape")
+                        && !c.DefinitionId.value.Contains("unsigned_form")
+                        && CanPay(hand, c.DefinitionId.value));
+                    if (playable is null)
+                        break;
+                    driver.PlayCard(playable.Id, fight.State.Combatants
+                        .FirstOrDefault(c => c.Id != fight.HeroId && c.IsAlive
+                            && c.TeamId == StandardCombatIds.EnemyTeam)?.Id);
+                    await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                }
+
+                if (Play?.CombatDriver is { Current: { IsHeroTurn: true } }
+                    && Play.CombatDriver.PendingOptionChoice is null
+                    && Play.CombatDriver.PendingCardChoice is null)
+                    Play.CombatDriver.EndTurn();
+            }
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         }
 
@@ -679,6 +728,24 @@ public partial class SessionScreen : Control
         var args = OS.GetCmdlineUserArgs();
         var at = Array.IndexOf(args, "--rounds");
         return at >= 0 && at + 1 < args.Length && int.TryParse(args[at + 1], out var rounds) ? rounds : 0;
+    }
+
+    // WHICH SEED to walk, when the caller already knows where the fight is. Without it a named boss costs a
+    // full game walk per seed until one holds them; with it, one walk.
+    private static int? BossSeedArgument()
+    {
+        var args = OS.GetCmdlineUserArgs();
+        var at = Array.IndexOf(args, "--seed");
+        return at >= 0 && at + 1 < args.Length && int.TryParse(args[at + 1], out var seed) ? seed : null;
+    }
+
+    // HOW MANY CARDS TO PLAY on each of those rounds, default none. See the walk above: some fights only
+    // put anything on the screen once the player has done something.
+    private static int BossPlaysArgument()
+    {
+        var args = OS.GetCmdlineUserArgs();
+        var at = Array.IndexOf(args, "--plays");
+        return at >= 0 && at + 1 < args.Length && int.TryParse(args[at + 1], out var plays) ? plays : 0;
     }
 
     private bool AtABoss() =>
@@ -2179,6 +2246,15 @@ public partial class SessionScreen : Control
             ["eanna_claim"] = ("PROPERTY OF EANNA",
                 "Inanna has entered this copy in the Eanna Ledger. Its first play each turn costs 1 Energy "
                 + "less, and every use of it writes 1 Temple Due. Dedicating it settles 4."),
+            // Nanna-Sin's two stamps. The whole decision his fight asks — which action should return when the
+            // count comes again — is made on the cards, so both of them have to be legible ON the card.
+            ["moon_counted"] = ("COUNTED",
+                "Nanna-Sin counted this copy. When the Lunar Count that took it comes round again, a free "
+                + "copy of it is in your hand for that turn."),
+            ["lunar_echo"] = ("LUNAR ECHO",
+                "A copy the moon returned. It costs nothing this turn and is gone at the end of it — and "
+                + "under the Full Moon it happens a second time at half strength. It cannot itself be "
+                + "counted, and playing it does not take the count from a card that can."),
         };
 
     private Control CardBlockButton(InteractiveCombat combat, CombatantState hero, CardInstance card, bool highlighted, Action onClick)
