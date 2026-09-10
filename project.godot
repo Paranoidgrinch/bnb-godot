@@ -20,8 +20,16 @@ GameHost="*res://scripts/GameHost.cs"
 
 [display]
 
+; THE DESIGN CANVAS. Every coordinate in the frontend is a unit of THIS 1280 x 720 page — a card is 134 x 190
+; here and at every window size, because `canvas_items` scales the whole page instead of the game doing
+; arithmetic. `expand` means a window that is not 16:9 gets a WIDER (or taller) page rather than black bars,
+; so an ultrawide screen hands the extra room to the combat pane; that is why the pane is built out of
+; anchored regions (SessionScreen) and not measured against 1280. The player's own choices — window size,
+; fullscreen, and an interface scale on top of all of it — live in scripts/DisplaySettings.cs.
 window/size/viewport_width=1280
 window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 
 [importer_defaults]
 
