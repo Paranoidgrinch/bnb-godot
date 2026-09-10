@@ -108,6 +108,36 @@ public static class MoonvineTheme
         _ => TextSoft,
     };
 
+    // ── the relic shelf: ONE FRAME PER POOL ──────────────────────────────────────
+    // These four are not ours to choose. The visual design canon fixes them (§10.4 "Pool frames and color
+    // identity"): Normal a thin slate-gray frame, Shop a copper one, Event pale violet, Boss dark purple with
+    // antique gold — and the elite canon (§2) adds the sixth by describing the Elite frame as *a plainer boss
+    // frame*: the same ground, one gold line instead of two, and a gold a step dimmer. The mimic is drawn in
+    // that canon too, so it wears the same frame; its four grades are one object at four sizes.
+    //
+    // ⚠ THE POOL IS THE FIRST THING READ AND THE OBJECT THE SECOND. That is the canon's whole point about a
+    // shelf, and it is why the frame is the pool and never the rarity: a relic is not "rare", it was WON
+    // somewhere, and where it was won is the only thing 69 squares in a column can still say at 46 px.
+    public static readonly Color BossGround = new("1c0d2c"); // the canon's dark purple, run near-black at the user's call
+    public static readonly Color Slate = new("6f7480");      // the quiet frame the canon asks for around an ordinary relic
+    public static readonly Color GoldDim = new("a8861d");    // antique gold ONE STEP DOWN, so an elite frame is not a button
+
+    // A pool's frame: the ground it sits on, the line around it, how heavy that line is, and whether it is
+    // doubled. Boss is the only doubled one — with gold now the UI accent, gold alone no longer says "boss",
+    // so the rank has to be carried by the weight of the frame and the purple under it.
+    public readonly record struct PoolFrame(Color Ground, Color Edge, int Width, bool Doubled);
+
+    public static PoolFrame RelicFrame(string? pool) => pool switch
+    {
+        "shop" => new PoolFrame(BgRaised, Copper, 1, false),
+        "event" => new PoolFrame(BgRaised, Arcane, 1, false),
+        "boss" => new PoolFrame(BossGround, Accent, 2, true),
+        "elite" or "mimic" => new PoolFrame(BossGround, GoldDim, 1, false),
+        // "normal", and anything a later document invents: the quiet frame, which is the right answer for a
+        // pool nobody has drawn yet — it says "a relic" without claiming a rank it may not have.
+        _ => new PoolFrame(BgRaised, Slate, 1, false),
+    };
+
     // ⚠ THE DEFAULT BORDER IS THE HAIRLINE, NOT THE ACCENT. Before, every panel in the game was outlined in
     // the accent at 30 %, which made the whole screen look equally clickable. A frame in gold now MEANS
     // something, so a caller that wants one passes it.

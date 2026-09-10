@@ -470,7 +470,7 @@ a relic shelf drawn over a pool of 47 things that have no canon entry, no art br
 shelf that documents a bug — and because V-7's first real balance numbers should be measured against the
 relics the game is supposed to have.
 
-## Phase D4 — the relic strip
+## Phase D4 — the relic strip  ✔ BUILT 2026-09-10
 
 **Deliverable:** the right edge stops being a bullet list. Relics are a wrapping grid of small framed
 squares; hovering one explains it.
@@ -482,6 +482,73 @@ squares; hovering one explains it.
 - Consumables get the same treatment for free; the deck list stays a list (it is a list of many, not a shelf).
 - The strip must survive **69 relics on one screen** (an Act-V run can hold a lot): it wraps and scrolls, and
   a probe proves it at a hostile count rather than at four.
+
+### What was actually built (2026-09-10)
+
+**The one thing the plan did not have: the pool never left the converter.** The frame is not a decision the
+frontend can make — the canon fixes it per pool (§10.4) and the elite canon adds the sixth (§2) — but a
+relic arrives in Godot as an id, a display name and a rules line. `Presentation.Relics[id]` carried `Art`,
+`FlavorText` and `Rarity`, and rarity is *not* the pool: a Common relic can be a shop relic, and the shelf
+would have been drawn in the wrong six colours with nothing anywhere to notice. **`Frame` is the export
+contract's own slot for exactly this** ("card-frame / border style"), the engine ignores it, and the pool
+name is the value because in this game the pool IS the frame. One line in `BlueprintAssembler`, and the
+regenerated document differs from the old one in **210 leaves and nothing else** — every one of them a
+`Presentation/Relics/*/Frame` going from `null` to a pool name, 0 keys added, 0 keys removed, 0 other values
+touched. (The diff was taken because D3's rarity-curve finding made it a habit, not because anything was
+suspected.) `RelicFrameTests` counts every pool across the seam: 69 boss · 50 normal · 38 elite · 25 event ·
+24 shop · 4 mimic.
+
+**The tile.** `CardVisuals.Tile` is the card face's construction reused for a much smaller object: a plain
+`Control` root that reports nothing but the size it was handed, a `StyleBoxFlat` ground carrying the pool's
+frame, and one clipped window holding either the picture or the code. 50 px — five to a row in the 320 px
+sidebar with room for the gaps and the scrollbar, and still large enough that a painted object will read.
+The six frames, measured off the screenshot pixel by pixel rather than eyeballed:
+
+| pool | ground | frame | canon |
+|---|---|---|---|
+| normal | `#1b0a0e` | `#6f7480`, 1 px | thin slate-gray, "frame quiet" |
+| shop | `#1b0a0e` | `#b87333`, 1 px | copper, slightly heavier than Normal |
+| event | `#1b0a0e` | `#b98fd0`, 1 px | pale violet, "the pool identifier" |
+| boss | `#1c0d2c` | `#c9a227`, 2 px **doubled** | dark purple + antique gold, epic |
+| elite | `#1c0d2c` | `#a8861d`, 1 px | *a plainer boss frame* — one gold line, gold a step down |
+| mimic | `#1c0d2c` | `#a8861d`, 1 px | drawn in the elite canon; four grades, one object |
+
+⚠ **The Boss frame had to stay double at 50 px.** Gold is now the UI accent, so gold alone no longer says
+"boss" — the canon's own warning — and the whole boss/elite relationship is *double line vs one*. Drawn hard
+against the outer line a second rail is not a second rail, it is a thicker one, so it is set one tile-width
+in at half weight. That reads as two rails at a glance and still leaves the window open.
+
+⚠⚠ **A SCROLLCONTAINER HANDS ITS CHILD A MINIMUM, NOT A WIDTH.** The third door into the same trap as D1's
+card minimum and D3's one-letter-per-line relic name. An `HFlowContainer`'s minimum width is one tile, and a
+`ScrollContainer` that is allowed to scroll sideways gives its child exactly that — so the shelf would have
+come out as a single column 69 squares tall, inside a sidebar that scrolled sideways to show it. Switching
+the sidebar's horizontal scrolling off is what makes the scroll stretch the shelf to the panel and lets it
+wrap. The probe prints `~N/row` and says **ONE COLUMN** in as many words if it ever regresses.
+
+⚠ **A block that fits by height can still be too wide.** An empty socket shows the slot code, and the ids
+are written as words (`conservators_thread`), so the tile sets them as words — an underscore is a line
+break. `FitBlock` asks whether the wrapped paragraph is short enough, and wrapping happens *between* words:
+a single word longer than the box never wraps, overflows sideways and is clipped to `onservato`. The size
+used is the smaller of two answers — the one that fits the block's height and the one that fits the longest
+word's width. Caught by looking at the first screenshot, not by reasoning.
+
+**The hover carries the name and the rules**, which is what the list carried, through the same
+`Glossary.Explain` — plus "(off)" for a relic that has been switched off, and that one is dimmed as an
+OBJECT the way an unaffordable card is, because it did not leave the shelf, it stopped working.
+
+### The probe
+
+`--smoke-shelf` puts the relics on rather than walking for them: what is being measured is the layout, and a
+layout does not care how a relic was earned. One from every pool before a second from any, so all six frames
+are on the shelf at any count — a strip filled with 69 boss relics would look right and prove that one frame
+works. Every seventh is switched off. At the hostile count:
+
+```
+smoke-shelf: worn=69 (asked 69, 9 switched off) tiles=69 rows=14 ~4/row
+             right=1238/1260 outside=no content=995 viewport=494 scrolls=yes error=none
+```
+
+and at a count a real run actually reaches (`--shelf 6`): `rows=2 … scrolls=no`, with the deck list under it.
 
 ---
 

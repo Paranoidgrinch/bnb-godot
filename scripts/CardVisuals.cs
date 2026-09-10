@@ -346,6 +346,133 @@ public static class CardVisuals
         return root;
     }
 
+    // ── the shelf ────────────────────────────────────────────────────────────────
+
+    // A RELIC IS NOT A CARD AND IS NOT A LINE OF TEXT. It is a small framed object on a shelf, and the whole
+    // point of a shelf is that you read it by SHAPE before you read a word of it — which is exactly what the
+    // visual canon builds its pool frames for (§10.4). A bullet list can hold sixty-nine relics; it cannot be
+    // glanced at, and glancing is the only thing anyone actually does with the right-hand edge of the screen.
+    //
+    // The tile is the same construction as the card face and for the same reason: a plain Control root that
+    // reports nothing but the size it was handed, everything inside it anchored and clipped. A shelf of these
+    // can therefore be handed to a wrapping container without any one of them arguing about the row height.
+    public readonly record struct RelicFace(string Id, string Title, string? Pool, string Tooltip, bool Off);
+
+    // 50 px: five to a row in the 320 px sidebar with room for the gaps and the scrollbar, and still large
+    // enough that a painted object reads. Under about 40 the art stops being an object and becomes a smudge.
+    public const int TileSize = 50;
+
+    public static Control Tile(RelicFace relic, float size = TileSize)
+    {
+        var frame = MoonvineTheme.RelicFrame(relic.Pool);
+        var root = new Control
+        {
+            CustomMinimumSize = new Vector2(size, size),
+            Size = new Vector2(size, size),
+            ClipContents = true,
+            TooltipText = relic.Tooltip,
+            MouseFilter = Control.MouseFilterEnum.Stop, // the hover IS the relic's rules text; it must be hit-testable
+        };
+
+        // The canon asks for clipped corners on the quiet frames — a chamfer, which a StyleBox cannot cut, so
+        // the nearest honest thing is a small radius that keeps the square reading as a square.
+        var ground = new Panel { MouseFilter = Control.MouseFilterEnum.Ignore };
+        var box = MoonvineTheme.Panel(frame.Ground, frame.Edge, radius: 3);
+        box.BorderWidthTop = box.BorderWidthBottom = box.BorderWidthLeft = box.BorderWidthRight = frame.Width;
+        box.ContentMarginLeft = box.ContentMarginRight = box.ContentMarginTop = box.ContentMarginBottom = 0;
+        ground.AddThemeStyleboxOverride("panel", box);
+        ground.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        root.AddChild(ground);
+
+        // The canon's Boss frame is a DOUBLE one and the Elite's a single line — the whole relationship
+        // between the two ranks. At 50 px a second line drawn hard against the first is not a second line,
+        // it is a thicker one, so it is set in one tile-width and drawn at half weight: enough to read as
+        // two rails at a glance, not enough to close up the window.
+        if (frame.Doubled)
+        {
+            var second = new Panel { MouseFilter = Control.MouseFilterEnum.Ignore };
+            // 0.8, not half: at 0.55 over the purple the second rail came out a dark gap rather than a
+            // rail. Where it lands is the point — a dim gold a shade off `GoldDim`, so the Boss frame reads
+            // as the Elite frame with a brighter line added around it, which is what the canon says it is.
+            var inner = MoonvineTheme.Panel(new Color(0, 0, 0, 0), new Color(frame.Edge, 0.8f), radius: 2);
+            inner.BorderWidthTop = inner.BorderWidthBottom = inner.BorderWidthLeft = inner.BorderWidthRight = 1;
+            inner.ContentMarginLeft = inner.ContentMarginRight = inner.ContentMarginTop = inner.ContentMarginBottom = 0;
+            second.AddThemeStyleboxOverride("panel", inner);
+            second.AnchorRight = second.AnchorBottom = 1f;
+            second.OffsetLeft = second.OffsetTop = frame.Width + 2f;
+            second.OffsetRight = second.OffsetBottom = -(frame.Width + 2f);
+            root.AddChild(second);
+        }
+
+        var inset = frame.Width + (frame.Doubled ? 5f : 2f);
+        var window = new Control
+        {
+            AnchorRight = 1f, AnchorBottom = 1f,
+            OffsetLeft = inset, OffsetTop = inset, OffsetRight = -inset, OffsetBottom = -inset,
+            ClipContents = true,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        root.AddChild(window);
+
+        if (RelicArt(relic.Id) is { } picture)
+        {
+            var image = new TextureRect
+            {
+                Texture = picture,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
+                // The relic briefs are painted square and land here at a fraction of their size — D3's third
+                // door into D1's glitter trap, and it needs both halves: the mip chain on the import and the
+                // filter on the draw.
+                TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+            };
+            image.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+            window.AddChild(image);
+        }
+        else
+        {
+            // AN EMPTY SOCKET STILL HAS TO BE TOLD APART FROM ITS NEIGHBOUR. The slot code is the only name a
+            // relic has before it is painted, and `an_underscore_is_a_word_break` — the ids are written as
+            // words, so setting them as words is what makes a 46 px square legible instead of one clipped
+            // line of ellipsis. The same code names the file that fills the socket (ART_SLOTS.md).
+            var code = relic.Id.Replace('_', '\n');
+            var label = new Label
+            {
+                Text = code,
+                ClipText = true,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+            };
+            label.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+            label.AddThemeConstantOverride("line_spacing", 0);
+            label.AddThemeColorOverride("font_color", new Color(MoonvineTheme.TextMuted, 0.75f));
+            // ⚠ A BLOCK THAT FITS BY HEIGHT CAN STILL BE TOO WIDE. FitBlock asks whether the wrapped
+            // paragraph is short enough, and wrapping happens between words — so a single word longer than
+            // the box (`conservators`, `commissionaire`) never wraps, overflows sideways and is clipped to
+            // "onservato". The size the tile uses is therefore the smaller of the two answers: the one that
+            // fits the block's HEIGHT and the one that fits the longest WORD's width.
+            var longest = code.Split('\n').OrderByDescending(w => w.Length).First();
+            var room = new Vector2(size - inset * 2, size - inset * 2);
+            label.AddThemeFontSizeOverride("font_size",
+                Math.Min(FitBlock(code, room, 9, 4), FitLine(longest, room.X, 9, 4)));
+            window.AddChild(label);
+        }
+
+        // "(off)" is information, and a relic that has been switched off is still ON THE SHELF — it did not
+        // leave, it stopped working, and it comes back. So it is dimmed as an object, exactly the way an
+        // unaffordable card is, rather than removed or recoloured.
+        if (relic.Off)
+        {
+            var scrim = new ColorRect { Color = new Color(MoonvineTheme.Bg, 0.6f), MouseFilter = Control.MouseFilterEnum.Ignore };
+            scrim.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+            root.AddChild(scrim);
+        }
+
+        return root;
+    }
+
     // A fixed, clipped window at a fraction of the card. Anchors and no offsets: the field keeps its place at
     // any card size, and a Control reports no minimum of its own, so nothing inside one can push the card out
     // of shape.
