@@ -48,21 +48,61 @@ public static class CardVisuals
     private static Texture2D Poster => _poster ??= GD.Load<Texture2D>("res://assets/cards/card-back.png");
     private static Texture2D Frame => _frame ??= GD.Load<Texture2D>("res://assets/cards/card-frame.png");
 
-    // ── the art slot ─────────────────────────────────────────────────────────────
-    // THE DROP-IN. A card's picture is `assets/cards/art/<id>.png` and nothing else: the card's id IS its art
-    // code, so filling a slot is copying a file in and needs no edit here. Until a file exists the window
-    // stays an empty socket with the code printed in its corner — an unfilled card should be obviously
-    // unfilled, and the person painting it should be able to read which one it is off the screen.
+    // ── the art slots ────────────────────────────────────────────────────────────
+    // THE CONTRACT'S PATH IS THE PATH ON DISK. Every card and every relic the document ships already names its
+    // own picture — `Presentation.Art` reads "cards/levy_stamp.png", written for every one of them by
+    // BlueprintAssembler, and 413 cards + 210 relics name 464 distinct files — so nothing is invented here:
+    // the file is that path under `res://assets/art/`, and dropping it in is the whole act of filling a slot.
+    // The list of all of them, with the design canon's brief beside every relic, is `bnb-content/ART_SLOTS.md`.
+    //
+    // ⚠ A DROPPED FILE IS INVISIBLE UNTIL GODOT HAS IMPORTED IT. `res://` holds what the importer has seen and
+    // nothing else, so a PNG that was merely copied into the folder does not exist for the running game — the
+    // editor imports on focus, a headless run never does: `tools/import-art.sh`.
+    //
+    // Finding nothing is the NORMAL state and has to stay cheap: every miss is remembered too, so an unfilled
+    // card asks the filesystem once in a session rather than once per redraw.
     private static readonly Dictionary<string, Texture2D?> ArtCache = [];
 
-    public static Texture2D? Art(string id)
+    public static Texture2D? CardArt(string id) => Slot("cards", id);
+
+    public static Texture2D? RelicArt(string id) => Slot("relics", id);
+
+    // What file a thing asks for, as ART_SLOTS.md names it. The probe prints this, so what a missing picture
+    // is called is answered by the game rather than by a rule someone has to remember.
+    public static string SlotPath(string kind, string id) =>
+        Declared(kind, id) ?? $"{kind}/{id.TrimEnd('+')}.png";
+
+    private static Texture2D? Slot(string kind, string id)
     {
-        if (ArtCache.TryGetValue(id, out var cached))
+        var key = $"{kind}/{id}";
+        if (ArtCache.TryGetValue(key, out var cached))
             return cached;
-        var path = $"res://assets/cards/art/{id}.png";
-        var found = ResourceLoader.Exists(path) ? GD.Load<Texture2D>(path) : null;
-        ArtCache[id] = found;
+        // An upgraded card has no picture of its own — "levy_stamp+" is drawn from levy_stamp.png, because an
+        // improvement changes what a card DOES and not what it is a picture of. The document says so itself
+        // (both ids declare the same path); the trim is what a card that arrives without a declaration falls
+        // back to, and it is why no file name in this game contains a "+".
+        var found = Load(Declared(kind, id)) ?? Load($"{kind}/{id.TrimEnd('+')}.png");
+        ArtCache[key] = found;
         return found;
+    }
+
+    private static string? Declared(string kind, string id)
+    {
+        var host = GameHost.Instance;
+        var presentation = host is null ? null : host.Blueprint?.Presentation;
+        if (presentation is null)
+            return null;
+        return kind == "relics"
+            ? presentation.Relics.GetValueOrDefault(id)?.Art
+            : presentation.Cards.GetValueOrDefault(id)?.Art;
+    }
+
+    private static Texture2D? Load(string? relative)
+    {
+        if (string.IsNullOrWhiteSpace(relative))
+            return null;
+        var path = $"res://assets/art/{relative}";
+        return ResourceLoader.Exists(path) ? GD.Load<Texture2D>(path) : null;
     }
 
     // ── type that fits ───────────────────────────────────────────────────────────
@@ -144,13 +184,17 @@ public static class CardVisuals
         var socket = new ColorRect { Color = MoonvineTheme.CardGround.Darkened(0.3f), MouseFilter = Control.MouseFilterEnum.Ignore };
         socket.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         art.AddChild(socket);
-        if (Art(card.Id) is { } picture)
+        if (CardArt(card.Id) is { } picture)
         {
             var image = new TextureRect
             {
                 Texture = picture,
                 ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
                 StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
+                // Both halves of D1's lesson: the file is imported WITH a mip chain (project.godot's
+                // importer defaults) and it is drawn through one. A picture painted at 488x440 lands in a
+                // 122x110 window; either half missing and that reduction glitters.
+                TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
                 MouseFilter = Control.MouseFilterEnum.Ignore,
             };
             image.SetAnchorsPreset(Control.LayoutPreset.FullRect);

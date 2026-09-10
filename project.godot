@@ -22,3 +22,14 @@ GameHost="*res://scripts/GameHost.cs"
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
+
+[importer_defaults]
+
+; ⚠ A DROPPED PICTURE IS IMPORTED WITHOUT MIPMAPS unless this says otherwise, and every picture in this game
+; is drawn much smaller than it is painted — a 488x440 card illustration lands in a 122x110 window. Without a
+; mip chain that reduction is the glitter D1 already paid for once, and nobody dropping a file in would think
+; to open its .import to find out why. This is the default for NEW imports only; the files that carry the
+; setting themselves keep it.
+texture={
+"mipmaps/generate": true
+}

@@ -2610,11 +2610,38 @@ public partial class SessionScreen : Control
             _sidebar.AddChild(new Label { Text = "Relics" });
             foreach (var relic in run.Relics)
             {
-                var label = MutedLabel($"• {relic.Definition.DisplayName}{(relic.Enabled ? "" : " (off)")}");
-                label.MouseFilter = MouseFilterEnum.Stop; // tooltips need a hit-testable control
-                label.TooltipText = Glossary.Explain(GameHost.Instance.Blueprint.Presentation.Relics
+                var tip = Glossary.Explain(GameHost.Instance.Blueprint.Presentation.Relics
                     .GetValueOrDefault(relic.Id.Value)?.FlavorText);
-                _sidebar.AddChild(label);
+                var text = $"{relic.Definition.DisplayName}{(relic.Enabled ? "" : " (off)")}";
+                // The shelf of framed squares is D4. Until then a relic that HAS a picture shows it here, so
+                // the moment a file lands in assets/art/relics it is visible in the game and not only in a
+                // count — an art slot nobody can see filling is an art slot nobody trusts.
+                var picture = CardVisuals.RelicArt(relic.Id.Value);
+                var label = MutedLabel(picture is null ? $"• {text}" : text);
+                label.MouseFilter = MouseFilterEnum.Stop; // tooltips need a hit-testable control
+                label.TooltipText = tip;
+                if (picture is null)
+                {
+                    _sidebar.AddChild(label);
+                    continue;
+                }
+                // ⚠ AN AUTOWRAPPING LABEL'S MINIMUM WIDTH IS ONE CHARACTER. An HBoxContainer hands every child
+                // its minimum and shares out only what is left over among the children that asked to expand,
+                // so a name put beside a picture without asking printed itself down the sidebar one letter
+                // per line. The row is a container; only a container's rules decide what its children get.
+                var row = new HBoxContainer { TooltipText = tip, MouseFilter = MouseFilterEnum.Stop };
+                label.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                row.AddChild(new TextureRect
+                {
+                    Texture = picture,
+                    CustomMinimumSize = new Vector2(22, 22),
+                    ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                    StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                    TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
+                    MouseFilter = MouseFilterEnum.Ignore,
+                });
+                row.AddChild(label);
+                _sidebar.AddChild(row);
             }
         }
         if (run.Consumables.Count > 0)

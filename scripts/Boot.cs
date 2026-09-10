@@ -37,6 +37,15 @@ public partial class Boot : Control
             GetTree().Quit();
             return;
         }
+        // THE ART CENSUS. Which pictures the document asks for and which of them exist — a question about the
+        // document and the folder, not about a screen, so it is answered before one is built. The same list
+        // with the design canon's brief beside every relic is bnb-content/ART_SLOTS.md.
+        if (userArgs.Contains("--smoke-art"))
+        {
+            ReportArt(blueprint);
+            GetTree().Quit();
+            return;
+        }
         // Any session smoke boots straight into a seeded run; SessionScreen runs the matching probe + quits.
         // The run simulator: a seeded random walk over the real screens, one run per process.
         if (userArgs.Contains("--sim"))
@@ -63,6 +72,31 @@ public partial class Boot : Control
 
         if (userArgs.Contains("--smoke-title") && !DisplayServer.GetName().Contains("headless"))
             _ = CaptureTitleThenQuit();
+    }
+
+    // An unfilled slot is NORMAL, so this probe cannot fail on a count — it reports one. What it does assert
+    // is the rule that keeps the count honest: an upgraded card must ask for its base card's picture, or 413
+    // cards would want 413 pictures instead of the 254 the table lists.
+    private static void ReportArt(RunBlueprint blueprint)
+    {
+        var cards = blueprint.Cards.Select(c => c.Id).Where(id => !id.EndsWith('+'))
+            .Distinct(StringComparer.Ordinal).ToList();
+        var relics = blueprint.Relics.Select(r => r.Id).Distinct(StringComparer.Ordinal).ToList();
+        var filledCards = cards.Count(id => CardVisuals.CardArt(id) is not null);
+        var filledRelics = relics.Count(id => CardVisuals.RelicArt(id) is not null);
+        var strays = blueprint.Cards.Select(c => c.Id).Where(id => id.EndsWith('+'))
+            .Where(id => CardVisuals.SlotPath("cards", id) != CardVisuals.SlotPath("cards", id.TrimEnd('+')))
+            .ToList();
+
+        GD.Print($"smoke-art: {cards.Count + relics.Count} slots asked for "
+            + $"({cards.Count} cards, {relics.Count} relics), "
+            + $"{filledCards + filledRelics} filled, {strays.Count} upgrade(s) asking for a picture of their own");
+        foreach (var id in strays.Take(5))
+            GD.Print($"  STRAY {id} asks for {CardVisuals.SlotPath("cards", id)}");
+        foreach (var id in cards.Where(id => CardVisuals.CardArt(id) is null).Take(2))
+            GD.Print($"  waiting: assets/art/{CardVisuals.SlotPath("cards", id)}");
+        foreach (var id in relics.Where(id => CardVisuals.RelicArt(id) is null).Take(2))
+            GD.Print($"  waiting: assets/art/{CardVisuals.SlotPath("relics", id)}");
     }
 
     private async System.Threading.Tasks.Task CaptureTitleThenQuit()
