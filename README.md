@@ -20,7 +20,10 @@ presentation manifest.
 - `scripts/Boot.cs` — the title screen (game identity + unlock-gated character select + New/Continue).
 - `scripts/Glossary.cs` — what every named thing MEANS, built once from the document: ask it about an id, or
   hand it any text and it names the terms that text uses. Every hover in the game goes through it.
-- `scripts/MoonvineTheme.cs` — the Moonvine Forge look (tokens mirrored from the Studio's `studio.css`).
+- `scripts/MoonvineTheme.cs` — **the whole look**: one palette (a near-black page bled red, antique gold for
+  everything you can touch, amber for everything that wants your attention) and one font hook. It is the only
+  place in the frontend allowed to name a colour, and `theme/README.md` says how to swap the typeface in one
+  line.
 - `scripts/GodotMetaStore.cs` — the cross-run profile in `user://` (permanent unlocks / discoveries).
 - `content/game.roguedeck.json` — the shipped game (refresh with `tools/sync-content.sh`).
 

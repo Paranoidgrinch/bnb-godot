@@ -1353,9 +1353,9 @@ public partial class SessionScreen : Control
         }
 
         if (Play.Error is { } hostError)
-            Title($"Error: {hostError}", MoonvineTheme.Danger);
+            Title($"Error: {hostError}", MoonvineTheme.Harm);
         else if (session.Error is { } runError)
-            Title($"Run error: {runError}", MoonvineTheme.Danger);
+            Title($"Run error: {runError}", MoonvineTheme.Harm);
         else if (session.IsAwaitingChoice && session.PendingSituation is { } situation)
             RenderChoices(session, situation);
         else if (session.IsAwaitingEntities && session.PendingEntities is { } entities)
@@ -1782,7 +1782,7 @@ public partial class SessionScreen : Control
     {
         var victory = session.Run.Result == RunResult.Victory;
         Title(victory ? "Victory!" : $"Run over — {session.Run.Result}",
-            victory ? MoonvineTheme.Accent : MoonvineTheme.Danger);
+            victory ? MoonvineTheme.Accent : MoonvineTheme.Harm);
         AddButton("Back to title", () => GetTree().ChangeSceneToFile("res://scenes/Boot.tscn"));
     }
 
@@ -2138,7 +2138,7 @@ public partial class SessionScreen : Control
         name.AddThemeFontSizeOverride("font_size", 16);
         box.AddChild(name);
 
-        var figure = new StickFigure(isHero ? MoonvineTheme.Accent : MoonvineTheme.Danger,
+        var figure = new StickFigure(isHero ? MoonvineTheme.Accent : MoonvineTheme.Harm,
             facing: isHero ? 1 : -1, dead: !combatant.IsAlive)
         { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
         box.AddChild(figure);
@@ -2156,7 +2156,7 @@ public partial class SessionScreen : Control
                 Text = ResourcePoolsLine(combatant),
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
-            energy.AddThemeColorOverride("font_color", MoonvineTheme.Warning);
+            energy.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
             box.AddChild(energy);
         }
         else if (combatant.IsAlive)
@@ -2216,11 +2216,13 @@ public partial class SessionScreen : Control
     private static Control HealthBar(CombatantState combatant, int width)
     {
         var holder = new Control { CustomMinimumSize = new Vector2(width, 22) };
-        var bg = new ColorRect { Color = new Color("2a1414") };
+        // A health bar is a MAGNITUDE, not an alert, so it is allowed the red the warnings gave up: blood
+        // on an empty track, and the same bar for hero and enemy because health is health.
+        var bg = new ColorRect { Color = MoonvineTheme.BgRaised };
         bg.SetAnchorsPreset(LayoutPreset.FullRect);
         holder.AddChild(bg);
         var ratio = combatant.Health.Max > 0 ? Mathf.Clamp((float)combatant.Health.Current / combatant.Health.Max, 0, 1) : 0;
-        var fill = new ColorRect { Color = new Color("6a9a5a") };
+        var fill = new ColorRect { Color = MoonvineTheme.Harm };
         fill.SetAnchorsPreset(LayoutPreset.FullRect);
         fill.AnchorRight = ratio;
         fill.OffsetRight = 0;
@@ -2275,7 +2277,7 @@ public partial class SessionScreen : Control
             TooltipText = Glossary.Explain(presentation?.FlavorText),
         };
         panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
-            new Color("0a0a0c"),
+            MoonvineTheme.CardGround,
             highlighted ? MoonvineTheme.AccentLight : affordable ? new Color(MoonvineTheme.Accent, 0.5f) : new Color(MoonvineTheme.TextMuted, 0.25f), 6));
 
         var margin = new MarginContainer();
@@ -2286,7 +2288,7 @@ public partial class SessionScreen : Control
 
         var header = new HBoxContainer();
         var cost = new Label { Text = CostLabel(definition) };
-        cost.AddThemeColorOverride("font_color", MoonvineTheme.Warning);
+        cost.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
         cost.AddThemeFontSizeOverride("font_size", 13);
         header.AddChild(cost);
         // WHAT HAS BEEN DONE TO THIS COPY, and not what kind of card it is. A per-instance mark is content's
@@ -2585,7 +2587,7 @@ public partial class SessionScreen : Control
     private void Toast(string message)
     {
         var label = new Label { Text = message };
-        label.AddThemeColorOverride("font_color", MoonvineTheme.Warning);
+        label.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
         label.SetAnchorsPreset(LayoutPreset.CenterBottom);
         label.Position -= new Vector2(0, 48);
         AddChild(label);
@@ -2809,7 +2811,7 @@ public partial class SessionScreen : Control
             chip.AddThemeColorOverride("font_color", status.Polarity switch
             {
                 StatusPolarity.Buff => MoonvineTheme.Accent,
-                StatusPolarity.Debuff => MoonvineTheme.Danger,
+                StatusPolarity.Debuff => MoonvineTheme.Harm,
                 _ => MoonvineTheme.TextMuted,
             });
             flow.AddChild(chip);

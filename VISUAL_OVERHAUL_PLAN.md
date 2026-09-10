@@ -51,7 +51,7 @@ Four findings decide most of the cost below.
 
 ---
 
-## Phase D0 — the ground: palette and type
+## Phase D0 — the ground: palette and type  ✔ BUILT 2026-09-10
 
 **Deliverable:** `MoonvineTheme` carries a dark-red-almost-black palette and one accent; every one of the 16
 literals is either a token or justified in a comment.
@@ -77,6 +77,42 @@ literals is either a token or justified in a comment.
 **Done when:** every screen renders in the new ground with no leftover green/yellow, and the screenshot
 probes (`--smoke-map`, `--smoke-shop`, `--smoke-event`, `--smoke-reward`, `--smoke-crowd`, `--smoke-boss`)
 are captured for review.
+
+### What was actually built (2026-09-10)
+
+`MoonvineTheme.cs` was rewritten around the decided ramp and three call sites were repointed. **Zero
+hardcoded colour literals remain outside the theme** — the four that stayed (the map's ember shades) live in
+`MapView.RoleColor` and carry the reason they cannot be tokens.
+
+Two things the decision list did not settle, decided here and written into the file:
+
+- **`Danger` and `Warning` were renamed to `Harm` and `Signal`,** because on this ground they stopped being
+  the same idea. `Danger` was doing three jobs at once (an error banner, the enemy's own body, a debuff chip)
+  and `Warning` two (the energy purse, a card's cost). ⚠ **Red is no longer a warning here**: on a red page a
+  red alert sinks into the panel behind it, so *amber* is the colour that means "pay attention" and red keeps
+  the narrower job of flesh and damage. Anything that wants to shout, shouts in amber.
+- **The default panel border became the hairline, not the accent at 30 %.** Every panel in the game used to
+  be outlined in the accent, which made a screen where everything looked equally pressable. A gold frame now
+  *means* something and a caller that wants one passes it.
+
+Consequences of the ramp that had to be chosen rather than derived:
+
+| decision | why |
+|---|---|
+| Text warmed to `#F3E9E1 / #D6C4BA / #9B877F` | a pure grey on a red ground reads as a grey nobody picked |
+| Health bar = `Harm` on `BgRaised` | a bar is a MAGNITUDE, not an alert, so it may keep the red the warnings gave up — and it is the same bar for hero and enemy, because health is health |
+| Hero figure gold, enemy figure `Harm` | the one place in the game where "who is this" must read in a tenth of a second |
+| Rarity ramp bone → pale violet → violet, **never gold** | gold now means "you can touch this"; a rare card wearing the button colour reads as a button. And the ramp runs quietly: most of a hand is common or uncommon, so only RARE is allowed to be a colour |
+| Map legend rebuilt as a sentence | rust → hotter rust → hot → hottest for the four fight kinds, gold sells to you, violet surprises you, steel mends you, copper builds for you. The four ember shades are the only non-token colours left in the frontend, and they exist to be told apart *from one another* on a shrunken map — a job no single token can do |
+
+**The font hook is `MoonvineTheme.FontPath`** — one `static readonly string?`, null today. Set it to a
+`res://theme/…` path and `Build()` writes the face into the Theme's *default* font, which every Label,
+Button, RichTextLabel and card face inherits. A missing file warns and falls back rather than crashing.
+⚠ No screen may load a font of its own; the first one that does turns "change the font later" from one edit
+into twenty.
+
+**Probes captured:** `--smoke-map`, `--smoke-shop`, `--smoke-event`, `--smoke-reward`, `--smoke-crowd`,
+`--smoke-boss 5 --boss inanna`. The tooltip audit is unchanged (0 named-but-unexplained controls).
 
 ---
 
