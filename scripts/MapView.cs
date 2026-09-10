@@ -72,14 +72,19 @@ public partial class MapView : Control
             var pos = _positions[node.Id];
             var isReachable = _reachable.Contains(node.Id.Value);
             var role = Role(node);
-            var name = named && role == MapNodeTags.Boss ? NameOf(node) : null;
+            // WHO ENDS THE ACT IS ALWAYS ONE HOVER AWAY. The room writes the boss's name across itself only in
+            // a gauntlet (several boss rooms, where the order IS the act's shape); in an ordinary act the room
+            // still says "Boss", but the pointer answers with the name — a player deciding which path to walk
+            // is deciding who to meet, and that is not a thing to withhold from them.
+            var boss = role == MapNodeTags.Boss ? NameOf(node) : null;
+            var name = named ? boss : null;
             var button = new Button
             {
                 Text = name is null ? $"{Icon(role)}\n{Label(role)}" : $"{Icon(role)}  {name}",
                 Position = pos,
                 Size = new Vector2(name is null ? NodeW : NamedNodeW, NodeH),
                 Disabled = !isReachable || _onPick is null,
-                TooltipText = name is null ? Tooltip(role) : $"{name} — {Tooltip(role)}",
+                TooltipText = boss is null ? Tooltip(role) : $"{boss} — {Tooltip(role)}",
                 AutowrapMode = name is null ? TextServer.AutowrapMode.Off : TextServer.AutowrapMode.WordSmart,
             };
             Style(button, node, role, isReachable);
