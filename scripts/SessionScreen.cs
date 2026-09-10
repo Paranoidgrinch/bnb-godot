@@ -36,6 +36,8 @@ public partial class SessionScreen : Control
     // the deck), the card nodes queued for that fly-in, and the deck pile's top node (their start point).
     private readonly HashSet<string> _shownHandIds = [];
     private readonly List<Control> _cardsToAnimate = [];
+    // The hand's faces as they were last laid out, so `--smoke-format` can measure the real nodes.
+    private readonly List<Control> _handFaces = [];
     private Control? _deckTopNode;
     private static bool _fastForward;   // a smoke probe is walking: draw the screen, do not animate it
     private Control? _enemyRow;   // the live enemy row, so a probe can measure what the layout did with it
@@ -126,6 +128,8 @@ public partial class SessionScreen : Control
             _ = SmokeBoss(BossActArgument());
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-tooltips"))
             _ = SmokeTooltips();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-format"))
+            _ = SmokeFormat();
     }
 
     // Walk the screen the way a mouse would and report what is EXPLAINED and what is not: every piece of text
@@ -2015,24 +2019,59 @@ public partial class SessionScreen : Control
     private void BuildHand(VBoxContainer col, InteractiveCombat combat, CombatantState hero)
     {
         var cards = combat.Hand.ToList();
-        const int spacing = 12;
-        var totalWidth = cards.Count * CardVisuals.CardW + Math.Max(0, cards.Count - 1) * spacing;
+
+        // THE HAND IS LAID OUT ON A STEP, NOT ON A FIXED GAP. The cards are a fifth bigger than they were, and
+        // a big hand of big cards is wider than the pane it is centred in — so when the row will not fit, the
+        // step closes up and the cards overlap the way a held hand of cards actually does, rather than the row
+        // walking off both edges of the pane. The pane is the viewport minus the fixed 320-wide sidebar, the
+        // split's separation and a margin.
+        // A HAND IS HELD, NOT SHELVED. Up to five cards it is a plain row at a full gap; past that the step
+        // closes and the cards overlap left-under-right, and the whole row leans into a shallow fan — which
+        // is what makes an overlap read as a hand of cards rather than as a layout that ran out of room. The
+        // pane is the viewport minus the fixed 320-wide sidebar, the split's separation and a margin.
+        const int gap = 12;
+        const int fanned = 5; // beyond this many, the row starts closing up
+        var available = Math.Max(CardVisuals.CardW, GetViewportRect().Size.X - 320 - 16 - 48);
+        var step = (float)(CardVisuals.CardW + gap);
+        if (cards.Count > fanned)
+            step = Math.Min(step, Math.Max(36f, (available - CardVisuals.CardW) / (cards.Count - 1)));
+        var totalWidth = (Math.Max(cards.Count, 1) - 1) * step + CardVisuals.CardW;
+
+        // The tilt is a fixed SPREAD shared out, not a fixed angle per card, so a hand of twelve leans no
+        // further than a hand of four — it just leans in smaller increments.
+        var middle = (cards.Count - 1) / 2f;
+        var tilt = cards.Count > 1 ? Math.Min(2.2f, 9f / (cards.Count - 1)) : 0f;
+        const float arc = 3f; // how much lower each step from the middle of the fan sits
 
         var center = new CenterContainer();
-        var inner = new Control { CustomMinimumSize = new Vector2(Math.Max(totalWidth, 1), CardVisuals.CardH + 8) };
+        var inner = new Control
+        {
+            CustomMinimumSize = new Vector2(Math.Max(totalWidth, 1), CardVisuals.CardH + 8 + arc * middle + 12),
+            // ⚠ THE HAND DRAWS IN FRONT OF THE DECK. The draw pile is added to the combat root AFTER this
+            // column, so by tree order it lay over the leftmost card — a card dealt underneath the deck it
+            // came out of. The hand is the thing being read; it goes on top.
+            ZIndex = 1,
+        };
         center.AddChild(inner);
         col.AddChild(center);
 
         _cardsToAnimate.Clear();
+        _handFaces.Clear();
         for (var i = 0; i < cards.Count; i++)
         {
             var card = cards[i];
             var cardId = card.Id;
             var armed = _armedCard is { } a && a.value == cardId.value;
             var face = CardBlockButton(combat, hero, card, armed, () => OnCardClicked(cardId));
-            face.Position = new Vector2(i * (CardVisuals.CardW + spacing), 0);
+            var fromMiddle = i - middle;
+            face.Position = new Vector2(i * step, Math.Abs(fromMiddle) * arc);
             face.Size = new Vector2(CardVisuals.CardW, CardVisuals.CardH);
+            // Pivot at the card's centre — the same point AnimateDraws flips a freshly-drawn card around, so
+            // the fan and the deal do not fight over where the card turns.
+            face.PivotOffset = new Vector2(CardVisuals.CardW / 2f, CardVisuals.CardH / 2f);
+            face.RotationDegrees = fromMiddle * tilt;
             inner.AddChild(face);
+            _handFaces.Add(face);
             if (!_shownHandIds.Contains(cardId.value))
                 _cardsToAnimate.Add(face); // newly drawn → fly it in
         }
@@ -2259,6 +2298,9 @@ public partial class SessionScreen : Control
                 + "counted, and playing it does not take the count from a card that can."),
         };
 
+    // A THIN CALLER. Everything about how a card LOOKS lives in CardVisuals.Face; this decides only what is
+    // true of this card right now — what it is called, what it costs, whether it can be paid for, what has
+    // been done to this copy — and hands that over.
     private Control CardBlockButton(InteractiveCombat combat, CombatantState hero, CardInstance card, bool highlighted, Action onClick)
     {
         var definition = card.DefinitionId.value;
@@ -2268,87 +2310,34 @@ public partial class SessionScreen : Control
         // unavailable, and a card refused only when it is clicked is a rule the player was never shown.
         var affordable = CanPay(hero, definition) && combat.CanPlay(card.Id);
         var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definition);
+        var rules = presentation?.FlavorText ?? "";
 
-        // The hover sits on the CARD, not only on the click overlay: wherever the pointer lands on it — the
-        // name, the cost, the clipped rules text — the same explanation comes up.
-        var panel = new PanelContainer
-        {
-            CustomMinimumSize = new Vector2(CardVisuals.CardW, CardVisuals.CardH),
-            TooltipText = Glossary.Explain(presentation?.FlavorText),
-        };
-        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
-            MoonvineTheme.CardGround,
-            highlighted ? MoonvineTheme.AccentLight : affordable ? new Color(MoonvineTheme.Accent, 0.5f) : new Color(MoonvineTheme.TextMuted, 0.25f), 6));
-
-        var margin = new MarginContainer();
-        foreach (var s in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })
-            margin.AddThemeConstantOverride(s, 6);
-        var column = new VBoxContainer();
-        column.AddThemeConstantOverride("separation", 3);
-
-        var header = new HBoxContainer();
-        var cost = new Label { Text = CostLabel(definition) };
-        cost.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
-        cost.AddThemeFontSizeOverride("font_size", 13);
-        header.AddChild(cost);
         // WHAT HAS BEEN DONE TO THIS COPY, and not what kind of card it is. A per-instance mark is content's
         // way of making one copy of a card special — Inanna's claim is the first that the PLAYER is asked to
         // plan around, and a stamp that only the engine can see is a rule nobody was told. Anything not named
-        // in the table below is a mark the player was never meant to read, and stays invisible.
-        foreach (var mark in card.Marks)
-        {
-            if (!CardMarks.TryGetValue(mark.value, out var stamp))
-                continue;
-            var badge = new Label { Text = stamp.Label, TooltipText = stamp.Explanation };
-            badge.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
-            badge.AddThemeFontSizeOverride("font_size", 10);
-            header.AddChild(badge);
-        }
-        column.AddChild(header);
+        // in CardMarks is a mark the player was never meant to read, and stays invisible.
+        var marks = card.Marks
+            .Where(mark => CardMarks.ContainsKey(mark.value))
+            .Select(mark => CardMarks[mark.value])
+            .ToList();
 
-        var name = new Label { Text = CardName(definition), AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        name.AddThemeColorOverride("font_color", affordable ? MoonvineTheme.RarityColor(presentation?.Rarity) : MoonvineTheme.TextMuted);
-        name.AddThemeFontSizeOverride("font_size", 14);
-        column.AddChild(name);
+        // The hover carries the PRICE as well as the explanation: the ring on the frame has room for a number
+        // and nothing else, so what the number is denominated in is said here.
+        var tooltip = string.Join("\n", new[] { CostLabel(definition), Glossary.Explain(rules) }
+            .Where(part => !string.IsNullOrWhiteSpace(part)));
 
-        var rule = new HSeparator();
-        column.AddChild(rule);
-
-        // The rules text lives in a window of its OWN, fixed height. A Label sizes to whatever it wraps to, and
-        // a card container sizes to its label — so the wordiest card in the hand used to grow past the bottom
-        // of the screen and take the whole row's alignment with it. A plain Control reports only its minimum
-        // size, whatever it holds, so every card in the hand is the same card-shaped block. What does not fit
-        // is on the tooltip.
-        var window = new Control
-        {
-            CustomMinimumSize = new Vector2(CardVisuals.CardW - 12, CardVisuals.CardH - 66),
-            ClipContents = true,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        var effect = new Label
-        {
-            Text = presentation?.FlavorText ?? "",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        effect.SetAnchorsPreset(LayoutPreset.TopWide);
-        effect.AddThemeColorOverride("font_color", affordable ? MoonvineTheme.TextSoft : MoonvineTheme.TextMuted);
-        effect.AddThemeFontSizeOverride("font_size", 11);
-        window.AddChild(effect);
-        column.AddChild(window);
-
-        margin.AddChild(column);
-        panel.AddChild(margin);
-
-        var overlay = new Button
-        {
-            Flat = true,
-            Disabled = !affordable,
-            TooltipText = Glossary.Explain(presentation?.FlavorText),
-        };
-        overlay.SetAnchorsPreset(LayoutPreset.FullRect);
-        overlay.Pressed += () => onClick();
-        panel.AddChild(overlay);
-        return panel;
+        return CardVisuals.Face(
+            new CardVisuals.CardFace(
+                Id: definition,
+                Title: CardName(definition),
+                Cost: CostBadge(definition),
+                Rules: rules,
+                Rarity: presentation?.Rarity,
+                Tooltip: tooltip,
+                Dimmed: !affordable,
+                Armed: highlighted,
+                Marks: marks),
+            onClick);
     }
 
     private void OnCardChoiceClicked(RunPlayback play, IReadOnlyList<CardInstance> candidates, CardInstanceId id)
@@ -2435,6 +2424,91 @@ public partial class SessionScreen : Control
             OnCardClicked(attack.Id); // should ARM (wait for enemy)
         GD.Print($"smoke-target: attack armed={_armedCard is not null} played={Play?.CombatDriver?.Current?.Hand.Count < (afterBlock?.Hand.Count ?? 0)}");
         GetTree().Quit();
+    }
+
+    // ⚠ THE FORMAT BUG, MEASURED RATHER THAN ASSUMED. The complaint was that a card in the hand changes
+    // shape when it is clicked. A face is HANDED a size, but Godot clamps a Control's size UP to its combined
+    // minimum — so any child that reports a minimum of its own (a wrapping Label is the classic one) can push
+    // the card out of the frame it was given, and how far it pushes depends on the width it happened to be
+    // measured at. Clicking calls Rebuild(), which measures everything again from scratch: same card, new
+    // shape.
+    //
+    // This probe arms and disarms its way through a hand ten times and reports, per slot, the smallest and
+    // largest that slot ever was. It arms the card DIRECTLY instead of going through OnCardClicked, because a
+    // self-only card would be spent by a real click and the hand would change under the measurement — the
+    // state on screen (armed → rebuilt → cancelled → rebuilt) is exactly the one a click produces. PASS is
+    // one size per slot, ten clicks apart.
+    private async System.Threading.Tasks.Task SmokeFormat()
+    {
+        var session = Session;
+        for (var i = 0; i < 8 && Play?.CombatDriver?.Current is null && session is not null; i++)
+        {
+            if (session.IsAwaitingNodeChoice) session.PickNode(session.PendingNodeChoices[0].Id.Value);
+            else if (session.IsAwaitingInterlude) session.Continue();
+            else break;
+        }
+        if (Play?.CombatDriver?.Current is not { } combat)
+        {
+            GD.Print("smoke-format: no fight reached");
+            GetTree().Quit();
+            return;
+        }
+
+        var names = combat.Hand.Select(c => CardName(c.DefinitionId.value)).ToList();
+        var low = new List<Vector2>();
+        var high = new List<Vector2>();
+
+        async System.Threading.Tasks.Task Settle()
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
+
+        void Measure()
+        {
+            for (var i = 0; i < _handFaces.Count; i++)
+            {
+                var size = _handFaces[i].Size;
+                while (low.Count <= i) { low.Add(size); high.Add(size); }
+                low[i] = new Vector2(Math.Min(low[i].X, size.X), Math.Min(low[i].Y, size.Y));
+                high[i] = new Vector2(Math.Max(high[i].X, size.X), Math.Max(high[i].Y, size.Y));
+            }
+        }
+
+        await Settle();
+        Measure();
+        for (var click = 0; click < 10 && _handFaces.Count > 0; click++)
+        {
+            var hand = Play?.CombatDriver?.Current?.Hand.ToList() ?? [];
+            if (hand.Count == 0) break;
+            _armedCard = hand[click % hand.Count].Id;
+            Rebuild();
+            await Settle();
+            Measure();
+            _armedCard = null;
+            Rebuild();
+            await Settle();
+            Measure();
+        }
+
+        // TWO separate ways a card can be the wrong shape, and the first one is the loud one: a slot that is
+        // never the size it was handed. A card 24 px wider than its slot overlaps the neighbour it was placed
+        // 12 px clear of, and a card whose title wraps to two lines is taller than the card beside it and
+        // hangs out of the hand row into whatever is under it. Drift across clicks is the second.
+        var asked = new Vector2(CardVisuals.CardW, CardVisuals.CardH);
+        var wrong = 0;
+        for (var i = 0; i < low.Count; i++)
+        {
+            var steady = low[i].IsEqualApprox(high[i]);
+            var right = steady && low[i].IsEqualApprox(asked);
+            if (!right) wrong++;
+            GD.Print($"smoke-format: slot {i} \"{(i < names.Count ? names[i] : "?")}\" "
+                + $"w {low[i].X:0.#}-{high[i].X:0.#} h {low[i].Y:0.#}-{high[i].Y:0.#} "
+                + (right ? "ok" : steady ? "WRONG SIZE" : "DRIFTS"));
+        }
+        GD.Print($"smoke-format: {low.Count} slots, asked for {asked.X:0}x{asked.Y:0}, "
+            + $"{wrong} off over 10 clicks — {(wrong == 0 ? "PASS" : "FAIL")}");
+        await CaptureThenQuit("smoke-format.png");
     }
 
     // Click a card. A self-only card (gain block, draw, self-buff) plays immediately — no enemy target
@@ -2633,6 +2707,16 @@ public partial class SessionScreen : Control
         return costs.Count == 0
             ? "⚡0"
             : string.Join(" · ", costs.Select(c => $"{ResourceLabel(c.ResourceId)}{c.Amount}"));
+    }
+
+    // What goes IN THE RING on the card frame: the amount, and only the amount. The hole is 6.8 % of the
+    // card's width — a glyph and a number do not both fit — so the ring says how much and the hover says of
+    // what. Every card in the game is priced in energy today; if one ever is not, the amounts still line up
+    // and the hover is where the difference is legible.
+    private string CostBadge(string definitionId)
+    {
+        var costs = FullCosts(definitionId);
+        return costs.Count == 0 ? "0" : string.Join("\u00b7", costs.Select(c => c.Amount.ToString()));
     }
 
     private bool CanPay(CombatantState payer, string definitionId) =>
