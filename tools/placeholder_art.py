@@ -77,6 +77,19 @@ def enemy_slots(doc):
     return slots
 
 
+def character_slots(doc):
+    """code -> (name, "hero"). The player's own body is a body like any other and is painted by the same hand —
+    the shape is the same, only the direction it faces is not. Shaped like an enemy slot so one painter serves
+    both; the role is always `hero`, because there is only one kind of player."""
+    names = {c["Id"]: (c.get("Start") or {}).get("HeroName") or c["Id"] for c in doc.get("Characters", [])}
+    slots = {}
+    for character_id, entry in doc["Presentation"].get("Characters", {}).items():
+        code = stem(entry.get("Art"))
+        if code is not None:
+            slots[code] = (names.get(character_id, character_id), "hero")
+    return slots
+
+
 def stem(art):
     return Path(art).stem if art else None
 
@@ -128,7 +141,7 @@ def plate(size, ground=GROUND):
 
 def save(image, path):
     """A plate is two inks on one ground, so it is written with a 32-colour palette — a quarter of the bytes
-    of the same picture in full colour, and 733 of them are going to sit in the repository until the real
+    of the same picture in full colour, and 708 of them are going to sit in the repository until the real
     ones arrive. The mark rides in a text chunk, which a palette PNG carries just as well."""
     info = PngInfo()
     info.add_text(MARK, "1")
@@ -144,14 +157,23 @@ def is_placeholder(path):
         return False
 
 
-def run(kind, slots, paint, args):
+def run(kind, slots, paint, args, siblings=()):
     """The loop all three generators share: one file per slot, an existing picture left alone unless told
-    otherwise, and `--clean` which removes only what carries the mark."""
+    otherwise, and `--clean` which removes only what carries the mark.
+
+    `siblings` are slot codes a generator paints under a DIFFERENT kind (the bodies script paints the player's
+    own body into `characters/`). A `--only` code that belongs to a sibling is not a typo, it is simply not
+    this call's business — without that distinction one generator with two folders could never be told to
+    redraw a single slot.
+    """
     out = Path(args.out) if args.out else ART / kind
     codes = sorted(slots) if not args.only else [c for c in sorted(slots) if c in set(args.only)]
-    if args.only and len(codes) != len(set(args.only)):
-        missing = sorted(set(args.only) - set(codes))
-        raise SystemExit(f"no {kind} slot named: {', '.join(missing)}")
+    if args.only:
+        missing = sorted(set(args.only) - set(codes) - set(siblings))
+        if missing:
+            raise SystemExit(f"no {kind} slot named: {', '.join(missing)}")
+        if not codes:
+            return
 
     if args.clean:
         gone = [p for p in sorted(out.glob("*.png")) if is_placeholder(p)]

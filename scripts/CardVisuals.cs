@@ -51,7 +51,8 @@ public static class CardVisuals
     // ── the art slots ────────────────────────────────────────────────────────────
     // THE CONTRACT'S PATH IS THE PATH ON DISK. Every card and every relic the document ships already names its
     // own picture — `Presentation.Art` reads "cards/levy_stamp.png", written for every one of them by
-    // BlueprintAssembler, and 413 cards + 210 relics name 464 distinct files — so nothing is invented here:
+    // BlueprintAssembler, and 363 cards, 210 relics, 269 bodies and 1 character name 709 distinct files — so
+    // nothing is invented here:
     // the file is that path under `res://assets/art/`, and dropping it in is the whole act of filling a slot.
     // The list of all of them, with the design canon's brief beside every relic, is `bnb-content/ART_SLOTS.md`.
     //
@@ -70,6 +71,10 @@ public static class CardVisuals
     // A BODY IS A PICTURE ON THE SAME TERMS. Every enemy, elite and boss declares `enemies/<id>.png`; until
     // the file is there the arena keeps drawing the stick figure it draws today.
     public static Texture2D? EnemyArt(string id) => Slot("enemies", id);
+
+    // The player's own body. Declared exactly like the others (`Presentation.Characters[id].Art`) and missed by
+    // every count until D5, because the census had three folders in it and the document has four.
+    public static Texture2D? CharacterArt(string id) => Slot("characters", id);
 
     // What file a thing asks for, as ART_SLOTS.md names it. The probe prints this, so what a missing picture
     // is called is answered by the game rather than by a rule someone has to remember.
@@ -100,6 +105,7 @@ public static class CardVisuals
         {
             "relics" => presentation.Relics.GetValueOrDefault(id)?.Art,
             "enemies" => presentation.Enemies.GetValueOrDefault(id)?.Art,
+            "characters" => presentation.Characters.GetValueOrDefault(id)?.Art,
             _ => presentation.Cards.GetValueOrDefault(id)?.Art,
         };
     }
