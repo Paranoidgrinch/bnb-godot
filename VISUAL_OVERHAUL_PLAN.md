@@ -670,6 +670,36 @@ Proved with two throwaway placeholders (dropped in, imported, photographed in th
 
 ---
 
+## Phase D4b — every slot holds a plate, and the demo game leaves ✔ BUILT 2026-09-10
+
+Two things, in this order, because the second changes the count the first works from.
+
+**The placeholders.** `tools/make-card-art.py`, `make-relic-art.py` and `make-enemy-art.py` write one plate
+per slot: the file's own name, the entity's name, the word placeholder — and for a body a stick figure facing
+LEFT, small for a standard body, bigger for an elite, big and horned for a boss. ★ **THE SLOT LIST IS NOT KEPT
+IN THE SCRIPTS**: they read `Presentation.<kind>[id].Art` out of the shipped document, the same sentence the
+game reads, so they cannot drift from it. Card slots are gathered by PATH and not by id, or a card and its
+improvement would each get a plate. Each plate carries a `bnb-placeholder` text chunk: `--clean` removes only
+those, and a painted picture is never overwritten without `--force`. They are PNG, not JPG — the document
+names `.png`, and a body needs the transparency a JPG cannot carry.
+
+**The leftovers left.** 25 ported v2 cards (plus their 25 `_plus` twins) had ridden along in the document
+since the port, because C-5 in `bnb-content/ACT_I_II_COMPLETION_PLAN.md` said the ported events still named
+them. ⚠ **THAT REASON HAD EXPIRED AND NOBODY HAD LOOKED**: the events were replaced act by act, and a search
+of the shipped document found not one reference to any of the 50 — not in a pool, a shop, an event, an
+encounter, a reward, the starting deck, or any canon card's own program. They could not be dealt. What still
+used them were TEN TEST FILES, which had borrowed them as convenient tools (`form_12_b` as a 0-cost filing,
+`approved_for_disposal` as a 12-damage hammer), and that was the whole cost of the cleanup. Every fixture now
+names a canon card, and the numbers around it moved with it.
+
+Gone with them: `CardMapper`, `RelicMapper`, `BabCard`, `BabRelic`, `BabData.Cards`, `BabData.Relics`,
+`ConversionPools.Relics` and the never-called `RelicGrantSource` — the last of the ported relic faucet that
+D3a had already cut off. Regenerated and compared leaf by leaf: **2491 leaves removed, all of them under the
+50 leftover cards, 0 added, 0 changed.** The document ships **363 cards** and **708 pictures** (229 cards ·
+210 relics · 269 bodies), and 25 stale plates were deleted from `assets/art/cards/`.
+
+---
+
 ## Phase D5 — pick a card by looking at it
 
 **Deliverable:** card rewards, shop shelves, event offers and in-combat card choices show **card faces**.
