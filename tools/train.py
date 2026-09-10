@@ -35,9 +35,9 @@ UNREACHED = 1_000_000   # never arriving at the target boss is worse than any ar
 # The last act the game has, and so the default thing to measure to. One number, kept next to the flag that
 # reads it, because "the end of the game" is a fact about the content and moves when the content does.
 #
-# It moved to 5 at V-0, when Act V became a walkable act. ⚠ Until V-1 … V-6 replace them, Act V's six gods are
-# PLACEHOLDER fights, so a generation bred against act 5 is breeding against content that is about to change:
-# `--target-act 4` is still the meaningful balance question, and V-7 is the step that makes 5 the real one.
+# It moved to 5 at V-0, when Act V became a walkable act, and the placeholders it stood on are gone: V-1 … V-6
+# replaced all six gods with the authored fights (2026-09-09). Breeding against act 5 is therefore breeding
+# against the finished game, and `--target-act 5` — the default — is now the meaningful balance question.
 LAST_ACT = 5
 
 

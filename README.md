@@ -89,8 +89,8 @@ The same simulator can be given a POLICY — 17 weights that decide which card i
 is over, which enemy to hit, which room to walk into and what to buy (`SimPolicy` in `RunSimulator.cs`).
 `tools/train.py` breeds them against the balance question itself: starting at 9999 hp, **how much damage does
 the game take off a runner on the way to a named act's boss?** Which act is `--target-act`, and it defaults
-to the last one the game has (`LAST_ACT` in `train.py`, Act V since V-0 — though while Act V's gods are still
-placeholders, `--target-act 4` is the measurement that means anything); the simulator's own fitness line names
+to the last one the game has (`LAST_ACT` in `train.py`, Act V since V-0 — and since V-6 that act is the six
+authored gods and no longer placeholders, so the default IS the real question); the simulator's own fitness line names
 no act, only the per-act table (`actBossDamage`). Least taken wins; never arriving is worse than any arrival. Damage ADDED UP, not health remaining: no act heals you at its end, but the content heals
 plenty (one act-II door heals to full), and remaining health would credit a runner for the door it happened
 to walk through — on seed 1000 that reads 540 lost where 1075 was actually taken.
