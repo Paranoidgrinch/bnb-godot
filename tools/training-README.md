@@ -11,9 +11,9 @@ die Zahl steht als `LAST_ACT` oben in `tools/train.py` und wandert mit dem Conte
 verdrahtet, weil Akt III das Ende war; die `sim-fitness:`-Zeile nennt inzwischen selbst keinen Akt mehr,
 sondern nur noch die Tabelle über alle.
 
-⚠ **Solange Akt V Platzhalter ist** (bis V-1 … V-6 die sechs Götter wirklich schreiben), misst man sinnvoll
-weiter mit `--target-act 4`: eine Generation, die gegen Content züchtet, der gleich ausgetauscht wird, lernt
-nichts, was hält. Schritt **V-7** macht Akt V zur echten Zielmarke.
+**Akt V ist seit V-6 kein Platzhalter mehr** (2026-09-09: Nisaba, Inanna, Nanshe, Nanna-Sin, Utu und Enlil
+sind ausgeschrieben). Die frühere Warnung, man messe sinnvoll weiter mit `--target-act 4`, ist damit erledigt:
+der Standard `--target-act 5` züchtet gegen das fertige Spiel.
 
 **Aufsummierter Schaden, nicht Rest-HP.** Es gibt keine Vollheilung nach einem Akt — aber der Content heilt
 sehr wohl (Relikte, Rastplätze, und die Tür `perpetual_borrower`/settle in Akt II heilt *auf voll*). Rest-HP
