@@ -1,27 +1,31 @@
 # assets/art
 
-One picture per card, per relic and per body, named by the code in `../../../bnb-content/ART_SLOTS.md`:
+One picture per card, per relic, per body and per character, named by the code in
+`../../../bnb-content/ART_SLOTS.md`:
 
-    assets/art/cards/<id>.png     the card's window   — 11:10 landscape, drawn at 122 × 110
-    assets/art/relics/<id>.png    the relic's square  — square, drawn small
-    assets/art/enemies/<id>.png   the body's column   — portrait, drawn 150 tall, aspect kept
+    assets/art/cards/<id>.png       the card's window   — 11:10 landscape, drawn at 122 × 110
+    assets/art/relics/<id>.png      the relic's square  — square, drawn small
+    assets/art/enemies/<id>.png     the body's column   — portrait, drawn 150 tall, aspect kept
+    assets/art/characters/<id>.png  the player, on the title screen — a body, facing the other way
 
 A body is every enemy, elite and boss (269 of them). It is never mirrored by the game, so draw it facing
 LEFT — towards the player, who stands on the left of the arena. Until the file is there the arena draws the
-stick figure it draws today.
+stick figure it draws today. A CHARACTER is a body drawn facing RIGHT, for the same reason read from the
+other side.
 
 ## The placeholders
 
-Every one of the 733 slots holds a placeholder today — a plate carrying the file's own name and the word
+Every one of the 709 slots holds a placeholder today — a plate carrying the file's own name and the word
 placeholder, so a picture that is in the wrong slot is visible at a glance instead of being a picture nobody
 recognises. Three scripts write them, each reading the slots out of `content/game.roguedeck.json`, which is
 where the paths are declared:
 
-    tools/make-card-art.py      254 cards   · 488 x 440, the file name, the card's name, PLACEHOLDER
+    tools/make-card-art.py      229 cards   · 488 x 440, the file name, the card's name, PLACEHOLDER
     tools/make-relic-art.py     210 relics  · 512 x 512 square, the file name, the relic's name, PLACEHOLDER
     tools/make-enemy-art.py     269 bodies  · 600 x 900 on transparency, a stick figure facing left with its
                                               file name over its head — small for a standard body, bigger for
                                               an elite, big and horned for a boss
+                                1 character · the same plate, facing RIGHT, written into characters/
 
     tools/make-enemy-art.py --only queue_imp      # one slot
     tools/make-card-art.py --force                # overwrite a painted picture as well
