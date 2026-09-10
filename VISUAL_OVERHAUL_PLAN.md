@@ -40,13 +40,11 @@ Four findings decide most of the cost below.
 
 ### Two things that are missing and cannot be invented here
 
-- **A transparent frame for the NEW front.** `condemed by decree.png` (1053 × 1494, ratio 0.7048) is a
-  *composed* card — frame, art and text baked together. The only transparent overlay we have,
-  `bureaucrats-and-broomsticks-frame-overlay.png` (alpha 0 in the art window, confirmed), is the **older v4**
-  layout, and so is the editable `…card-front-template.svg` (named windows: `titleWindowClip`,
-  `costWindowClip`, `artWindowClip`, `rulesWindowClip`). **D1 is written so this does not block:** the card is
-  laid out from normalized rectangles and the frame is a *swappable texture*, starting as a drawn frame in the
-  new palette. The moment a transparent overlay of the new front exists, it is one file drop.
+- ~~A transparent frame for the NEW front.~~ **Delivered 2026-09-10** and now in the repo as
+  `assets/cards/card-frame.png`: the blank master frame, 1053 × 1494, ratio **0.7048** — the same as
+  `condemed by decree.png` — transparent in the art window, the rules plaque, the title bar **and** the cost
+  badge, opaque on the border and the four corner badges (empty cost circle, broom, crystal ball, scroll).
+  The frame is no longer something D1 has to draw.
 - ~~A decoder for the new back.~~ **Answered 2026-09-10:** ffmpeg is installed, and the master
   (`BaB-cardback-master.mp4`, H.264, 720 × 1008, **36 s at 30 fps**) is a *different* animation from the one
   shipping (**12 s at 12 fps**) — no frame of the master matches the shipped frame 0 at any phase. See D2.
@@ -71,9 +69,10 @@ literals is either a token or justified in a comment.
   under the UI accent (`#A8861D`) so that a boss frame does not compete with every button on the screen.
 - ⚠ **Gold everywhere costs the boss frame its tell.** Once the accent IS antique gold, gold no longer marks
   a Boss Relic; the dark-purple ground and the ivory inner window have to carry that distinction alone.
-- Type: the frontend ships **no font today** (`theme/` is empty). The master front is set in a heavy rounded
-  face for the title and a lighter one for rules. One licensed-for-shipping family gets vendored into
-  `theme/`, or we stay on the Godot default and say so. **Still open.**
+- **Type: the Godot default stays, with one place to change it.** Decided 2026-09-10. `MoonvineTheme` gains
+  a single font hook — a `Font?` that is null today and, when a file is dropped into `theme/`, is set in one
+  line and applies to every Label, Button and card face at once. No screen may reach for a font of its own,
+  or "change the font later" becomes twenty edits instead of one.
 
 **Done when:** every screen renders in the new ground with no leftover green/yellow, and the screenshot
 probes (`--smoke-map`, `--smoke-shop`, `--smoke-event`, `--smoke-reward`, `--smoke-crowd`, `--smoke-boss`)
@@ -86,11 +85,19 @@ are captured for review.
 **Deliverable:** `CardVisuals.Face(...)` — one card widget, built from the master layout, used by hand, deck,
 pickers, shop and the deck list. `CardBlockButton` in `SessionScreen` becomes a thin caller.
 
-- **Geometry from the master.** Ratio **0.7048** (1053 × 1494). Fields as fractions of the card, so the same
-  layout holds at every size: cost badge top-left ≈ (0.068, 0.048) r ≈ 0.043 · title plaque
-  x 0.12–0.88, y 0.035–0.105 · **art window** x 0.055–0.945, y 0.135–0.72 · rules plaque x 0.055–0.945,
-  y 0.735–0.965 · three corner badges. These get calibrated once against the real frame and pinned as
-  constants with the measurement in a comment.
+- **Geometry, MEASURED off the frame's own alpha channel** (not estimated). Ratio **0.7048**; every field is
+  a fraction of the card, so one layout holds at every size:
+
+  | field | x | y |
+  |---|---|---|
+  | art window | 0.0437 – 0.9554 | 0.1419 – 0.7202 |
+  | rules plaque | 0.0437 – 0.9554 | 0.7416 – 0.9639 |
+  | title bar | 0.0456 – 0.9525 | 0.0268 – 0.1218 |
+  | cost badge | centre (0.0679, 0.0476) | r ≈ 0.034 of width |
+
+  ⚠ The title bar's transparent band runs the **full width**, under the cost badge on the left and the broom
+  badge on the right. The title TEXT is therefore inset to roughly x 0.12–0.88; the band is the hole, not the
+  text box.
 - **Size: +20 %.** `CardW/CardH` 112 × 156 → **134 × 190** (which also corrects the ratio from 0.718 to
   0.705). Nine call sites (`grep CardVisuals.Card[WH]`). The hand row and the deck pile both read them, so
   both grow together, as asked.
@@ -137,45 +144,70 @@ into a black vortex inside an ornate frame with violet corner gems.
 **Deliverable:** every card and every relic has a **stable, unique, human-readable code**, the frontend looks
 for a file named by it, and finding nothing is normal.
 
-- **Relics: the canon number is the code.** `R-001` … `R-168`, generated from the title match proved above,
-  so `R-001` on screen is entry `1. Levy Stamp` in the canon — the user reads the code off the frame and knows
-  which brief made it. Pinned by a test: all 168 map, no duplicates, pool ranges agree.
-- **Cards: a minted code**, because no card canon exists yet. Proposal `C-B-###` (Bureaucrat), `C-G-###`
-  (general), `C-S-##` (starter), `C-J-##` (Junk), an upgraded card sharing its base code with a `+`. **413**
-  card presentations exist (upgrades included); the code table is generated and pinned, never hand-kept.
-- **Where a file goes:** `assets/cards/art/<code>.png`, `assets/relics/art/<code>.png`. Godot resolves
-  `Presentation.Art` → code → path; a missing file draws the empty window with the code. Dropping a PNG in is
-  the entire act of filling a slot — no rebuild, no registry edit.
-- **`ART_SLOTS.md`**, generated: every code, title, pool/act, and for relics the canon line, so the user can
-  work down it while generating images.
+**Decided 2026-09-10: the id IS the code.** `levy_stamp.png`, `condemned_by_decree.png` — no minted
+`R-###` / `C-B-###` scheme. A filename that says what it is beats one that has to be looked up, and
+`Presentation.Art` already carries exactly these paths, so nothing has to be generated at all.
 
-### D3a — the relic faucet is still the demo pool (found 2026-09-10)
+- **Where a file goes:** `assets/cards/art/<id>.png`, `assets/relics/art/<id>.png` — the paths
+  `BlueprintAssembler` already writes. Godot resolves `Presentation.Art` → path; a missing file draws the
+  empty window with the id printed small in it, so an unfilled card is obviously unfilled and names its own
+  file. Dropping a PNG in is the entire act of filling a slot — no rebuild, no registry edit.
+- **`ART_SLOTS.md`**, generated: every id, title, pool/act, and for relics the matching canon number and its
+  brief line, so the catalogue can still be worked down while generating images even though the number is not
+  in the filename.
+- An upgraded card (`levy_stamp+`) falls back to its base card's art unless its own file exists.
 
-The audit this phase asked for was run, and it did not come back clean. **"Ignore the old relics" is not
-something the frontend can do — they are what the game hands out.**
+### D3a — the relic faucet still points at the predecessor (found 2026-09-10)
 
-- Every **Elite**, **Boss** and **Mimic** victory reward in **Acts I–IV** offers a relic pool of **49**
-  entries: **47 ported v2 demo relics and 2 canonical ones** (`Acts[*].MapGeneration.VictoryRewards.*.Source`).
-  Identical in all four acts. Act V has none, correctly.
-- The 50 canonical **Normal** relics are reachable only through **events, programs and shops** — the main
-  relic faucet of the game does not offer them.
-- **12 of the 24 Shop relics are named nowhere in the shipped document at all** — `backroom_kettle`,
-  `bent_auction_gavel`, `bounty_hook`, `copper_receipt_roll`, `guest_favor_token`, `indemnity_stamp`,
-  `notarys_waiver`, `priority_window_pass`, `scriveners_shears`, `turnover_bell`, `warranty_tag`,
-  `witchmarket_purse`. They cannot be bought.
-- The 69 **Boss** relics are fine: they come through the forced 1-of-3 on the kill, a separate mechanism.
+The audit this phase asked for was run against the spec, and it did not come back clean. **The old v2 relics
+did not "slip into the data" — one function was never re-pointed, and every faucet that calls it still hands
+out the pool that existed before the final one did.**
 
-**The fix:** point the Elite/Boss/Mimic reward sources at the canonical Normal pool with its authored
-rarity weights, delete the 47 demo relics and their presentations, and stock the 12 missing shop relics.
-Pinned by a test per pool — *a run can actually reach this* — which is the Act-III lesson written down as an
-assertion instead of a memory.
+**What `BnB_Final_Relics_Master_PostAudit.md` §1 says.** There is no per-act relic layer at all: the 50
+Normal relics are one global pool for Acts I–IV, reachable from four faucets — standard random relic rewards,
+**Treasure** rewards, the normal-relic slots in shops, and events that award a random Normal relic. Boss
+relics are 1-of-3 on the kill and appear nowhere else. Shop relics are the shop inventory plus three named
+market events. Event relics hang on named branches.
 
-⚠ **This changes what a run hands out, so it is content, not paint.** It belongs here rather than in V-7
-because a relic shelf drawn over a pool of 47 things with no canon entry, no art brief and no code is a
-shelf that documents a bug. And it moves V-7's balance data in the right direction: the first real numbers
-should be measured against the relics the game is supposed to have.
+**What the code does, faucet by faucet:**
 
----
+| faucet | draws from | verdict |
+|---|---|---|
+| Elite / Boss / Mimic victory (`MapSpecBuilder.VictoryRewards`) | `RelicGrantSource(null, …)` | ❌ ported v2 list |
+| Treasure chest (`EventTemplates.Treasure`) | `RelicGrantSource(null, …)` | ❌ ported v2 list |
+| Shop, normal-relic shelf (`EventTemplates.Build`) | `pools.NormalRelicStock` | ✔ canonical 50 |
+| Act-IV doors that award "a random Normal Relic" | `NormalRelicOfRarity` | ✔ canonical 50 |
+| Boss kill, forced 1-of-3 (`BossRewards`) | `BossRelics` | ✔ canonical 69 |
+| Event branches | `EventRelics` | ✔ canonical 25 |
+
+**The single cause.** `ConversionPools.Relics` is `data.Relics` — the **ported v2 JSON relics**, filtered only
+to "not boss rarity" and "class-eligible". `RelicGrantSource` reads it (its own error message still says
+*"no event-eligible relics"* — it was written for event awards), and the map layer and the treasure chest both
+call it. The canonical pools arrived later as `NormalRelicStock` / `ShopRelicStock` and were wired only into
+the shop shelves and, at IV-22, into `NormalRelicOfRarity`.
+
+**What that costs, measured in the shipped document:** every Elite, Boss and Mimic reward in Acts I–IV offers
+a pool of **49 relics — 47 ported and 2 canonical**. The 2 are `archive_key` and `emergency_inkwell`, the only
+final relics whose ids collide with a ported one, so the final version replaced them in place
+(`BlueprintAssembler.cs:110` keeps every ported relic whose id does *not* meet a final one). The other 48
+authored Normal relics never enter that pool. Act V correctly grants none.
+
+**A second, smaller gap.** A shop's shelves are sampled at CONVERSION time — `Relics(pools.ShopRelicStock,
+rng, depth: 5)` stores 5 of the 24 shop relics per shop, and a reroll only turns over inside that stored
+depth. Across the four shops in the shipped document, **12 of the 24 shop relics are never named at all**:
+`backroom_kettle`, `bent_auction_gavel`, `bounty_hook`, `copper_receipt_roll`, `guest_favor_token`,
+`indemnity_stamp`, `notarys_waiver`, `priority_window_pass`, `scriveners_shears`, `turnover_bell`,
+`warranty_tag`, `witchmarket_purse`. The spec says all 24 are eligible.
+
+**The fix:** point the Elite/Boss/Mimic and Treasure sources at the canonical Normal pool with its authored
+rarity weights, delete the 47 ported relics and their presentations, and deepen or rotate the shop sample so
+all 24 shop relics are reachable. One test per faucet that proves *a run can actually reach this pool* —
+the Act-III lesson written down as an assertion instead of a memory.
+
+⚠ **This is content, not paint: it changes what a run hands out.** It belongs here rather than in V-7 because
+a relic shelf drawn over a pool of 47 things that have no canon entry, no art brief and no file name is a
+shelf that documents a bug — and because V-7's first real balance numbers should be measured against the
+relics the game is supposed to have.
 
 ## Phase D4 — the relic strip
 
@@ -253,9 +285,8 @@ than it does today.
 - ~~The accent~~ — **Antique Gold `#C9A227`**, decided 2026-09-10.
 - ~~The signal colour~~ — **Amber `#FFD166`**, decided 2026-09-10.
 - ~~`sudo apt install ffmpeg`~~ — installed; the back converts in D2.
-- **A font**, vendored or default.
-- **The card code scheme** (`C-B-###` / `C-G-###` / `R-###`) — is that what the user wants to type when
-  naming generated files?
-- **The new front as a transparent overlay** — can it be exported the way v4 was?
+- ~~A font~~ — **Godot default, with one hook in `MoonvineTheme` to change it later.** Decided 2026-09-10.
+- ~~The card code scheme~~ — **the id is the code** (`levy_stamp.png`). Decided 2026-09-10.
+- ~~The new front as a transparent overlay~~ — **delivered**, `assets/cards/card-frame.png`.
 - **D3a** — is the relic-faucet fix in scope for this arc? (It is content, and it is the reason the shelf
   can mean anything.)
