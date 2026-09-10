@@ -700,23 +700,72 @@ D3a had already cut off. Regenerated and compared leaf by leaf: **2491 leaves re
 
 ---
 
-## Phase D5 — pick a card by looking at it
+## Phase D5 — a choice you can see  ✔ BUILT 2026-09-11
 
-**Deliverable:** card rewards, shop shelves, event offers and in-combat card choices show **card faces**.
+**Delivered:** everywhere the player chooses something, the thing is DRAWN. The hand and the in-combat card
+picker already drew faces (D4a); this is the rest of the game — rewards, the shop's stock, an event that hands
+something over, the deck pick behind the campfire's amendment, the consumables on the way-screen, and the
+roster on the title screen.
 
-- **The engine seam (the only one).** `EntitySelectionRequest` gains a parallel list of identities — what
-  kind of thing each option is and its id — filled where `Display(...)` already switches over
-  `RewardOffer` / `RunCardInstance` / `RelicInstance` (`InteractiveRunSession.cs:320`). Additive, the
-  back-compat constructor stays, no rule moves. Everything downstream (`RenderEntityPick`) then draws a face
-  instead of `EntityOption`'s name-over-description panel.
-- **The shop needs no seam** — it reads the payload (see finding 4) and swaps `AddShopRow`'s button for a
-  face with its price beneath; what the purse cannot reach stays visible and dimmed, as it is today.
-- **In-combat card choices** (`PendingCardChoice`, e.g. "archive a card from your draw pile") already hold
-  real `CardInstance`s and can draw faces immediately.
-- A selected face is marked on the card, not by a checkbox next to it.
+**The engine seam — one, additive.** A pick travelled as two parallel lists of STRINGS, and a name is not an
+address: nothing downstream could turn "Levy Stamp +" back into the card it names, so a reward screen could
+only ever be a list of sentences. `EntitySelectionRequest` now carries a third parallel list saying what each
+option is a picture OF — `EntityArt(Kind, Id, UpgradeLevel)`, filled by `RunEntityLabeler.ArtFor`, which walks
+exactly the candidates `Description` already walked. `ArtAt(i)` answers null for an option that is a picture of
+nothing (gold, a door to a reward the run has not rolled yet) and the frontend keeps its words, which is what
+every frontend did before. Both old constructors still compile; the Studio was not touched. `ArtFor` is
+STATIC — which card a pick is a picture of has nothing to do with what anything is called, so a rig with no
+labeler still gets its art.
 
-**Done when:** `--smoke-reward` and `--smoke-shop` capture rows of cards; picking still works through
-`OnCardChoiceClicked` / `PickEntities` unchanged.
+`ArtForGrant(effects)` is the same walk through the other doorway — a shop slot and an event choice hand the
+frontend EFFECTS rather than a candidate — so **neither the shop nor the events needed a seam at all**: which
+effect grants which card is engine knowledge, and it is now written down once instead of re-derived per screen.
+
+**What each screen does now**
+
+- **Rewards** (`RenderEntityPick`): cards side by side in one wrapping, centred row, because a card pick is a
+  COMPARISON and a column cannot be compared without scrolling past the card you were looking at. A relic keeps
+  its row — its rules are prose and prose does not fit in a square — but the row now starts with the relic's own
+  tile, pool frame and all. Picking is unchanged: the gold edge on the card IS the selection, and `PickEntities`
+  never learned about any of this.
+- **The deck pick** — the campfire's amendment, the shop's card removal — is the same screen and draws the whole
+  deck as faces. Its candidates are `RunCardInstance`s, so the upgrade level travels with the id and the face
+  prints the "+" while the art slot never grows one.
+- **The shop** (`RenderShop`): every slot drawn as what it grants — a card face with its price beneath, a relic
+  tile at the head of its row. What the purse cannot reach is dimmed as ONE object and cannot be clicked (the
+  face disables its own overlay), so a price nobody read cannot be spent. Services, the restock and Leave stay
+  rows: a service is not a thing.
+- **Events** (`RenderChoices`): a branch that gives a card or a relic shows it, and the branch and its offer are
+  ONE tight block — three buttons with a picture loose beneath them is a picture that belongs to whichever door
+  the eye is nearest. Deliberately NOT clickable: the button is the choice, and two ways to take a branch is two
+  ways to take it by accident.
+- **The way-screen** (`RenderNodeFork`): a consumable was offered as `Use standard.scheduled_the_collapse`. It
+  is now the object, on the same tile the sidebar wears it on, under its authored name. That was the last raw
+  id anywhere the player is asked to choose. ⚠ The document ships **no** `Presentation.Consumables` entries, so
+  the tile is the framed name and not a picture — the same thing the sidebar has always shown.
+
+**The slot nobody had counted.** The document has declared `Presentation.Characters[id].Art` since the export
+contract was written; the census in `Boot.ReportArt` and the table in `ART_SLOTS.md` both had three kinds in
+them and the document names four. So the one picture the game shows before anything else — the character on
+the title screen — was the only slot with no plate, no row and no count. `make-enemy-art.py` paints it too
+(the same stick figure, facing RIGHT: the player stands on the left of the arena and looks across),
+`CardVisuals.CharacterArt` resolves `characters/<id>.png`, the roster card draws it, and every count now says
+**709**. The `facing` parameter is provably behaviour-preserving for the bodies: all 269 enemy plates come back
+byte-identical.
+
+**Measured, not asserted.** `ReportPictures(screen)` walks the LIVE scene after a probe and counts textures by
+which art folder they came from — ⚠ the PANE and the SIDEBAR apart, or a room that draws nothing would still
+report the relics the player happens to be wearing and the number would stop meaning "this screen draws what it
+is offering". `--smoke-upgrade` is new and is the only probe that reaches the deck pick.
+
+    smoke-art:                709 slots asked for (229 cards, 210 relics, 269 bodies, 1 characters), 709 filled
+    smoke-pictures [reward]:  pane 3 card  · 0 relic          worn 0 relic
+    smoke-pictures [shop]:    pane 7 card  · 4 relic          worn 1 relic
+    smoke-pictures [event]:   pane 0 card  · 1 relic          worn 0 relic
+    smoke-pictures [rest]:    pane 13 card · 0 relic          worn 1 relic   (--smoke-upgrade)
+    smoke-format:             5 slots, asked for 134x190, 0 off over 10 clicks — PASS
+
+Suites at the gate: Core 1469 · Scenario 755 · Run 581 · Sandbox 373 · bnb-content 1467, all green.
 
 ---
 
@@ -732,7 +781,7 @@ than it does today.
 
 ## Phase D7 — the gate, and only then V-7
 
-1. Core + bnb-content suites green (they are today: 1469 / 755 / 581 / 369 and 1406/1406).
+1. Core + bnb-content suites green (they are today: 1469 / 755 / 581 / 373 and 1467/1467).
 2. bnb-godot builds; every screenshot probe captured and reviewed by the user.
 3. `--smoke-marathon` still finishes with `Victory acts=5 rooms=111` and its per-act latency **not worse**
    than 592 s — a card face with an art window and a texture per card is more nodes per screen than a

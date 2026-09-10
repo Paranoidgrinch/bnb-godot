@@ -60,7 +60,7 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window"))
         {
             host.StartNewRun(seed: 7,
                 health: userArgs.Any(a => a is "--smoke-marathon" or "--smoke-crowd" or "--smoke-boss") ? 9999 : null);
@@ -91,16 +91,21 @@ public partial class Boot : Control
         // The bodies come from the manifest rather than from the encounters: it is the manifest that declares
         // a picture, and an enemy nothing offers is not a slot.
         var bodies = blueprint.Presentation.Enemies.Keys.ToList();
+        // ⚠ AND THE PLAYER'S OWN. The document declares a picture for every character and this count had three
+        // folders in it while the document has four — so the one slot nothing was ever going to notice was the
+        // one on the very first screen of the game.
+        var heroes = blueprint.Presentation.Characters.Keys.ToList();
         var filledCards = cards.Count(id => CardVisuals.CardArt(id) is not null);
         var filledRelics = relics.Count(id => CardVisuals.RelicArt(id) is not null);
         var filledBodies = bodies.Count(id => CardVisuals.EnemyArt(id) is not null);
+        var filledHeroes = heroes.Count(id => CardVisuals.CharacterArt(id) is not null);
         var strays = blueprint.Cards.Select(c => c.Id).Where(id => id.EndsWith('+'))
             .Where(id => CardVisuals.SlotPath("cards", id) != CardVisuals.SlotPath("cards", id.TrimEnd('+')))
             .ToList();
 
-        GD.Print($"smoke-art: {cards.Count + relics.Count + bodies.Count} slots asked for "
-            + $"({cards.Count} cards, {relics.Count} relics, {bodies.Count} bodies), "
-            + $"{filledCards + filledRelics + filledBodies} filled, "
+        GD.Print($"smoke-art: {cards.Count + relics.Count + bodies.Count + heroes.Count} slots asked for "
+            + $"({cards.Count} cards, {relics.Count} relics, {bodies.Count} bodies, {heroes.Count} characters), "
+            + $"{filledCards + filledRelics + filledBodies + filledHeroes} filled, "
             + $"{strays.Count} upgrade(s) asking for a picture of their own");
         foreach (var id in strays.Take(5))
             GD.Print($"  STRAY {id} asks for {CardVisuals.SlotPath("cards", id)}");
@@ -110,6 +115,8 @@ public partial class Boot : Control
             GD.Print($"  waiting: assets/art/{CardVisuals.SlotPath("relics", id)}");
         foreach (var id in bodies.Where(id => CardVisuals.EnemyArt(id) is null).Take(2))
             GD.Print($"  waiting: assets/art/{CardVisuals.SlotPath("enemies", id)}");
+        foreach (var id in heroes.Where(id => CardVisuals.CharacterArt(id) is null).Take(2))
+            GD.Print($"  waiting: assets/art/{CardVisuals.SlotPath("characters", id)}");
     }
 
     private async System.Threading.Tasks.Task CaptureThenQuit(string file)
@@ -193,12 +200,35 @@ public partial class Boot : Control
         var presentation = host.Blueprint.Presentation.Characters.GetValueOrDefault(character.Id);
         var selected = _selectedCharacter == character.Id;
 
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(220, 130) };
+        // 330, not the 220 this was: the picture takes 72 of the width and the flavour line needs the rest, or
+        // "Armed with forms, stamps, and a fireproof sense of procedure" comes out six lines tall and pushes the
+        // roster off the bottom of the screen.
+        var panel = new PanelContainer { CustomMinimumSize = new Vector2(330, 140) };
         panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
             selected ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
             selected ? MoonvineTheme.AccentLight : unlocked ? new Color(MoonvineTheme.Accent, 0.3f) : new Color(MoonvineTheme.TextMuted, 0.2f)));
 
-        var column = new VBoxContainer();
+        // WHO YOU ARE ABOUT TO BE, as a body and not only as a name. The roster is the first choice the game
+        // asks of anybody, and it was the last one still made entirely out of words.
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        if (CardVisuals.CharacterArt(character.Id) is { } portrait)
+        {
+            var picture = new TextureRect
+            {
+                Texture = portrait,
+                CustomMinimumSize = new Vector2(72, 110),
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+            };
+            if (!unlocked)
+                picture.Modulate = new Color(1, 1, 1, 0.35f);
+            row.AddChild(picture);
+        }
+
+        var column = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         column.AddThemeConstantOverride("separation", 6);
         var name = new Label { Text = character.Start.HeroName ?? character.Id };
         name.AddThemeFontSizeOverride("font_size", 18);
@@ -214,7 +244,8 @@ public partial class Boot : Control
         };
         flavor.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
         column.AddChild(flavor);
-        panel.AddChild(column);
+        row.AddChild(column);
+        panel.AddChild(row);
 
         if (unlocked)
         {

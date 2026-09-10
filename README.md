@@ -41,9 +41,10 @@ presentation manifest.
   A card's picture is `assets/art/cards/<id>.png` — the path the document itself declares in
   `Presentation.Art`, so the contract's path IS the path on disk and there is nothing to register.
   An upgraded card has no picture of its own (`levy_stamp+` draws `levy_stamp.png`), so 413 cards ask
-  for 254 pictures; relics ask for 210 more under `assets/art/relics/`, and every **body** — all 269
+  for 229 pictures; relics ask for 210 more under `assets/art/relics/`, every **body** — all 269
   enemies, elites and bosses — asks for one under `assets/art/enemies/`, drawn in its column in place of the
-  stick figure. ⚠ A body is never mirrored by the game (a flipped body wears its sash on the wrong side), so
+  stick figure, and the player's own body asks for one under `assets/art/characters/`, shown on the title
+  screen beside the name. ⚠ A body is never mirrored by the game (a flipped body wears its sash on the wrong side), so
   it is drawn facing LEFT, towards the player. Which KIND of body it is travels in the document as
   `Presentation.Enemies[id].Frame` (35 boss · 66 elite · 4 mimic · 164 standard) — worked out from the fights
   an id is met in, because that is not a property of the enemy. The whole list, with the design
@@ -83,7 +84,7 @@ godot --path .                 # or open in the Godot 4.7 (.NET) editor and pres
 Headless checks (no window):
 ```
 godot --headless -- --smoke        # boot: prints "loaded: …" and quits
-godot --headless -- --smoke-art     # the art census: how many of the 464 slots have a file
+godot --headless -- --smoke-art     # the art census: how many of the 709 slots have a file
 godot --headless -- --smoke-full    # auto-plays the first rooms and reports the state
 godot --headless -- --smoke-timing  # per-action latency (~17 ms/action)
 godot --headless -- --smoke-statuses # carried state reads as its authored name, not its id
