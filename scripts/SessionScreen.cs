@@ -1988,30 +1988,57 @@ public partial class SessionScreen : Control
     {
         var drawCount = combat.State.GetCardZones(combat.HeroId).GetCardsInZone(CardZone.DrawPile).Count;
 
-        var holder = new Control { CustomMinimumSize = new Vector2(CardVisuals.CardW + 24, CardVisuals.CardH + 30) };
+        const int lift = 4;      // how far up and to the right each card in the stack sits on the one below
+        const int caption = 26;  // the count's own band, under the ink
+
+        // ⚠ A PILE'S FOOTPRINT IS ITS INK, NOT ONE CARD. The stack leans up and to the right, so it stands
+        // taller and wider than a single back by the whole lean, and the count needs a band of its own below
+        // it. Measured as one card the caption has nowhere to go: `BottomWide` was being applied to a Label
+        // that had not been laid out yet, so its anchor rect was zero-high and its minimum height pushed it
+        // straight out of the bottom of the holder and onto the pane's own hairline. It had been printing
+        // 2 px off the edge of the window since the pile was built; D2 made it gold, and a gold thing sitting
+        // on the border is not something you can keep not seeing.
+        var lean = (drawCount > 0 ? Math.Min(drawCount, 3) + 1 : 0) * lift;
+        var footprint = new Vector2(CardVisuals.CardW + lean, CardVisuals.CardH + lean + caption);
+
+        var holder = new Control { CustomMinimumSize = footprint, Size = footprint };
         holder.SetAnchorsPreset(LayoutPreset.BottomLeft);
-        holder.Position = new Vector2(24, -(CardVisuals.CardH + 30) - 12);
+        holder.Position = new Vector2(24, -footprint.Y - 16);
         _combatRoot.AddChild(holder);
 
-        // Static backs fanned slightly for depth; the top one animates.
+        // Static backs fanned slightly for depth; the top one animates. They are laid from the BOTTOM of the
+        // lean upward, so the card that ends up on top of the stack is the one flush with the holder's top
+        // edge and nothing in the pile is drawn above its own footprint.
         var backing = Math.Min(drawCount, 3);
         for (var i = 0; i < backing; i++)
         {
             var still = CardVisuals.Back(animated: false);
-            still.Position = new Vector2(i * 4, -i * 4);
+            still.Position = new Vector2(i * lift, lean - i * lift);
             holder.AddChild(still);
         }
         if (drawCount > 0)
         {
             var top = CardVisuals.Back(animated: true);
-            top.Position = new Vector2(backing * 4, -backing * 4);
+            top.Position = new Vector2(backing * lift, lean - backing * lift);
             holder.AddChild(top);
             _deckTopNode = top;
         }
 
-        var count = new Label { Text = $"Draw {drawCount}", HorizontalAlignment = HorizontalAlignment.Center };
-        count.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
-        count.SetAnchorsPreset(LayoutPreset.BottomWide);
+        // ⚠ THE GOLD IN THIS CORNER IS THE COUNT, NOT A FRAME. The plan asked for a gold frame around the
+        // pile so the back's violet would not read as a second accent — but the clip turned out to carry its
+        // own ornate border, and a gold ring drawn around an already-framed painting is not an accent, it is
+        // a picture in the wrong frame. The count is the only chrome the pile actually owns, so it is the
+        // thing that goes gold: the corner still answers to the rest of the screen, and the artwork is left
+        // to be artwork.
+        var count = new Label
+        {
+            Text = $"Draw {drawCount}",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 1f, AnchorBottom = 1f,
+            OffsetLeft = 0f, OffsetRight = 0f, OffsetTop = -caption, OffsetBottom = 0f,
+        };
+        count.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
         holder.AddChild(count);
     }
 
