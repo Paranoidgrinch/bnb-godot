@@ -124,6 +124,8 @@ public partial class SessionScreen : Control
             _ = SmokeRoom(MapNodeTags.Event, "smoke-event.png");
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-rest"))
             _ = SmokeRoom(MapNodeTags.Rest, "smoke-rest.png");
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-upgrade"))
+            _ = SmokeRoom(MapNodeTags.Rest, "smoke-upgrade.png", andThen: "improve");
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-ambush"))
             _ = SmokeRoom(MapNodeTags.MultiCombat, "smoke-ambush.png");
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-elite"))
@@ -190,6 +192,53 @@ public partial class SessionScreen : Control
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         ReportTooltips("combat");
         GetTree().Quit();
+    }
+
+    // HOW MANY PICTURES ARE ACTUALLY ON THE SCREEN — counted off the live scene, not off the code that built
+    // it. D5's claim is that every place the player chooses something draws the thing rather than describing
+    // it, and the only honest way to check that is to walk what was drawn and ask each texture where it came
+    // from: an art slot, or the frame and the furniture. A screen that should be offering cards and reports
+    // zero cards is the bug this exists to catch.
+    private void ReportPictures(string screen)
+    {
+        // ⚠ THE PANE AND THE SIDEBAR ARE COUNTED APART. The shelf on the right wears the relics the player
+        // already owns and is on screen whatever room they are in — counted together with the pane, a room that
+        // draws nothing at all would still report a relic, and the number would stop meaning "this screen draws
+        // what it is offering", which is the only thing it is for.
+        GD.Print($"smoke-pictures [{screen}]: pane {Census(_main)}{Census(_combatRoot, add: true)} · "
+            + $"worn {Census(_sidebar)}");
+    }
+
+    private static string Census(Godot.Node? root, bool add = false)
+    {
+        var slots = new Dictionary<string, int> { ["cards"] = 0, ["relics"] = 0, ["enemies"] = 0, ["characters"] = 0 };
+        var furniture = 0;
+        if (root is not null)
+            Walk(root);
+
+        void Walk(Godot.Node node)
+        {
+            foreach (var child in node.GetChildren())
+            {
+                if (child is TextureRect { Texture: { } texture })
+                {
+                    var path = texture.ResourcePath;
+                    var kind = slots.Keys.FirstOrDefault(k => path.StartsWith($"res://assets/art/{k}/", StringComparison.Ordinal));
+                    if (kind is not null)
+                        slots[kind]++;
+                    else
+                        furniture++; // the card frame, the deck back — drawn, but not a slot
+                }
+                Walk(child);
+            }
+        }
+
+        var total = slots.Values.Sum() + furniture;
+        if (add && total == 0)
+            return ""; // the combat root is empty outside a fight and has nothing to say about it
+        return (add ? " + " : "")
+            + $"{slots["cards"]} card · {slots["relics"]} relic · {slots["enemies"]} body · "
+            + $"{slots["characters"]} hero · {furniture} frame";
     }
 
     // What on this screen is explained, and what names something without offering a hover.
@@ -930,7 +979,12 @@ public partial class SessionScreen : Control
 
     // Walk toward the nearest room of one KIND and screenshot it as the player would meet it. The rooms that
     // are not fights — shop, campfire, a door — are the ones nothing else in the smoke suite ever looks at.
-    private async System.Threading.Tasks.Task SmokeRoom(string role, string file)
+    //
+    // `andThen` takes ONE more step once the room is reached: the branch whose words contain it. The campfire's
+    // amendment is behind such a branch, and what is behind it is the DECK pick — a different kind of candidate
+    // from a reward's (the cards you already own, upgrade levels and all), on the same screen. Nothing else in
+    // the battery ever reaches it.
+    private async System.Threading.Tasks.Task SmokeRoom(string role, string file, string? andThen = null)
     {
         var session = Session;
         var play = Play;
@@ -974,10 +1028,22 @@ public partial class SessionScreen : Control
             else
                 break;
         }
+        if (andThen is not null && session is { IsAwaitingChoice: true })
+        {
+            var branch = session.PendingChoices
+                .FirstOrDefault(c => Say(c.TextKey ?? c.Id).Contains(andThen, StringComparison.OrdinalIgnoreCase));
+            if (branch is not null)
+                session.Pick(branch.Id);
+            else
+                GD.Print($"smoke-room {role}: no branch named \"{andThen}\" — "
+                    + string.Join(" | ", session.PendingChoices.Select(c => Say(c.TextKey ?? c.Id))));
+        }
+
         Rebuild();
         GD.Print($"smoke-room {role}: choice={session?.IsAwaitingChoice} entities={session?.IsAwaitingEntities} "
             + $"error={session?.Error ?? Play?.Error ?? "none"}");
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        ReportPictures(role);
         ReportTooltips(role);
         await CaptureThenQuit(file);
     }
@@ -1152,6 +1218,7 @@ public partial class SessionScreen : Control
         GD.Print($"smoke-reward: awaiting={session?.IsAwaitingEntities} "
             + $"displays={(session?.PendingEntities is { } e ? string.Join(" | ", e.Displays) : "-")}");
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        ReportPictures("reward");
         ReportTooltips("reward");
         await CaptureThenQuit("smoke-reward.png");
     }
@@ -1628,12 +1695,46 @@ public partial class SessionScreen : Control
         var prose = Say(situation.TextKey ?? situation.Id);
         Title(prose);
         Explained(prose);
+
+        // AN EVENT THAT HANDS SOMETHING OVER SHOWS IT. A door that offers a card or a relic was asking the
+        // player to take a sentence on trust — and an event's choices are authored with their effects right
+        // there, so what a branch GIVES is knowable without the engine being asked anything new. The branch is
+        // still a button (its words are the offer, and most branches give nothing a picture can hold); the
+        // thing it gives stands under it.
         foreach (var choice in session.PendingChoices)
         {
             var id = choice.Id;
             var text = Say(choice.TextKey ?? id);
-            AddButton(text, () => { session.Pick(id); GameHost.Instance.AutoSave(); })
-                .TooltipText = Glossary.Explain(null, text);
+            var offer = RunEntityLabeler.ArtForGrant(choice.Effects);
+
+            // ⚠ THE OFFER MUST BELONG TO ITS BRANCH. Three buttons and one picture loose beneath them is a
+            // picture that belongs to whichever door the eye happens to be nearest — so the branch and what it
+            // hands over are ONE block, tight, and the next branch starts a new one.
+            var block = offer is null ? null : new VBoxContainer();
+            block?.AddThemeConstantOverride("separation", 2);
+
+            var button = new Button { Text = text, TooltipText = Glossary.Explain(null, text) };
+            button.Pressed += () => { session.Pick(id); GameHost.Instance.AutoSave(); };
+            (block ?? (Container)_main).AddChild(button);
+            if (block is null)
+                continue;
+
+            switch (offer)
+            {
+                // Not clickable: the BUTTON is the choice. A card drawn here is being shown, not offered —
+                // two ways to take the same branch is two chances to take it by accident.
+                case EntityArt { Kind: EntityArt.Card } card:
+                    var faces = Gallery();
+                    faces.AddChild(CardPick(card.Id, card.UpgradeLevel, selected: false, caption: null, onClick: null));
+                    block.AddChild(faces);
+                    break;
+                case EntityArt { Kind: EntityArt.Relic } relic:
+                    var offered = Shelf();
+                    offered.AddChild(RelicIcon(relic.Id));
+                    block.AddChild(offered);
+                    break;
+            }
+            _main.AddChild(block);
         }
     }
 
@@ -1649,12 +1750,34 @@ public partial class SessionScreen : Control
         Title("The shop");
         Muted($"Gold: {gold}");
 
+        // THE STOCK, AS OBJECTS ON A SHELF. A shop is the one screen in the game that is nothing but a choice,
+        // and the thing it was asking the player to choose between was a stack of labelled buttons. Every slot
+        // knows what it grants (its payload), so every slot can be drawn as the thing it grants: a card as a
+        // card with its price under it, a relic as the tile it will wear on the shelf. Only what is NOT an
+        // object — the card-removal service, the restock — stays a row, because it is a service and not a thing.
         foreach (var group in shelf.Slots.GroupBy(slot => slot.GroupId))
         {
             _main.AddChild(MutedLabel(Say(group.Key)));
+            HFlowContainer? gallery = null;
             foreach (var slot in group)
-                AddShopRow(session, affordable, slot.Entry.Id, slot.Entry.TextKey ?? slot.Entry.Id, slot.Price,
-                    WhatItDoes(slot.Entry.Payload));
+            {
+                var entry = slot.Entry;
+                var name = Say(entry.TextKey ?? entry.Id);
+                switch (RunEntityLabeler.ArtForGrant(entry.Payload))
+                {
+                    case EntityArt { Kind: EntityArt.Card } card:
+                        gallery ??= AddGallery();
+                        gallery.AddChild(ShopCard(session, affordable, entry.Id, card.Id, slot.Price));
+                        break;
+                    case EntityArt { Kind: EntityArt.Relic } relic:
+                        AddShopRow(session, affordable, entry.Id, name, slot.Price,
+                            WhatItDoes(entry.Payload), RelicIcon(relic.Id));
+                        break;
+                    default:
+                        AddShopRow(session, affordable, entry.Id, name, slot.Price, WhatItDoes(entry.Payload));
+                        break;
+                }
+            }
         }
 
         foreach (var service in shelf.Services.Where(s => !shelf.IsServiceUsed(s)))
@@ -1678,21 +1801,37 @@ public partial class SessionScreen : Control
             : null;
     }
 
+    // A CARD ON THE SHELF. The same face the hand will hold, with the price under it, dimmed as one object when
+    // the purse cannot reach it — which is what a shop is half for: knowing what you cannot yet afford. Dimming
+    // also takes the click away (the face disables its own overlay), so an unaffordable card cannot be bought
+    // by a player who did not read the number.
+    private Control ShopCard(
+        InteractiveRunSession session, IReadOnlyDictionary<string, EventChoice> affordable,
+        string choiceId, string definitionId, int price)
+    {
+        var canBuy = affordable.ContainsKey(choiceId);
+        return CardPick(
+            definitionId, upgradeLevel: 0, selected: false,
+            caption: canBuy ? $"{price} gold" : $"{price} gold — too dear",
+            onClick: canBuy ? () => session.Pick(choiceId) : null,
+            dimmed: !canBuy);
+    }
+
     private void AddShopRow(
         InteractiveRunSession session, IReadOnlyDictionary<string, EventChoice> affordable,
-        string choiceId, string name, int price, string description = "")
+        string choiceId, string name, int price, string description = "", Control? icon = null)
     {
         var canBuy = affordable.ContainsKey(choiceId);
         var hover = Glossary.Explain(canBuy ? null : "Not enough gold.", $"{name} {description}");
         // On the whole row, so the rules line under the button explains its own words too.
-        var row = new VBoxContainer { TooltipText = hover, MouseFilter = MouseFilterEnum.Pass };
-        row.AddThemeConstantOverride("separation", 0);
+        var column = new VBoxContainer { TooltipText = hover, MouseFilter = MouseFilterEnum.Pass };
+        column.AddThemeConstantOverride("separation", 0);
         var button = new Button { Text = $"{name}   —   {price} gold", Disabled = !canBuy };
         button.Pressed += () => session.Pick(choiceId);
         button.TooltipText = hover;
         if (!canBuy)
             button.AddThemeColorOverride("font_disabled_color", MoonvineTheme.TextMuted);
-        row.AddChild(button);
+        column.AddChild(button);
         if (!string.IsNullOrWhiteSpace(description))
         {
             var text = MutedLabel(description);
@@ -1700,9 +1839,25 @@ public partial class SessionScreen : Control
             text.AddThemeFontSizeOverride("font_size", 12);
             text.MouseFilter = MouseFilterEnum.Stop;
             text.TooltipText = hover;
-            row.AddChild(text);
+            column.AddChild(text);
         }
-        _main.AddChild(row);
+
+        // With a picture the row becomes tile-then-words; without one it is the column it always was.
+        if (icon is null)
+        {
+            _main.AddChild(column);
+        }
+        else
+        {
+            var withIcon = new HBoxContainer { TooltipText = hover, MouseFilter = MouseFilterEnum.Pass };
+            withIcon.AddThemeConstantOverride("separation", 8);
+            if (!canBuy)
+                icon.Modulate = new Color(1, 1, 1, 0.45f); // out of reach, and the object says so as one object
+            withIcon.AddChild(icon);
+            column.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            withIcon.AddChild(column);
+            _main.AddChild(withIcon);
+        }
     }
 
     // What a purchase actually gives you, read off the effects behind it rather than off its id — the shelf
@@ -1751,15 +1906,22 @@ public partial class SessionScreen : Control
         _ => key.Contains('.') || key.Contains('-') || key.Contains('_') ? Humanized(key) : key,
     };
 
+    // THE REWARD SCREEN. Everything a fight, a chest or an event hands over comes through here — a card pick, a
+    // relic, a deck card to be struck out — and until D5 all of it was a column of sentences. The pick now says
+    // what each option is a picture OF (EntityArt, which exists for exactly this), so a card is drawn as a card
+    // and a relic wears its shelf tile. An option that is a picture of nothing — gold, a door to a further
+    // reward the run has not rolled yet — keeps the words, because there is nothing to draw.
     private void RenderEntityPick(InteractiveRunSession session, EntitySelectionRequest entities)
     {
         Title(Say(entities.Purpose));
         Muted(entities.Displays.Count <= entities.Count ? "Yours:" : $"Pick {entities.Count}");
+        HFlowContainer? gallery = null;
         for (var i = 0; i < entities.Displays.Count; i++)
         {
             var index = i;
             var description = index < entities.Descriptions.Count ? entities.Descriptions[index] : "";
-            _main.AddChild(EntityOption(entities.Displays[index], description, _selectedEntities.Contains(index), () =>
+            var selected = _selectedEntities.Contains(index);
+            void Toggle()
             {
                 if (!_selectedEntities.Remove(index))
                 {
@@ -1769,7 +1931,26 @@ public partial class SessionScreen : Control
                         _selectedEntities.Add(index);
                 }
                 Rebuild();
-            }));
+            }
+
+            switch (entities.ArtAt(index))
+            {
+                // Cards go side by side in one wrapping row: a card pick is a COMPARISON, and three faces in a
+                // column cannot be compared without scrolling past the one you were looking at.
+                case EntityArt { Kind: EntityArt.Card } card:
+                    gallery ??= AddGallery();
+                    gallery.AddChild(CardPick(card.Id, card.UpgradeLevel, selected, caption: null, Toggle));
+                    break;
+                // A relic keeps its row — its rules are prose, and prose does not fit in a square — but the row
+                // now begins with the object itself.
+                case EntityArt { Kind: EntityArt.Relic } relic:
+                    _main.AddChild(EntityOption(
+                        entities.Displays[index], description, selected, Toggle, RelicIcon(relic.Id)));
+                    break;
+                default:
+                    _main.AddChild(EntityOption(entities.Displays[index], description, selected, Toggle));
+                    break;
+            }
         }
         var confirm = AddButton("Confirm", () =>
         {
@@ -1788,9 +1969,125 @@ public partial class SessionScreen : Control
             });
     }
 
+    // ── D5: A CHOICE YOU CAN SEE ─────────────────────────────────────────────────
+    // Wherever the player picks something, the thing is DRAWN and not merely described. The hand has shown
+    // real cards since D4a and the shelf real relics since D3; everything else the player chooses from — the
+    // reward after a fight, the shop's stock, an event that hands something over — was still a list of
+    // sentences, and a game whose cards have faces cannot ask you to choose between two paragraphs.
+    //
+    // Three widgets serve all of it, because all of it is the same two things: a card, or a relic.
+
+    // A ROW OF PICTURES THAT WRAPS. Three cards after a fight, seven objects on a shelf: an HFlowContainer is
+    // the one container that fills a row and then starts another, so a wide shelf grows downwards rather than
+    // off the side of the pane. Centred, because a reward is the thing you are looking at.
+    //
+    // ⚠ NOT inside a CenterContainer — that hands its child the child's MINIMUM, and a flow container's
+    // minimum width is one card, which would stack the whole shelf into a single column. The same trap the
+    // sidebar's shelf documents; only the container's own alignment can centre a row that wraps.
+    private static HFlowContainer Gallery()
+    {
+        var row = new HFlowContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            Alignment = FlowContainer.AlignmentMode.Center,
+        };
+        row.AddThemeConstantOverride("h_separation", 10);
+        row.AddThemeConstantOverride("v_separation", 10);
+        return row;
+    }
+
+    private HFlowContainer AddGallery()
+    {
+        var row = Gallery();
+        _main.AddChild(row);
+        return row;
+    }
+
+    // ONE CARD, OUTSIDE A FIGHT. CardBlockButton cannot serve here: it asks the combat what the hero can pay
+    // for and what a rule forbids, and a reward screen has no combat — what a card you are being GIVEN costs
+    // is not a question anyone is asking. Everything else is the very same face the hand draws, which is the
+    // whole point: the card you are offered has to be recognisable as the card you will later hold.
+    //
+    // `caption` is a SHORT line under the card (a price). It is short on purpose — a column is as wide as its
+    // widest child, so a sentence here would push the cards apart; what a card does belongs in its plaque and
+    // its hover, where the hand already puts it.
+    private Control CardPick(
+        string definitionId, int upgradeLevel, bool selected, string? caption, Action? onClick, bool dimmed = false)
+    {
+        var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definitionId);
+        var rules = presentation?.FlavorText ?? "";
+        var tooltip = string.Join("\n", new[] { CostLabel(definitionId), Glossary.Explain(rules) }
+            .Where(part => !string.IsNullOrWhiteSpace(part)));
+        var face = CardVisuals.Face(
+            new CardVisuals.CardFace(
+                Id: definitionId,
+                // An improvement prints its "+" on the NAME and draws the same picture — no art slot in this
+                // game has a "+" in it, and a card that was upgraded is still a picture of that card.
+                Title: CardName(definitionId) + new string('+', upgradeLevel),
+                Cost: CostBadge(definitionId),
+                Rules: rules,
+                Rarity: presentation?.Rarity,
+                Tooltip: tooltip,
+                Dimmed: dimmed,
+                Armed: selected),
+            onClick);
+        if (string.IsNullOrWhiteSpace(caption))
+            return face;
+
+        var column = new VBoxContainer();
+        column.AddThemeConstantOverride("separation", 2);
+        column.AddChild(face);
+        var label = MutedLabel(caption);
+        label.HorizontalAlignment = HorizontalAlignment.Center;
+        label.CustomMinimumSize = new Vector2(CardVisuals.CardW, 0);
+        label.AddThemeFontSizeOverride("font_size", 12);
+        label.MouseFilter = MouseFilterEnum.Stop;
+        label.TooltipText = tooltip;
+        if (dimmed)
+            label.AddThemeColorOverride("font_color", new Color(MoonvineTheme.TextMuted, 0.6f));
+        column.AddChild(label);
+        return column;
+    }
+
+    // A relic, on the same tile the shelf wears it on — its pool frame included, so what RANK of relic this is
+    // gets answered before its name is read. Bigger than the shelf's 50 px: on a reward or a shop shelf the
+    // relic is the thing being looked at, not a thing being glanced past.
+    private const int RelicPickSize = 64;
+
+    // A consumable is worn on the same tile and spent rather than kept — and on the way-screen it is a THING
+    // the player chooses to use, which is the whole of D5's rule. It was offered there as its raw id.
+    private Control ConsumableIcon(string definitionId, float size = RelicPickSize)
+    {
+        var look = GameHost.Instance.Blueprint.Presentation.Consumables.GetValueOrDefault(definitionId);
+        var name = ConsumableName(definitionId);
+        return CardVisuals.Tile(new CardVisuals.RelicFace(
+            Id: definitionId,
+            Title: name,
+            Pool: look?.Frame,
+            Tooltip: $"{name}\n{Glossary.Explain(look?.FlavorText)}",
+            Off: false), size);
+    }
+
+    private Control RelicIcon(string relicId, float size = RelicPickSize)
+    {
+        var look = GameHost.Instance.Blueprint.Presentation.Relics.GetValueOrDefault(relicId);
+        var name = Play?.RelicNames.GetValueOrDefault(relicId) ?? Humanized(relicId);
+        return CardVisuals.Tile(new CardVisuals.RelicFace(
+            Id: relicId,
+            Title: name,
+            Pool: look?.Frame,
+            Tooltip: $"{name}\n{Glossary.Explain(look?.FlavorText)}",
+            Off: false), size);
+    }
+
     // A pickable option showing the name on top and its ability/rules text beneath — so a card reward
     // pick shows WHAT each card does. The whole panel is clickable via a transparent overlay button.
-    private static Control EntityOption(string name, string description, bool selected, Action onPressed)
+    //
+    // `icon` puts a picture at the head of the row: a relic is an OBJECT and reads as one, but unlike a card it
+    // carries its rules in prose too long for a 64 px square, so it gets the picture AND the words rather than
+    // one instead of the other. An option that is a picture of nothing passes none and is the row it always was.
+    private static Control EntityOption(
+        string name, string description, bool selected, Action onPressed, Control? icon = null)
     {
         var panel = new PanelContainer
         {
@@ -1801,7 +2098,7 @@ public partial class SessionScreen : Control
             selected ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
             selected ? MoonvineTheme.AccentLight : new Color(MoonvineTheme.Accent, 0.3f)));
 
-        var column = new VBoxContainer();
+        var column = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         column.AddThemeConstantOverride("separation", 2);
         var title = new Label { Text = (selected ? "✓ " : "") + name };
         title.AddThemeColorOverride("font_color", MoonvineTheme.Text);
@@ -1813,7 +2110,20 @@ public partial class SessionScreen : Control
             desc.AddThemeFontSizeOverride("font_size", 13);
             column.AddChild(desc);
         }
-        panel.AddChild(column);
+        if (icon is null)
+        {
+            panel.AddChild(column);
+        }
+        else
+        {
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 8);
+            // The row's own click overlay lies OVER the tile, so the tile's hover never fires here — the panel's
+            // tooltip is what the player gets, and it already carries the name and the rules the row prints.
+            row.AddChild(icon);
+            row.AddChild(column);
+            panel.AddChild(row);
+        }
 
         var overlay = new Button { Flat = true };
         overlay.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -1827,11 +2137,19 @@ public partial class SessionScreen : Control
         ActHeading(session);
         Title("Choose your path");
         Muted("Pick a highlighted room to travel to.");
-        // What the between-rooms screen used to offer, now that there is no between-rooms screen.
+        // What the between-rooms screen used to offer, now that there is no between-rooms screen — and shown as
+        // the object it is, on the same tile the sidebar wears it on. "Use standard.scheduled_the_collapse" was
+        // the last raw id left anywhere the player is asked to choose something.
         foreach (var consumable in session.Run.Consumables.Where(c => c.UseEffects.Count > 0))
         {
             var id = consumable.Id;
-            AddButton($"Use {consumable.DefinitionId.Value}", () => session.UseConsumable(id));
+            var definition = consumable.DefinitionId.Value;
+            _main.AddChild(EntityOption(
+                $"Use {ConsumableName(definition)}",
+                GameHost.Instance.Blueprint.Presentation.Consumables.GetValueOrDefault(definition)?.FlavorText ?? "",
+                selected: false,
+                () => session.UseConsumable(id),
+                ConsumableIcon(definition)));
         }
         AddMap(session.PendingNodeChoices.Select(n => n.Id.Value),
             node => { session.PickNode(node); GameHost.Instance.AutoSave(); });
@@ -1844,7 +2162,13 @@ public partial class SessionScreen : Control
         foreach (var consumable in session.Run.Consumables.Where(c => c.UseEffects.Count > 0))
         {
             var id = consumable.Id;
-            AddButton($"Use {consumable.DefinitionId.Value}", () => session.UseConsumable(id));
+            var definition = consumable.DefinitionId.Value;
+            _main.AddChild(EntityOption(
+                $"Use {ConsumableName(definition)}",
+                GameHost.Instance.Blueprint.Presentation.Consumables.GetValueOrDefault(definition)?.FlavorText ?? "",
+                selected: false,
+                () => session.UseConsumable(id),
+                ConsumableIcon(definition)));
         }
         AddButton("Continue ▸", session.Continue);
         AddButton("Save run", () => Toast(GameHost.Instance.SaveRun() ?? "Saved."));
