@@ -554,6 +554,17 @@ and at a count a real run actually reaches (`--shelf 6`): `rows=2 … scrolls=no
 
 ## Phase D4a — the window, the regions, the bodies  ✔ BUILT 2026-09-10
 
+**Commits:** bnb-godot `32f7fa6` (the window) · `2f27db4` (the boss's name) · `f0cbd40` (the pile and the
+regions) · `ea31720` (a body draws) · bnb-content `93204bd` (the body slots). Core untouched.
+**Green at the end:** bnb-content 1477/1477 · `--smoke-deck` PASS · `--smoke-format` PASS · `--smoke-art`
+733 slots · `--smoke-shelf` 69 tiles / 14 rows / outside=no · `--smoke-crowd` offscreen=no ·
+`--smoke-boss 5` `act=5 boss=yes round=7 error=none` with tooltips 136/122/**0**.
+
+⚠ **Left open, and it belongs to D6:** in Act V the arena region is shorter than a full combatant column
+(30 heading + 104 rule + 292 bottom leave 238; the column wants about 290), so it scrolls and the hero's
+health bar is cut across. It did exactly this before D4a — the regions did not cause it, they make it a
+number one can change (`DivineBand`, `BodyHeight`, `HintBand`/`ControlBand`).
+
 Not in the plan when it was written; asked for after D4 was reviewed, and all of it standing between the
 screen as it is and any further work on it. Five things, four of them small and one of them structural.
 
