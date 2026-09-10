@@ -2467,9 +2467,15 @@ public partial class SessionScreen : Control
         name.AddThemeFontSizeOverride("font_size", 16);
         box.AddChild(name);
 
-        var figure = new StickFigure(isHero ? MoonvineTheme.Accent : MoonvineTheme.Harm,
-            facing: isHero ? 1 : -1, dead: !combatant.IsAlive)
-        { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
+        // The body: its picture if the file is there, the stick figure until it is. A hero has a character
+        // slot rather than an enemy one, so it keeps the figure for now.
+        var figure = CardVisuals.Body(
+            isHero ? null : combatant.DefinitionId.value,
+            isHero ? MoonvineTheme.Accent : MoonvineTheme.Harm,
+            facing: isHero ? 1 : -1,
+            dead: !combatant.IsAlive,
+            width: width - 20,
+            height: BodyHeight);
         box.AddChild(figure);
 
         box.AddChild(HealthBar(combatant, width - 30));

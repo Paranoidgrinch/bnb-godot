@@ -552,6 +552,113 @@ and at a count a real run actually reaches (`--shelf 6`): `rows=2 … scrolls=no
 
 ---
 
+## Phase D4a — the window, the regions, the bodies  ✔ BUILT 2026-09-10
+
+Not in the plan when it was written; asked for after D4 was reviewed, and all of it standing between the
+screen as it is and any further work on it. Five things, four of them small and one of them structural.
+
+### The draw pile's clip was restarting, and it was measured before it was fixed
+
+The report was "there is a bug with the animation on the card stack". What it was could not be guessed from
+the code, so the draw probe was turned into a burst — fourteen frames, then a card played, then six more —
+and each frame asked the tree which `VideoStreamPlayer` it was looking at and where in the clip it stood:
+
+```
+players a13: 46489667569@1.59      ← before a card was played
+players b0:  56103011972@0.00      ← after: a DIFFERENT object, back at the start
+```
+
+⚠ **A CLIP THAT IS REBUILT NEVER PLAYS.** `Rebuild()` frees every child of the combat root on every state
+change — a card played, an enemy acting, a card drawn — and the pile was one of them. Its animated back is a
+video: freed and made again, it starts at 0.00 every time, so a 36-second turn of the card back never got
+past its first tenth of a second and the artwork visibly snapped back on every click. D2 measured that clip
+frame by frame and cut it to the pixel; none of that was ever on the screen.
+
+The pile is now built ONCE per fight and updated in place (visibility, position, the count), and freed when
+the fight is. `--smoke-deck` plays three cards and reports whether the clip is the same player and whether
+its position moved: `players=1 same-clip=yes advanced=yes from=0.03 to=1.24 PASS`. Its footprint is fixed at
+the full lean too, so a thinning pile no longer moves house — it thins from the top card down, which is where
+a dealt card comes off a real one.
+
+### "(empty hand)" is gone
+
+A muted label in a zero-width holder, so it printed one letter per line down the left of the pane. An empty
+hand is already legible as an empty hand.
+
+### The boss room says who it is, one hover away
+
+`MapView` already named boss rooms — but only in a gauntlet act (several boss rooms, where the order IS the
+act's shape), on the principle that finding out who ends an ordinary act is part of walking it. The room
+still says "Boss"; the **tooltip** now always carries the name, because a player choosing a path is choosing
+who to meet.
+
+⚠ **THE BOSS ROOM IS A DISABLED BUTTON** — it is not on the fork, so it cannot be clicked, and "the tooltip
+text was set" is not the claim that matters. `--smoke-map` now scrolls it into view, puts a pointer on it and
+photographs the result (`smoke-map-boss.png`: *The Queue Commissioner — The one who ends the act.*).
+⚠ And the first two attempts at that measured nothing: **`Input.WarpMouse` moves the cursor but delivers no
+motion event to a window that does not have focus**, so the probe asked who was hovered and heard "nobody" —
+about an enabled control as much as a disabled one. A synthesised `InputEventMouseMotion` through
+`Input.ParseInputEvent` is what a probe has to use; both controls then reported `hovered=yes`.
+
+### The window is a setting, and the pane is regions
+
+**The standard Godot answer, not a new one.** The project declares one design canvas (1280 × 720) and a
+stretch mode (`canvas_items`); every coordinate in the frontend is a unit of that page and the engine scales
+the page to the window. A card is 134 × 190 at 1280 × 720 and at 3840 × 2160 alike, and nothing in the game
+multiplies anything by a scale factor. The aspect is **`expand`**: a window that is not 16:9 gets a WIDER
+page rather than black bars, so an ultrawide screen hands the extra room to the combat pane.
+
+`DisplaySettings` (`user://settings.cfg`) carries window mode (windowed / borderless / exclusive fullscreen),
+size, V-Sync, and an **interface scale** on top of all of it (`ContentScaleFactor`) — which is a different
+thing from the window size and both are wanted: a bigger window shows the same page larger, a bigger scale
+makes the page itself bigger and the screen hold less of it. Reachable from the title screen and from **Esc**
+inside a run. ⚠ A probe's window is not the player's — the window half is skipped under `--smoke*`/`--sim`,
+or a stored 4K fullscreen would silently invalidate every screenshot number this plan has taken.
+
+**The pane is six fixed regions** (heading · divine rule · arena · hand · controls · the pile's corner),
+declared as constants in one block and anchored, replacing the VBoxContainer that used to hold them. A
+container hands out its children's MINIMUM heights first and the leftovers afterwards, which is why an Act V
+boss with a rule panel and a dozen statuses ate the arena's share and cut the hero's own health bar in half
+(visible in `smoke-boss5.png` from D4). Regions cannot do that to each other: what overflows one scrolls
+inside it. The hand no longer lies across the pile it was dealt from, either — the pile's corner is a region
+and the hand's starts where it ends.
+
+`--smoke-window` resizes the real window under a real fight and reports the pane in CANVAS units:
+
+```
+window=1280x720  canvas=1280x720  arena=880x334@66  hand=880x214  cards@195 deck→186 clear
+window=1920x1080 canvas=1367x720  arena=967x334@66  hand=967x214  cards@224 deck→186 clear
+```
+
+(The screen this was measured on is 1366 × 768, so the larger windows were clamped by the desktop — what the
+run proves is the aspect rule: the page's HEIGHT and every region's vertical place are identical, and the
+extra width went to the arena and the hand.)
+
+### Every body is a picture too
+
+The third art slot, on the same terms as the first two: `Presentation.Enemies[id].Art` already said
+`enemies/<id>.png` for all **269** bodies and Godot ignored it. It does not any more — a column draws the
+picture if the file is there and the stick figure if it is not. Two fields were added at assembly, because
+neither can be worked out by whoever is drawing:
+
+- the **name**, which lives inside the encounters that use a body, not on the enemy record; and
+- the **role** (`Frame`, the same look slot the relic shelf reads its pool from): **35 boss · 66 elite ·
+  4 mimic · 164 standard**. ⚠ **WHAT KIND OF BODY THIS IS, IS NOT A PROPERTY OF THE ENEMY** — it is a
+  property of the fights it is met in, and the same id can be met in several. The strongest room a body ever
+  stands in is what it is. The failure this guards is silent: a boss exported as "standard" still ships,
+  still fights, still gets a picture — it is simply drawn as filler and nothing would ever say so.
+
+Regenerating the document and comparing leaf by leaf against the old one: **538 differences, 0 keys only on
+one side** — 269 `Frame` and 269 `FlavorText`, and nothing else in the game moved.
+
+⚠ **A PICTURE IS NOT MIRRORED.** The stick figure is flipped to face its enemy because it is a symmetric
+scribble; a drawn body that is flipped wears its sash on the wrong side. The bodies are drawn facing LEFT,
+towards the player, and `ART_SLOTS.md` says so — **733 pictures** now (254 cards · 210 relics · 269 bodies).
+Proved with two throwaway placeholders (dropped in, imported, photographed in the arena, removed again;
+`--smoke-art` says `733 slots … 0 filled` once more).
+
+---
+
 ## Phase D5 — pick a card by looking at it
 
 **Deliverable:** card rewards, shop shelves, event offers and in-combat card choices show **card faces**.

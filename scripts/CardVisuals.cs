@@ -67,6 +67,10 @@ public static class CardVisuals
 
     public static Texture2D? RelicArt(string id) => Slot("relics", id);
 
+    // A BODY IS A PICTURE ON THE SAME TERMS. Every enemy, elite and boss declares `enemies/<id>.png`; until
+    // the file is there the arena keeps drawing the stick figure it draws today.
+    public static Texture2D? EnemyArt(string id) => Slot("enemies", id);
+
     // What file a thing asks for, as ART_SLOTS.md names it. The probe prints this, so what a missing picture
     // is called is answered by the game rather than by a rule someone has to remember.
     public static string SlotPath(string kind, string id) =>
@@ -92,9 +96,12 @@ public static class CardVisuals
         var presentation = host is null ? null : host.Blueprint?.Presentation;
         if (presentation is null)
             return null;
-        return kind == "relics"
-            ? presentation.Relics.GetValueOrDefault(id)?.Art
-            : presentation.Cards.GetValueOrDefault(id)?.Art;
+        return kind switch
+        {
+            "relics" => presentation.Relics.GetValueOrDefault(id)?.Art,
+            "enemies" => presentation.Enemies.GetValueOrDefault(id)?.Art,
+            _ => presentation.Cards.GetValueOrDefault(id)?.Art,
+        };
     }
 
     private static Texture2D? Load(string? relative)
@@ -507,6 +514,41 @@ public static class CardVisuals
     //
     // animated=true plays the looping clip (Godot decodes Theora on the CPU, so only a FEW should ever
     // animate at once — the deck's top card); everywhere else uses the still poster.
+    // THE BODY IN ITS COLUMN: the picture if the file is there, and the stick figure if it is not. The size
+    // is the COLUMN's, not the picture's — a crowd of four shares the pane and every body in it is drawn
+    // narrower, so the picture is fitted into the room the arena gave it and never the other way round.
+    // ⚠ `KeepAspectCentered`, not `Scale`: a body drawn to fill a narrow column would be a squashed body, and
+    // the one thing a picture of a creature may not do is change shape when a third enemy joins the fight.
+    // ⚠ A PICTURE IS NOT MIRRORED. The stick figure is flipped to face its enemy because it is a symmetric
+    // scribble; a drawn body that is flipped has its scar, its sash and its writing on the wrong side. The
+    // bodies are drawn facing the player (ART_SLOTS.md says so), and `facing` reaches only the placeholder.
+    public static Control Body(string? enemyId, Color color, int facing, bool dead, int width, int height)
+    {
+        var picture = enemyId is null ? null : EnemyArt(enemyId);
+        if (picture is null)
+        {
+            return new StickFigure(color, facing, dead)
+            {
+                SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+                CustomMinimumSize = new Vector2(Math.Min(90, width), height),
+            };
+        }
+
+        var art = new TextureRect
+        {
+            Texture = picture,
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
+            CustomMinimumSize = new Vector2(width, height),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            // A dead body is dimmed rather than removed — the same thing the stick figure does.
+            Modulate = dead ? new Color(1, 1, 1, 0.35f) : Colors.White,
+        };
+        return art;
+    }
+
     public static Control Back(bool animated)
     {
         var root = new Control

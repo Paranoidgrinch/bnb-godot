@@ -20,6 +20,15 @@ presentation manifest.
 - `scripts/Boot.cs` — the title screen (game identity + unlock-gated character select + New/Continue).
 - `scripts/Glossary.cs` — what every named thing MEANS, built once from the document: ask it about an id, or
   hand it any text and it names the terms that text uses. Every hover in the game goes through it.
+- `scripts/DisplaySettings.cs` — **the window**: the project declares one design canvas (1280 × 720) and a
+  stretch mode (`canvas_items` / `expand`), so every coordinate in the frontend is a design unit the engine
+  scales to whatever the window is — a card is 134 × 190 at every resolution and nothing here multiplies by a
+  scale factor. This file is the player's half of that: window mode (windowed / borderless / exclusive), size,
+  V-Sync and an interface scale on top of it all (`ContentScaleFactor` — a different thing from the window
+  size), stored in `user://settings.cfg` and applied before the first screen is built. ⚠ The window half is
+  skipped under `--smoke*` and `--sim`: every screenshot probe here compares against numbers taken from a
+  1280 × 720 window.
+- `scripts/SettingsPanel.cs` — that dialog, on the title screen and on **Esc** inside a run.
 - `scripts/MoonvineTheme.cs` — **the whole look**: one palette (a near-black page bled red, antique gold for
   everything you can touch, amber for everything that wants your attention) and one font hook. It is the only
   place in the frontend allowed to name a colour, and `theme/README.md` says how to swap the typeface in one
@@ -32,7 +41,12 @@ presentation manifest.
   A card's picture is `assets/art/cards/<id>.png` — the path the document itself declares in
   `Presentation.Art`, so the contract's path IS the path on disk and there is nothing to register.
   An upgraded card has no picture of its own (`levy_stamp+` draws `levy_stamp.png`), so 413 cards ask
-  for 254 pictures; relics ask for 210 more under `assets/art/relics/`. The whole list, with the design
+  for 254 pictures; relics ask for 210 more under `assets/art/relics/`, and every **body** — all 269
+  enemies, elites and bosses — asks for one under `assets/art/enemies/`, drawn in its column in place of the
+  stick figure. ⚠ A body is never mirrored by the game (a flipped body wears its sash on the wrong side), so
+  it is drawn facing LEFT, towards the player. Which KIND of body it is travels in the document as
+  `Presentation.Enemies[id].Frame` (35 boss · 66 elite · 4 mimic · 164 standard) — worked out from the fights
+  an id is met in, because that is not a property of the enemy. The whole list, with the design
   canon's brief beside every relic, is generated: `bnb-content/ART_SLOTS.md`. ⚠ A dropped file is
   invisible until Godot has imported it — `tools/import-art.sh` once, and `--smoke-art` says how many
   slots are filled. ⚠ New textures import WITHOUT mipmaps by default and every picture here is drawn much
@@ -47,7 +61,13 @@ presentation manifest.
   purple, elite and mimic that same frame run plainer), the relic's picture inside it if the file exists
   and its slot code if it does not. The pool travels in the document as `Presentation.Relics[id].Frame`,
   so the frontend never has to know which relic came from where.
-- `scripts/SessionScreen.cs` — every room, and **the shelf** on the right edge: what you are wearing is
+- `scripts/SessionScreen.cs` — every room. The combat pane is **six fixed regions** (heading · divine rule ·
+  arena · hand · controls · the draw pile's corner), declared as constants in one block and anchored: a
+  container hands out its children's minimum heights first and the leftovers afterwards, which is how an
+  Act V boss with a rule panel and a dozen statuses used to cut the hero's own health bar in half. What
+  overflows a region scrolls inside it. ⚠ The draw pile is built ONCE per fight and updated in place — its
+  back is a video, and a video that is re-created starts at 0.00 (`--smoke-deck` measures exactly that).
+  And **the shelf** on the right edge: what you are wearing is
   drawn as objects in an `HFlowContainer` that wraps into rows, with the name and the rules text one hover
   away. ⚠ The sidebar's horizontal scrolling is switched OFF on purpose — a `ScrollContainer` that may
   scroll sideways hands its child the child's *minimum* width, and a wrapping container's minimum is one
@@ -71,6 +91,9 @@ godot --headless -- --smoke-marathon # play the WHOLE game (all five acts) and r
 godot --headless -- --smoke-tooltips # audit a combat screen: is anything NAMED but not explained?
 godot --headless -- --smoke-format   # every card in the hand is exactly the size it was handed,
                                      # ten clicks apart (windowed: it also takes the shot)
+godot --headless -- --smoke-deck     # (windowed) the draw pile's clip keeps playing across three card plays
+godot --headless -- --smoke-window   # (windowed) the same fight at three window sizes, measured in canvas units
+godot --headless -- --smoke-settings # (windowed) a picture of the settings dialog
 godot --headless -- --smoke-shelf    # the relic strip at a HOSTILE count: wears 69 relics (one from every
                                      # pool before a second from any), switches every seventh off, and
                                      # reports rows, tiles per row, whether anything sits outside the

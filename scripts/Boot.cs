@@ -60,7 +60,7 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window"))
         {
             host.StartNewRun(seed: 7,
                 health: userArgs.Any(a => a is "--smoke-marathon" or "--smoke-crowd" or "--smoke-boss") ? 9999 : null);
@@ -72,6 +72,12 @@ public partial class Boot : Control
 
         if (userArgs.Contains("--smoke-title") && !DisplayServer.GetName().Contains("headless"))
             _ = CaptureTitleThenQuit();
+        // The settings dialog, opened the way a player opens it, with a picture of what they get.
+        if (userArgs.Contains("--smoke-settings") && !DisplayServer.GetName().Contains("headless"))
+        {
+            OpenSettings();
+            _ = CaptureThenQuit("user://smoke-settings.png");
+        }
     }
 
     // An unfilled slot is NORMAL, so this probe cannot fail on a count — it reports one. What it does assert
@@ -82,21 +88,37 @@ public partial class Boot : Control
         var cards = blueprint.Cards.Select(c => c.Id).Where(id => !id.EndsWith('+'))
             .Distinct(StringComparer.Ordinal).ToList();
         var relics = blueprint.Relics.Select(r => r.Id).Distinct(StringComparer.Ordinal).ToList();
+        // The bodies come from the manifest rather than from the encounters: it is the manifest that declares
+        // a picture, and an enemy nothing offers is not a slot.
+        var bodies = blueprint.Presentation.Enemies.Keys.ToList();
         var filledCards = cards.Count(id => CardVisuals.CardArt(id) is not null);
         var filledRelics = relics.Count(id => CardVisuals.RelicArt(id) is not null);
+        var filledBodies = bodies.Count(id => CardVisuals.EnemyArt(id) is not null);
         var strays = blueprint.Cards.Select(c => c.Id).Where(id => id.EndsWith('+'))
             .Where(id => CardVisuals.SlotPath("cards", id) != CardVisuals.SlotPath("cards", id.TrimEnd('+')))
             .ToList();
 
-        GD.Print($"smoke-art: {cards.Count + relics.Count} slots asked for "
-            + $"({cards.Count} cards, {relics.Count} relics), "
-            + $"{filledCards + filledRelics} filled, {strays.Count} upgrade(s) asking for a picture of their own");
+        GD.Print($"smoke-art: {cards.Count + relics.Count + bodies.Count} slots asked for "
+            + $"({cards.Count} cards, {relics.Count} relics, {bodies.Count} bodies), "
+            + $"{filledCards + filledRelics + filledBodies} filled, "
+            + $"{strays.Count} upgrade(s) asking for a picture of their own");
         foreach (var id in strays.Take(5))
             GD.Print($"  STRAY {id} asks for {CardVisuals.SlotPath("cards", id)}");
         foreach (var id in cards.Where(id => CardVisuals.CardArt(id) is null).Take(2))
             GD.Print($"  waiting: assets/art/{CardVisuals.SlotPath("cards", id)}");
         foreach (var id in relics.Where(id => CardVisuals.RelicArt(id) is null).Take(2))
             GD.Print($"  waiting: assets/art/{CardVisuals.SlotPath("relics", id)}");
+        foreach (var id in bodies.Where(id => CardVisuals.EnemyArt(id) is null).Take(2))
+            GD.Print($"  waiting: assets/art/{CardVisuals.SlotPath("enemies", id)}");
+    }
+
+    private async System.Threading.Tasks.Task CaptureThenQuit(string file)
+    {
+        for (var i = 0; i < 4; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        GetViewport().GetTexture().GetImage().SavePng(file);
+        GD.Print($"smoke: screenshot {file}");
+        GetTree().Quit();
     }
 
     private async System.Threading.Tasks.Task CaptureTitleThenQuit()
@@ -156,6 +178,10 @@ public partial class Boot : Control
             actions.AddChild(resume);
         }
 
+        var settings = new Button { Text = "Settings", CustomMinimumSize = new Vector2(140, 44) };
+        settings.Pressed += OpenSettings;
+        actions.AddChild(settings);
+
         var quit = new Button { Text = "Quit", CustomMinimumSize = new Vector2(120, 44) };
         quit.Pressed += () => GetTree().Quit();
         actions.AddChild(quit);
@@ -213,6 +239,15 @@ public partial class Boot : Control
 
     // Redraw after a selection change: BuildTitle frees and rebuilds only the TitleBody container.
     private void Rebuild() => BuildTitle(GameHost.Instance);
+
+    private void OpenSettings()
+    {
+        if (GetNodeOrNull("SettingsOverlay") is not null)
+            return;
+        var overlay = SettingsPanel.Overlay(() => GetNodeOrNull("SettingsOverlay")?.QueueFree());
+        overlay.Name = "SettingsOverlay";
+        AddChild(overlay);
+    }
 
     private void GoToSession() => GetTree().ChangeSceneToFile("res://scenes/Session.tscn");
 }
