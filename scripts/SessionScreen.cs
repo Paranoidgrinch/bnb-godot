@@ -39,8 +39,13 @@ public partial class SessionScreen : Control
     // The hand's faces as they were last laid out, so `--smoke-format` can measure the real nodes.
     private readonly List<Control> _handFaces = [];
     private Control? _deckTopNode;
+    private Control? _deckHolder;              // the pile itself: made once per fight, never rebuilt (its back is a video)
+    private readonly List<Control> _deckStills = [];
+    private Label? _deckCount;
     private static bool _fastForward;   // a smoke probe is walking: draw the screen, do not animate it
     private Control? _enemyRow;   // the live enemy row, so a probe can measure what the layout did with it
+    private Control? _regionArena;  // the fixed regions, kept so a probe can measure that they stay put
+    private Control? _regionHand;
 
     private static RunPlayback? Play => GameHost.Instance.Play;
     private static InteractiveRunSession? Session => Play?.Session;
@@ -135,6 +140,10 @@ public partial class SessionScreen : Control
             _ = SmokeFormat();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-shelf"))
             _ = SmokeShelf();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-deck"))
+            _ = SmokeDeck();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-window"))
+            _ = SmokeWindow();
     }
 
     // Walk the screen the way a mouse would and report what is EXPLAINED and what is not: every piece of text
@@ -977,7 +986,123 @@ public partial class SessionScreen : Control
     {
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         ReportTooltips("map");
+        await HoverTheBoss();
         await CaptureThenQuit("smoke-map.png");
+    }
+
+    // THE SAME GAME AT THREE WINDOW SIZES. The whole point of a design canvas is that nothing in the frontend
+    // knows how big the window is: the regions, the cards and the pile are laid out in canvas units and the
+    // engine scales the page. This resizes the real window under a real fight and reports the pane in CANVAS
+    // units — at 16:9 every number must be identical whatever the window is, and at another aspect the pane
+    // may only get WIDER (that is what `expand` buys). A frontend that measured pixels would drift here.
+    private async System.Threading.Tasks.Task SmokeWindow()
+    {
+        var session = Session;
+        var play = Play;
+        for (var step = 0; step < 60 && session is not null && play is not null; step++)
+        {
+            if (play.CombatDriver?.Current is not null) break;
+            if (session.IsAwaitingNodeChoice) session.PickNode(session.PendingNodeChoices[0].Id.Value);
+            else if (session.IsAwaitingInterlude) session.Continue();
+            else if (session.IsAwaitingEntities) session.PickEntities([0]);
+            else if (session.IsAwaitingChoice) session.Pick(session.PendingChoices[^1].Id);
+            else break;
+        }
+        if (Play?.CombatDriver?.Current is null || DisplayServer.GetName().Contains("headless"))
+        {
+            GD.Print("smoke-window: needs a window and a fight");
+            GetTree().Quit();
+            return;
+        }
+
+        foreach (var (w, h) in new[] { (1280, 720), (1920, 1080), (1600, 1000) })
+        {
+            DisplayServer.WindowSetSize(new Vector2I(w, h));
+            for (var i = 0; i < 4; i++)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            Rebuild();
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+            var canvas = GetViewportRect().Size;
+            var arena = _regionArena?.GetGlobalRect() ?? new Rect2();
+            var hand = _regionHand?.GetGlobalRect() ?? new Rect2();
+            var deck = _deckHolder?.GetGlobalRect() ?? new Rect2();
+            // The CARDS against the pile, not the band against the pile: the band is the whole width of the
+            // pane and is meant to lie over the corner; what may not touch the pile is the leftmost card.
+            var first = _handFaces.Count > 0 ? _handFaces[0].GetGlobalRect() : new Rect2();
+            var overlap = _handFaces.Count > 0 && deck.Intersects(first) ? "OVERLAP" : "clear";
+            GD.Print($"smoke-window: window={w}x{h} canvas={canvas.X:0}x{canvas.Y:0} "
+                + $"arena={arena.Size.X:0}x{arena.Size.Y:0}@{arena.Position.Y:0} "
+                + $"hand={hand.Size.X:0}x{hand.Size.Y:0} cards@{first.Position.X:0} deck→{deck.End.X:0} {overlap}");
+            GetViewport().GetTexture().GetImage().SavePng($"user://smoke-window-{w}x{h}.png");
+        }
+        DisplayServer.WindowSetSize(new Vector2I(1280, 720));
+        GetTree().Quit();
+    }
+
+    // Put the pointer somewhere the way the window manager would: a real motion event through the GUI, not a
+    // warp. ⚠ `Input.WarpMouse` moves the cursor but delivers no motion to an unfocused window, so a probe
+    // that warps and then asks who is hovered always hears "nobody" — which says nothing about the control.
+    private async System.Threading.Tasks.Task PointAt(Vector2 at)
+    {
+        Input.WarpMouse(at);
+        Input.ParseInputEvent(new InputEventMouseMotion { Position = at, GlobalPosition = at });
+        await ToSignal(GetTree().CreateTimer(1.2), SceneTreeTimer.SignalName.Timeout);
+    }
+
+    // Park the pointer on the boss room and hold it there long enough for the tooltip to open, then say what
+    // it says. ⚠ THE BOSS ROOM IS A DISABLED BUTTON — it is not on the fork, so it cannot be clicked, and
+    // "the tooltip text was set" is not the same claim as "a player hovering it reads the name". So
+    // `smoke-map-boss.png` is taken with the pointer still on the room: the popup is IN the picture or it is
+    // not, and the line printed below says which control the GUI thinks is under the mouse.
+    private async System.Threading.Tasks.Task HoverTheBoss()
+    {
+        if (DisplayServer.GetName().Contains("headless"))
+            return;
+        Button? boss = null;
+        void Walk(Godot.Node n)
+        {
+            if (n is Button b && b.TooltipText.Contains("ends the act", StringComparison.Ordinal))
+                boss ??= b;
+            foreach (var c in n.GetChildren()) Walk(c);
+        }
+        Walk(this);
+        if (boss is null)
+        {
+            GD.Print("smoke-map: no boss room on this map");
+            return;
+        }
+        // The boss room is at the FOOT of an act that is taller than the window, so it has to be scrolled to
+        // before a pointer can be put on it.
+        _mainScroll.ScrollVertical = Math.Max(0, (int)(boss.GlobalPosition.Y - _mainScroll.GlobalPosition.Y
+            + _mainScroll.ScrollVertical - _mainScroll.Size.Y / 2));
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await PointAt(boss.GetGlobalRect().GetCenter());
+        var onBoss = GetViewport().GuiGetHoveredControl() == boss;
+        GetViewport().GetTexture().GetImage().SavePng("user://smoke-map-boss.png");
+
+        // The control test: an ENABLED room, hovered the same way. If this one registers and the boss does
+        // not, the pointer is fine and being disabled is what costs the room its tooltip.
+        Button? open = null;
+        void Reachable(Godot.Node n)
+        {
+            if (n is Button b && !b.Disabled && b.TooltipText.Length > 0) open ??= b;
+            foreach (var c in n.GetChildren()) Reachable(c);
+        }
+        Reachable(this);
+        var onOpen = false;
+        if (open is not null)
+        {
+            _mainScroll.ScrollVertical = 0;
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await PointAt(open.GetGlobalRect().GetCenter());
+            onOpen = GetViewport().GuiGetHoveredControl() == open;
+        }
+        GD.Print($"smoke-map: boss hover = \"{boss.TooltipText}\" disabled={boss.Disabled} "
+            + $"hovered={(onBoss ? "yes" : "no")} · control(enabled room) hovered={(onOpen ? "yes" : "no")}");
     }
 
     // Auto-play greedily until the first reward/entity pick, then screenshot it (verifies reward
@@ -1334,24 +1459,65 @@ public partial class SessionScreen : Control
 
     // ── the dispatcher ───────────────────────────────────────────────────────────
 
+    // Esc opens the settings, anywhere in a run — the window is most often found wanting during a fight, not
+    // on a menu. The overlay is a child of the SCREEN, not of anything Rebuild() clears, so a state change
+    // underneath it (an enemy acting while it is open) redraws the game behind the dialog and leaves it alone.
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event is null || !@event.IsActionPressed("ui_cancel"))
+            return;
+        if (GetNodeOrNull("SettingsOverlay") is { } open)
+        {
+            open.QueueFree();
+        }
+        else
+        {
+            var overlay = SettingsPanel.Overlay(() => GetNodeOrNull("SettingsOverlay")?.QueueFree());
+            overlay.Name = "SettingsOverlay";
+            AddChild(overlay);
+        }
+        GetViewport().SetInputAsHandled();
+    }
+
     private void Rebuild()
     {
-        foreach (var child in _main.GetChildren())
-            child.QueueFree();
-        foreach (var child in _combatRoot.GetChildren())
-            child.QueueFree();
-        foreach (var child in _sidebar.GetChildren())
-            child.QueueFree();
-
         var session = Session;
         // Combat gets the graphical scene (_combatRoot); everything else the ordinary list (_mainScroll).
         var inCombat = session is not null && Play?.Error is null && session.Error is null
             && !session.IsAwaitingChoice && !session.IsAwaitingEntities && !session.IsAwaitingNodeChoice
             && !session.IsAwaitingInterlude && Play?.CombatDriver?.Current is not null;
+
+        foreach (var child in _main.GetChildren())
+            child.QueueFree();
+        foreach (var child in _combatRoot.GetChildren())
+        {
+            // ⚠ A CLIP THAT IS REBUILT NEVER PLAYS. Every state change in a fight — a card played, an enemy
+            // acting, a card drawn — runs this teardown, and the deck's back is a VideoStreamPlayer: freed and
+            // made again, it starts at 0.00 every single time, so a 36-second turn of the card back never got
+            // past its first tenth of a second. MEASURED (`players a13: …@1.59` then `players b0: …@0.00`, a
+            // brand-new instance id): the pile visibly snapped back to the top of the loop on every click.
+            // The pile is therefore built ONCE per fight and updated in place; it is freed when the fight is.
+            if (inCombat && child == _deckHolder)
+                continue;
+            child.QueueFree();
+        }
+        foreach (var child in _sidebar.GetChildren())
+            child.QueueFree();
+
+        if (!inCombat && _deckHolder is { } stale)
+        {
+            stale.QueueFree();
+            _deckHolder = null;
+            _deckStills.Clear();
+            _deckCount = null;
+        }
         _combatRoot.Visible = inCombat;
         _mainScroll.Visible = !inCombat;
-        _deckTopNode = null;
+        if (!inCombat)
+            _deckTopNode = null;
         _enemyRow = null;
+        _regionArena = null;
+        _regionHand = null;
         if (!inCombat)
             _shownHandIds.Clear(); // a fresh fight re-deals; its opening hand animates in
 
@@ -1797,6 +1963,54 @@ public partial class SessionScreen : Control
 
     // ── combat (graphical: hero left, enemies right, hand bottom-center) ──────────
 
+    // THE COMBAT PANE IS FIXED REGIONS, NOT A STACK OF BOXES. Every part of a fight has a place of its own —
+    // the heading at the top, the divine rule under it when a god is running the room, the arena between, the
+    // hand along the bottom and the draw pile in the corner beside it — and each of them keeps that place
+    // whatever the fight contains. It used to be one VBoxContainer, which hands out its children's MINIMUM
+    // heights first and the leftovers afterwards: a boss fight with a rule panel and a dozen statuses ate the
+    // arena's share, and the hero's own health bar was cut in half at the bottom of its column (measured on
+    // `smoke-boss5.png`, Act V). Regions cannot do that to each other: what overflows one scrolls INSIDE it.
+    //
+    // The numbers are design units on a 1280 × 720 canvas. The window is not 1280 × 720 — the stretch mode
+    // scales this whole canvas to whatever the player set (see DisplaySettings) — so these are the only
+    // coordinates in the file that need to be true, and they are true at every resolution.
+    private const int PaneInset = 20;
+    private const int HeadlineBand = 30;   // "Round N"
+    private const int DivineBand = 104;    // Act V's rule area — the same spot in every one of its fights
+    private const int HintBand = 22;       // "click an enemy to play it"
+    private const int HandBand = 214;      // a card plus the fan's lean
+    private const int ControlBand = 44;    // End turn, consumables
+    private const int DeckBand = 190;      // the pile's corner: 24 in + a 150-wide leaning stack + air
+    private static int BottomBand => HintBand + HandBand + ControlBand + 12;
+
+    // The three shapes a region can have. All plain Controls on purpose — a container would report its
+    // children's combined minimum upward and the region would stop being fixed.
+    private Control TopRegion(int top, int height, int left = PaneInset, int right = PaneInset)
+        => Region(0f, 0f, top, top + height, left, right);
+
+    private Control MiddleRegion(int top, int bottom, int left = PaneInset, int right = PaneInset)
+        => Region(0f, 1f, top, -bottom, left, right);
+
+    private Control BottomRegion(int above, int height, int left = PaneInset, int right = PaneInset)
+        => Region(1f, 1f, -(above + height), -above, left, right);
+
+    private Control Region(float anchorTop, float anchorBottom, int offsetTop, int offsetBottom, int left, int right)
+    {
+        var region = new Control
+        {
+            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = anchorTop, AnchorBottom = anchorBottom,
+            OffsetLeft = left, OffsetRight = -right, OffsetTop = offsetTop, OffsetBottom = offsetBottom,
+            MouseFilter = MouseFilterEnum.Pass,
+        };
+        _combatRoot.AddChild(region);
+        return region;
+    }
+
+    // What a region is worth in width right now — last frame's pane, which does not change between rounds.
+    private float PaneWidth => _combatRoot is { } root && root.Size.X > 100
+        ? root.Size.X
+        : GetViewportRect().Size.X * 0.72f;
+
     private void RenderCombatGraphical(InteractiveRunSession session, InteractiveCombat combat)
     {
         var play = Play!;
@@ -1804,25 +2018,28 @@ public partial class SessionScreen : Control
         var enemies = combat.State.Combatants
             .Where(c => c.Id != combat.HeroId && c.TeamId == StandardCombatIds.EnemyTeam).ToList();
 
-        var margin = new MarginContainer();
-        margin.SetAnchorsPreset(LayoutPreset.FullRect);
-        foreach (var side in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })
-            margin.AddThemeConstantOverride(side, 20);
-        _combatRoot.AddChild(margin);
-
-        var col = new VBoxContainer();
-        col.AddThemeConstantOverride("separation", 8);
-        margin.AddChild(col);
-
+        // THE HEADING, in its own band at the top.
+        var head = TopRegion(PaneInset, HeadlineBand);
         var round = new Label { Text = $"Round {combat.Round}", HorizontalAlignment = HorizontalAlignment.Center };
         round.AddThemeFontSizeOverride("font_size", 18);
-        col.AddChild(round);
+        round.SetAnchorsPreset(LayoutPreset.FullRect);
+        head.AddChild(round);
 
         // THE DIVINE RULE AREA, if this fight has one. Directly under the round and over the arena: the same
         // place in every one of Act V's fights, which is the whole of the design's shared rule for the act —
-        // the player must be able to look at one spot and read what reality currently means here.
+        // the player must be able to look at one spot and read what reality currently means here. It is a band
+        // of its OWN, so a long decree scrolls inside its own panel instead of eating the arena's height.
+        var arenaTop = PaneInset + HeadlineBand + 8;
         if (DivineRuleArea() is { } divine)
-            col.AddChild(divine);
+        {
+            var rule = TopRegion(arenaTop, DivineBand);
+            var ruleView = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+            ruleView.SetAnchorsPreset(LayoutPreset.FullRect);
+            divine.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            ruleView.AddChild(divine);
+            rule.AddChild(ruleView);
+            arenaTop += DivineBand + 8;
+        }
 
         // Arena: hero far left, enemies far right, a stretchy gap between.
         var arena = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
@@ -1854,14 +2071,21 @@ public partial class SessionScreen : Control
         // and the End-turn button were pushed off the bottom of the screen by the very state this pass is
         // about making readable. A scroll view has a small minimum of its own, so the hand keeps its place and
         // nothing is hidden: what does not fit is reachable rather than gone.
-        var arenaView = new ScrollContainer
-        {
-            SizeFlagsVertical = SizeFlags.ExpandFill,
-            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
-        };
+        var arenaView = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        arenaView.SetAnchorsPreset(LayoutPreset.FullRect);
         arena.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         arenaView.AddChild(arena);
-        col.AddChild(arenaView);
+        var arenaBand = MiddleRegion(arenaTop, BottomBand + PaneInset);
+        arenaBand.AddChild(arenaView);
+        _regionArena = arenaBand;
+
+        // THE BOTTOM BAND: whatever the fight is asking of the player right now — a prompt raised by a card,
+        // the note that the enemies are moving, or the hand and its controls.
+        var bottom = BottomRegion(PaneInset, BottomBand, left: PaneInset, right: PaneInset);
+        var bottomBox = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        bottomBox.SetAnchorsPreset(LayoutPreset.FullRect);
+        bottomBox.AddThemeConstantOverride("separation", 8);
+        bottom.AddChild(bottomBox);
 
         // Bottom: a prompt the played card raised, the "resolving" note, or the hand + controls.
         //
@@ -1910,7 +2134,7 @@ public partial class SessionScreen : Control
                 box.AddChild(confirm);
             }
 
-            col.AddChild(box);
+            bottomBox.AddChild(box);
             return;
         }
 
@@ -1945,13 +2169,13 @@ public partial class SessionScreen : Control
                 };
                 choiceBox.AddChild(confirm);
             }
-            col.AddChild(choiceBox);
+            bottomBox.AddChild(choiceBox);
             return;
         }
 
         if (!combat.IsHeroTurn)
         {
-            col.AddChild(new Label { Text = "Resolving enemy actions…", HorizontalAlignment = HorizontalAlignment.Center });
+            bottomBox.AddChild(new Label { Text = "Resolving enemy actions…", HorizontalAlignment = HorizontalAlignment.Center });
             return;
         }
 
@@ -1961,13 +2185,26 @@ public partial class SessionScreen : Control
             HorizontalAlignment = HorizontalAlignment.Center,
         };
         hint.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
-        col.AddChild(hint);
+        hint.CustomMinimumSize = new Vector2(0, HintBand);
+        bottomBox.AddChild(hint);
 
         // The deck pile sits in the bottom-left corner; build it first so its top card is the fly-in origin.
+        // ⚠ THE HAND DOES NOT REACH INTO THE PILE'S CORNER. They are two regions, and the hand's is the one
+        // that starts where the pile's ends — the fan used to be centred on the whole pane and a big hand
+        // simply lay across the deck it was dealt from.
         BuildDeckPile(combat);
-        BuildHand(col, combat, hero);
+        var handRegion = new Control
+        {
+            CustomMinimumSize = new Vector2(0, HandBand),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+        };
+        bottomBox.AddChild(handRegion);
+        _regionHand = handRegion;
+        BuildHand(handRegion, combat, hero);
 
         var controls = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        controls.CustomMinimumSize = new Vector2(0, ControlBand);
         controls.AddThemeConstantOverride("separation", 10);
         var endTurn = new Button { Text = "End turn ▸" };
         endTurn.Pressed += () =>
@@ -1985,16 +2222,21 @@ public partial class SessionScreen : Control
             use.Pressed += () => play.UseConsumableInCombat(id);
             controls.AddChild(use);
         }
-        col.AddChild(controls);
+        bottomBox.AddChild(controls);
     }
 
     // The draw pile in the bottom-left corner: a few offset card backs (the top one animated), plus a count.
+    //
+    // Built once per fight and UPDATED afterwards — see the note in Rebuild(): the animated back is a video,
+    // and a video that is re-created cannot play. So the nodes here are made on the first render of a fight
+    // and only their visibility, their position and the count change from then on.
     private void BuildDeckPile(InteractiveCombat combat)
     {
         var drawCount = combat.State.GetCardZones(combat.HeroId).GetCardsInZone(CardZone.DrawPile).Count;
 
         const int lift = 4;      // how far up and to the right each card in the stack sits on the one below
         const int caption = 26;  // the count's own band, under the ink
+        const int lean = 4 * lift; // the FULL stack's slant, held fixed so a thinning pile does not move house
 
         // ⚠ A PILE'S FOOTPRINT IS ITS INK, NOT ONE CARD. The stack leans up and to the right, so it stands
         // taller and wider than a single back by the whole lean, and the count needs a band of its own below
@@ -2003,67 +2245,81 @@ public partial class SessionScreen : Control
         // straight out of the bottom of the holder and onto the pane's own hairline. It had been printing
         // 2 px off the edge of the window since the pile was built; D2 made it gold, and a gold thing sitting
         // on the border is not something you can keep not seeing.
-        var lean = (drawCount > 0 ? Math.Min(drawCount, 3) + 1 : 0) * lift;
         var footprint = new Vector2(CardVisuals.CardW + lean, CardVisuals.CardH + lean + caption);
 
-        var holder = new Control { CustomMinimumSize = footprint, Size = footprint };
-        holder.SetAnchorsPreset(LayoutPreset.BottomLeft);
-        holder.Position = new Vector2(24, -footprint.Y - 16);
-        _combatRoot.AddChild(holder);
+        if (_deckHolder is null || !IsInstanceValid(_deckHolder))
+        {
+            var holder = new Control { CustomMinimumSize = footprint, Size = footprint };
+            holder.SetAnchorsPreset(LayoutPreset.BottomLeft);
+            holder.Position = new Vector2(24, -footprint.Y - 16);
+            _combatRoot.AddChild(holder);
+            _deckHolder = holder;
 
-        // Static backs fanned slightly for depth; the top one animates. They are laid from the BOTTOM of the
-        // lean upward, so the card that ends up on top of the stack is the one flush with the holder's top
-        // edge and nothing in the pile is drawn above its own footprint.
-        var backing = Math.Min(drawCount, 3);
-        for (var i = 0; i < backing; i++)
-        {
-            var still = CardVisuals.Back(animated: false);
-            still.Position = new Vector2(i * lift, lean - i * lift);
-            holder.AddChild(still);
-        }
-        if (drawCount > 0)
-        {
+            // Static backs for depth, laid from the BOTTOM of the lean upward; the top one animates.
+            _deckStills.Clear();
+            for (var i = 0; i < 3; i++)
+            {
+                var still = CardVisuals.Back(animated: false);
+                holder.AddChild(still);
+                _deckStills.Add(still);
+            }
             var top = CardVisuals.Back(animated: true);
-            top.Position = new Vector2(backing * lift, lean - backing * lift);
             holder.AddChild(top);
             _deckTopNode = top;
+
+            // ⚠ THE GOLD IN THIS CORNER IS THE COUNT, NOT A FRAME. The plan asked for a gold frame around the
+            // pile so the back's violet would not read as a second accent — but the clip turned out to carry
+            // its own ornate border, and a gold ring drawn around an already-framed painting is not an accent,
+            // it is a picture in the wrong frame. The count is the only chrome the pile actually owns, so it
+            // is the thing that goes gold: the corner still answers to the rest of the screen, and the
+            // artwork is left to be artwork.
+            _deckCount = new Label
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 1f, AnchorBottom = 1f,
+                OffsetLeft = 0f, OffsetRight = 0f, OffsetTop = -caption, OffsetBottom = 0f,
+            };
+            _deckCount.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
+            holder.AddChild(_deckCount);
         }
 
-        // ⚠ THE GOLD IN THIS CORNER IS THE COUNT, NOT A FRAME. The plan asked for a gold frame around the
-        // pile so the back's violet would not read as a second accent — but the clip turned out to carry its
-        // own ornate border, and a gold ring drawn around an already-framed painting is not an accent, it is
-        // a picture in the wrong frame. The count is the only chrome the pile actually owns, so it is the
-        // thing that goes gold: the corner still answers to the rest of the screen, and the artwork is left
-        // to be artwork.
-        var count = new Label
+        // The pile draws FIRST, on every render including the one that made it: a card flying out of the deck
+        // has to pass over the deck, and the regions it flies into are added after this. (The regions are
+        // transparent Controls, so "first" costs the pile nothing else.)
+        _combatRoot.MoveChild(_deckHolder, 0);
+
+        // What the count says, and how thick the stack looks, is all that changes from render to render. The
+        // pile thins from its top card downward, which is where a dealt card comes off a real one.
+        var backing = Math.Min(drawCount > 0 ? drawCount - 1 : 0, 3);
+        for (var i = 0; i < _deckStills.Count; i++)
         {
-            Text = $"Draw {drawCount}",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 1f, AnchorBottom = 1f,
-            OffsetLeft = 0f, OffsetRight = 0f, OffsetTop = -caption, OffsetBottom = 0f,
-        };
-        count.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
-        holder.AddChild(count);
+            _deckStills[i].Visible = i < backing;
+            _deckStills[i].Position = new Vector2(i * lift, lean - i * lift);
+        }
+        if (_deckTopNode is not null && IsInstanceValid(_deckTopNode))
+        {
+            _deckTopNode.Visible = drawCount > 0;
+            _deckTopNode.Position = new Vector2(backing * lift, lean - backing * lift);
+        }
+        if (_deckCount is not null && IsInstanceValid(_deckCount))
+            _deckCount.Text = $"Draw {drawCount}";
     }
 
     // The hand as manually-placed card faces (a centered row), so newly-drawn cards can fly in from the deck.
-    private void BuildHand(VBoxContainer col, InteractiveCombat combat, CombatantState hero)
+    // It is laid inside the hand REGION — the bottom band minus the draw pile's corner — and centred in that.
+    private void BuildHand(Control region, InteractiveCombat combat, CombatantState hero)
     {
         var cards = combat.Hand.ToList();
 
-        // THE HAND IS LAID OUT ON A STEP, NOT ON A FIXED GAP. The cards are a fifth bigger than they were, and
-        // a big hand of big cards is wider than the pane it is centred in — so when the row will not fit, the
-        // step closes up and the cards overlap the way a held hand of cards actually does, rather than the row
-        // walking off both edges of the pane. The pane is the viewport minus the fixed 320-wide sidebar, the
-        // split's separation and a margin.
-        // A HAND IS HELD, NOT SHELVED. Up to five cards it is a plain row at a full gap; past that the step
-        // closes and the cards overlap left-under-right, and the whole row leans into a shallow fan — which
-        // is what makes an overlap read as a hand of cards rather than as a layout that ran out of room. The
-        // pane is the viewport minus the fixed 320-wide sidebar, the split's separation and a margin.
+        // A HAND IS HELD, NOT SHELVED, AND IT IS LAID OUT ON A STEP RATHER THAN A FIXED GAP. Up to five cards
+        // it is a plain row at a full gap; past that the step closes up and the cards overlap left-under-right
+        // and the row leans into a shallow fan — which is what makes an overlap read as a hand of cards rather
+        // than as a layout that ran out of room, and what keeps a big hand of big cards from walking off both
+        // edges. The room it has is its REGION: the bottom band minus the draw pile's corner.
         const int gap = 12;
         const int fanned = 5; // beyond this many, the row starts closing up
-        var available = Math.Max(CardVisuals.CardW, GetViewportRect().Size.X - 320 - 16 - 48);
+        var available = Math.Max(CardVisuals.CardW, PaneWidth - DeckBand - PaneInset * 2);
         var step = (float)(CardVisuals.CardW + gap);
         if (cards.Count > fanned)
             step = Math.Min(step, Math.Max(36f, (available - CardVisuals.CardW) / (cards.Count - 1)));
@@ -2075,17 +2331,21 @@ public partial class SessionScreen : Control
         var tilt = cards.Count > 1 ? Math.Min(2.2f, 9f / (cards.Count - 1)) : 0f;
         const float arc = 3f; // how much lower each step from the middle of the fan sits
 
-        var center = new CenterContainer();
+        // The row is placed in its region by hand — anchored to the region's bottom-left and pushed right by
+        // the pile's corner plus half the room left over. A plain Control governed by anchors, so nothing the
+        // cards do can push it around and the fan sits exactly where the arithmetic says.
+        // ⚠ A FLYING CARD COMES OUT FROM OVER THE PILE, so the band it lands in has to draw in front of the
+        // pile: the pile is moved to the front of the combat root's children on every render and every region
+        // is added after it.
         var inner = new Control
         {
-            CustomMinimumSize = new Vector2(Math.Max(totalWidth, 1), CardVisuals.CardH + 8 + arc * middle + 12),
-            // ⚠ THE HAND DRAWS IN FRONT OF THE DECK. The draw pile is added to the combat root AFTER this
-            // column, so by tree order it lay over the leftmost card — a card dealt underneath the deck it
-            // came out of. The hand is the thing being read; it goes on top.
-            ZIndex = 1,
+            AnchorTop = 1f, AnchorBottom = 1f, AnchorLeft = 0f, AnchorRight = 0f,
+            OffsetTop = -(CardVisuals.CardH + 8 + arc * middle + 12),
+            OffsetBottom = 0f,
+            OffsetLeft = DeckBand - PaneInset + Math.Max(0f, (available - totalWidth) / 2f),
         };
-        center.AddChild(inner);
-        col.AddChild(center);
+        inner.OffsetRight = inner.OffsetLeft + Math.Max(totalWidth, 1);
+        region.AddChild(inner);
 
         _cardsToAnimate.Clear();
         _handFaces.Clear();
@@ -2107,9 +2367,6 @@ public partial class SessionScreen : Control
             if (!_shownHandIds.Contains(cardId.value))
                 _cardsToAnimate.Add(face); // newly drawn → fly it in
         }
-        if (cards.Count == 0)
-            inner.AddChild(MutedLabel("(empty hand)"));
-
         _shownHandIds.Clear();
         foreach (var card in cards)
             _shownHandIds.Add(card.Id.value);
@@ -2164,6 +2421,7 @@ public partial class SessionScreen : Control
     private const int NarrowestColumn = 110;
     private const int ColumnGap = 24;
     private const int CrowdGap = 12;   // a crowd spends its room on the columns, not on the air between them
+    private const int BodyHeight = 150; // the room a body stands in, whatever it is a picture of
 
     // How wide ONE enemy column may be, given how many of them there are.
     //
@@ -2178,7 +2436,7 @@ public partial class SessionScreen : Control
             return HeroColumn;
         // The pane's own width, not the window's: the sidebar takes a third of the screen. It is last frame's
         // measurement, which is stable — the pane does not resize between rounds.
-        var pane = _combatRoot is { } root && root.Size.X > 100 ? root.Size.X : GetViewportRect().Size.X * 0.72f;
+        var pane = PaneWidth;
         var room = pane - 48 - (HeroColumn + 32) - ColumnGap;   // margins, the hero's column, the gap after it
         var each = (room - ((count - 1) * CrowdGap)) / count - 32;   // 32 = the panel's own border and padding
         return (int)Math.Clamp(each, NarrowestColumn, HeroColumn);
@@ -2418,6 +2676,66 @@ public partial class SessionScreen : Control
         await ToSignal(GetTree().CreateTimer(0.34), SceneTreeTimer.SignalName.Timeout);
         GetViewport().GetTexture().GetImage().SavePng("user://smoke-draw.png");
         GD.Print("smoke: screenshot user://smoke-draw.png (mid-draw)");
+        GetTree().Quit();
+    }
+
+    // THE PILE MUST KEEP PLAYING. The deck's back is a 36-second clip, and the screen it stands on is rebuilt
+    // from scratch on every state change in a fight. When the pile was rebuilt with it, its VideoStreamPlayer
+    // was a new object each time and started at 0.00 — so the loop never got past its first tenth of a second
+    // and the card back visibly snapped back on every click. This plays three cards and reports whether the
+    // clip is still the SAME player and whether its position moved forward; a rebuilt pile fails both.
+    private async System.Threading.Tasks.Task SmokeDeck()
+    {
+        var session = Session;
+        for (var i = 0; i < 8 && Play?.CombatDriver?.Current is null && session is not null; i++)
+        {
+            if (session.IsAwaitingNodeChoice) session.PickNode(session.PendingNodeChoices[0].Id.Value);
+            else if (session.IsAwaitingInterlude) session.Continue();
+            else break;
+        }
+        if (Play?.CombatDriver?.Current is null || DisplayServer.GetName().Contains("headless"))
+        {
+            GD.Print("smoke-deck: needs a window (the clip does not decode headless)");
+            GetTree().Quit();
+            return;
+        }
+
+        (ulong Id, double At)? first = null;
+        (ulong Id, double At)? last = null;
+        var players = 0;
+        for (var round = 0; round < 4; round++)
+        {
+            await ToSignal(GetTree().CreateTimer(0.3), SceneTreeTimer.SignalName.Timeout);
+            var found = new List<VideoStreamPlayer>();
+            void Walk(Godot.Node n)
+            {
+                if (n is VideoStreamPlayer v) found.Add(v);
+                foreach (var c in n.GetChildren()) Walk(c);
+            }
+            Walk(this);
+            players = Math.Max(players, found.Count);
+            if (found.Count > 0)
+            {
+                var seen = (found[0].GetInstanceId(), (double)found[0].StreamPosition);
+                first ??= seen;
+                last = seen;
+            }
+            if (Play?.CombatDriver?.Current is { } fight && fight.IsHeroTurn)
+            {
+                var hero = fight.State.GetCombatant(fight.HeroId);
+                var card = fight.Hand.FirstOrDefault(c => CanPay(hero, c.DefinitionId.value));
+                var target = fight.State.Combatants.FirstOrDefault(c => c.Id != fight.HeroId && c.IsAlive
+                    && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
+                if (card is not null) Play.CombatDriver.PlayCard(card.Id, target);
+            }
+        }
+
+        var kept = first is { } f && last is { } l && f.Id == l.Id;
+        var advanced = first is { } f2 && last is { } l2 && l2.At > f2.At + 0.5;
+        GetViewport().GetTexture().GetImage().SavePng("user://smoke-deck.png");
+        GD.Print($"smoke-deck: players={players} same-clip={(kept ? "yes" : "NO")} "
+            + $"advanced={(advanced ? "yes" : "NO")} from={first?.At:0.00} to={last?.At:0.00} "
+            + $"{(kept && advanced ? "PASS" : "FAIL")}");
         GetTree().Quit();
     }
 
