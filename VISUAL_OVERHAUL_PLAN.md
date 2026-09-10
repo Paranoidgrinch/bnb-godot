@@ -298,7 +298,7 @@ cover is a still back) · `--smoke-crowd` `enemies=3 … offscreen=no error=none
 
 ---
 
-## Phase D3 — the art slots, and the table the user fills
+## Phase D3 — the art slots, and the table the user fills  ✔ BUILT 2026-09-10
 
 **Deliverable:** every card and every relic has a **stable, unique, human-readable code**, the frontend looks
 for a file named by it, and finding nothing is normal.
@@ -316,7 +316,109 @@ for a file named by it, and finding nothing is normal.
   in the filename.
 - An upgraded card (`levy_stamp+`) falls back to its base card's art unless its own file exists.
 
-### D3a — the relic faucet still points at the predecessor (found 2026-09-10)
+### What was actually built (2026-09-10)
+
+**The contract's path IS the path on disk.** The plan proposed `assets/cards/art/<id>.png` and a Godot-side
+scheme to build it. There is no need for one: `Presentation.Art` already reads `cards/levy_stamp.png` for
+every card and `relics/levy_stamp.png` for every relic, written by `BlueprintAssembler`, and it survives the
+export contract. So the frontend resolves that string under `res://assets/art/` and invents nothing — the
+folders are `assets/art/cards/` and `assets/art/relics/`, and the document's own words name the file. What is
+left over is a two-step fallback for anything that arrives without a declaration (`<kind>/<id>.png`, then the
+base card), and a cache that remembers MISSES too, because finding nothing is the normal state and must not
+cost a filesystem call per redraw.
+
+**413 cards ask for 254 pictures.** An upgraded card is drawn from its base card's file: an improvement
+changes what a card DOES, not what it is a picture of. The authored cards already said so (`TrimEnd('+')` in
+the assembler); the 25 ported v2 upgrades did not — they asked for their own `<id>_plus.png` — so one line
+changed and the document now declares exactly **464 distinct pictures**: 254 cards + 210 relics. That number
+is not maintained anywhere; it is the count of distinct declared paths, and `ArtSlotTests` pins it.
+
+⚠ **A dropped file is invisible until Godot has imported it.** "Dropping a PNG in is the entire act of
+filling a slot — no rebuild" was half true: `res://` holds what the importer has scanned and nothing else,
+so a file that was merely copied into the folder does not exist for the running game. The editor imports on
+focus; a headless run never does. Measured: with the file in place and no import, `--smoke-art` reported it
+missing; after `godot --headless --path . --import`, the same probe found it and the card drew it. That one
+command is `tools/import-art.sh`, and it is named in the README, in `assets/art/README.md` and in the
+generated table.
+
+**Every relic already has its brief.** The two visual-design canons
+(`BnB_Final_Relics_Master_PostAudit_VISUAL_DESIGN_CANON.md` #1–168 and
+`BnB_Elite_Relics_MASTER_AND_VISUAL_CANON.md` #169–210) cover **210 of 210** relics with **zero** title
+mismatches against the code, so `ART_SLOTS.md` carries the canon number and the object line for every one of
+them. Cards have no visual canon and carry their own rules text instead.
+
+⚠ **AND IT IS IMPORTED WITHOUT MIPMAPS.** D1's glitter trap has a third door: Godot's default for a new
+texture is `mipmaps/generate=false`, and every picture in this game is drawn far smaller than it is painted
+(488 × 440 into a 122 × 110 window). Nobody dropping a file in would think to open its `.import` to find out
+why the result sparkles, so the project now carries an `[importer_defaults] texture={"mipmaps/generate": true}`
+block — it applies to NEW imports and leaves the files that carry the setting themselves alone. The drawing
+side was set too (`TextureFilter.LinearWithMipmaps` on the card's picture), because D1 already proved that one
+half without the other does nothing.
+
+⚠ **AN AUTOWRAPPING LABEL'S MINIMUM WIDTH IS ONE CHARACTER.** Found by looking, not by reasoning: with the
+relic pictures dropped in for the test, the sidebar printed "Crossed-Out Map" down the edge one letter per
+line. An `HBoxContainer` gives every child its minimum and shares out only the remainder among the children
+that asked to expand — the name had not asked. This is D1's container lesson from the other side: there, a
+child's minimum pushed a parent open; here, a child that reported almost no minimum got almost nothing. One
+`SizeFlags.ExpandFill`.
+
+**`ART_SLOTS.md` is generated and pinned.** `dotnet run --project Converter -- --art-slots ART_SLOTS.md`
+(in bnb-content, where the data and the canons live). It is one row per PICTURE — code, title, pool, rarity,
+brief — grouped by relic pool and by card sheet, and it marks the **25 ported v2 remnants** as work not worth
+doing, so the real list is **439**. A test regenerates it and fails if the checked-in file has gone stale,
+because a slot table that quietly drifts is worse than none.
+
+### D3a — closed before this phase started
+
+The audit above was written against the code of 2026-09-10 morning; the relic arc closed it the same day
+(bnb-content `3ff4318`). Re-checked faucet by faucet, not taken on trust: `EventTemplates.Treasure` now draws
+`pools.NormalRelicOnTheCurve`, the elite/boss/mimic rewards draw their own authored pools, a shop samples
+`depth: pools.ShopRelicStock.Count` so all 24 shop relics are reachable, `BlueprintAssembler` ships
+`FinalRelics.Compile()` and nothing else, and the document holds **210 relics with 210 presentations and no
+strays in either direction**. `ConversionPools.RelicGrantSource` — the function that was never re-pointed —
+still compiles but has no caller left.
+
+### What the regeneration uncovered: the shipped document had no rarity curve
+
+The document had to be rewritten for 25 art paths. Diffing the old one against the new one — the habit, not a
+suspicion — turned up **9,939 changed weights** that had nothing to do with art. The act rarity curve the
+relic arc wrote on 2026-09-10 (`ConversionPools.RarityCurve`, `ActCurve`) lives in the code and in its tests,
+but the checked-in `game.roguedeck.json` predates it: every reward pool in the SHIPPED game was still a
+uniform draw, and bnb-godot's copy is a copy of that file. **A curve that exists only in the converter is not
+in the game.**
+
+What actually moved, measured rather than assumed: pool MEMBERSHIP is identical (11,291 offer entries, **0**
+differing), the weights carry the curve, and the entries are re-ordered because the curve groups them by
+rarity class. Everything else in 23,888 leaf differences is the 25 art paths. No key exists on one side only.
+
+It is also why the Act-V boss probe now reads `round=6` and `133/120` where D2 read `round=7` and
+`152/138`: the same seed meets a differently-weighted deck. Gates re-run against the refreshed document:
+`--maps 2` clean (no `PROBLEM` line), bnb-content 1469/1469, and every screen probe below. `--playtest 2` walks **1 victory and 1 defeat** — seed 20260718 dies of
+attrition in Act IV. That is not this phase's doing and was proved so rather than assumed: with the one
+converter line reverted the same walk fails identically, 82 rooms and 398 steps. The sparring ring puts the
+fatal encounter at ~185 HP against a starter deck, so it is the act that kills, not the room. **V-7's first
+gate has found its first customer**, and it belongs to V-7.
+
+⚠ **A probe that runs while another experiment writes into `assets/` is not a probe.** The first Act-V boss
+run was launched into the background and the relic-picture experiment then dropped 210 files into
+`assets/art/relics` while it was still walking — a running Godot resolves `res://` off the disk, so that run
+saw pictures appear underneath it. Its numbers were thrown away and it was walked again on the clean tree,
+where it returned the same three numbers — which is the answer the throwaway was for. The standing rule
+(*run the long probes one at a time*) is about more than CPU.
+
+### The probes
+
+`--smoke-art` is the new one and it cannot fail on a count — an unfilled slot is the normal state, so it
+REPORTS: `464 slots asked for (254 cards, 210 relics), 0 filled, 0 upgrade(s) asking for a picture of their
+own`. The last number is the rule that keeps the first honest, and the same three numbers are how the user
+will watch the work go down. Acceptance, all on the final binary: `--smoke-format` 5 slots, 0 off over 10
+clicks — PASS · `--smoke-tooltips` 43 labelled controls, 28 with a hover, **0** mutes (digit for digit D1's
+and D2's) · `--smoke-draw` clean · `--smoke-crowd` `offscreen=no error=none` · `--smoke-boss 5` (Inanna, 7
+rounds, 4 plays, seed 4) `act=5 boss=yes round=6 ended=it found what it came for error=none` with
+`133 labelled controls, 120 with a hover, 0` and no ERROR line. bnb-content **1469/1469** with four new
+`ArtSlotTests`.
+
+### D3a — the diagnosis, as it was written that morning
 
 The audit this phase asked for was run against the spec, and it did not come back clean. **The old v2 relics
 did not "slip into the data" — one function was never re-pointed, and every faucet that calls it still hands

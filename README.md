@@ -29,7 +29,14 @@ presentation manifest.
   card and a thumbnail. ⚠ Nothing on a card may report a minimum size — the root is a plain `Control` and each
   field sits in a fixed clipped window, because Godot clamps a Control's size *up* to its children's combined
   minimum and that is what used to change a card's shape when it was clicked (`--smoke-format` measures it).
-  A card's picture is `assets/cards/art/<id>.png` and nothing else: the id IS the art code.
+  A card's picture is `assets/art/cards/<id>.png` — the path the document itself declares in
+  `Presentation.Art`, so the contract's path IS the path on disk and there is nothing to register.
+  An upgraded card has no picture of its own (`levy_stamp+` draws `levy_stamp.png`), so 413 cards ask
+  for 254 pictures; relics ask for 210 more under `assets/art/relics/`. The whole list, with the design
+  canon's brief beside every relic, is generated: `bnb-content/ART_SLOTS.md`. ⚠ A dropped file is
+  invisible until Godot has imported it — `tools/import-art.sh` once, and `--smoke-art` says how many
+  slots are filled. ⚠ New textures import WITHOUT mipmaps by default and every picture here is drawn much
+  smaller than it is painted, so `project.godot` sets `[importer_defaults] texture={"mipmaps/generate": true}`.
   The back is `assets/cards/card-back.ogv` (moving, deck top) and `card-back.png` (still, everywhere
   else) — a whole card already, border and rounded corners painted in, so it is drawn at full bleed with
   no chrome. ⚠ Both are cut to the size they are DRAWN at, because a video texture cannot be mipmapped;
@@ -46,6 +53,7 @@ godot --path .                 # or open in the Godot 4.7 (.NET) editor and pres
 Headless checks (no window):
 ```
 godot --headless -- --smoke        # boot: prints "loaded: …" and quits
+godot --headless -- --smoke-art     # the art census: how many of the 464 slots have a file
 godot --headless -- --smoke-full    # auto-plays the first rooms and reports the state
 godot --headless -- --smoke-timing  # per-action latency (~17 ms/action)
 godot --headless -- --smoke-statuses # carried state reads as its authored name, not its id
@@ -128,11 +136,13 @@ Requires the **Godot 4.7 (.NET) export templates** — install them once via the
 (*Editor → Manage Export Templates → Download and Install*), then:
 ```
 tools/export.sh        # → build/linux/… and build/windows/…
+tools/import-art.sh    # after dropping PNGs into assets/art/ — Godot only reads what it imported
 ```
 C# has no Godot web export, so the targets are desktop (Linux / Windows).
 
 ## Presentation
 Art/flavor/rarity come from the blueprint's presentation manifest (never from the engine): card rarity
-tints the hand, card/relic flavor shows as tooltips, character flavor shows on the title. `Art` paths
-would resolve under `res://assets/…`; with no assets shipped yet, entities fall back to their styled
-text panels — swapping in art later needs no code change.
+tints the hand, card/relic flavor shows as tooltips, character flavor shows on the title. An `Art` path
+resolves under `res://assets/art/`, which is why `cards/levy_stamp.png` in the document is
+`assets/art/cards/levy_stamp.png` on disk. A slot with no file is a normal state, not an error: the card
+draws an empty socket with its own code printed in it, and the relic draws its name.
