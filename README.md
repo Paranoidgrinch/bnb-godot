@@ -42,6 +42,16 @@ presentation manifest.
   no chrome. ⚠ Both are cut to the size they are DRAWN at, because a video texture cannot be mipmapped;
   re-cut them from the master if the card ever resizes (the two ffmpeg lines are in
   `VISUAL_OVERHAUL_PLAN.md` under D2).
+  The same file also draws **the relic tile**: a 50 px framed square wearing its POOL's canon frame
+  (§10.4 — normal slate, shop copper, event pale violet, boss a doubled antique-gold line on near-black
+  purple, elite and mimic that same frame run plainer), the relic's picture inside it if the file exists
+  and its slot code if it does not. The pool travels in the document as `Presentation.Relics[id].Frame`,
+  so the frontend never has to know which relic came from where.
+- `scripts/SessionScreen.cs` — every room, and **the shelf** on the right edge: what you are wearing is
+  drawn as objects in an `HFlowContainer` that wraps into rows, with the name and the rules text one hover
+  away. ⚠ The sidebar's horizontal scrolling is switched OFF on purpose — a `ScrollContainer` that may
+  scroll sideways hands its child the child's *minimum* width, and a wrapping container's minimum is one
+  tile, so the shelf would come out as a single column. `--smoke-shelf` proves it at 69 relics.
 - `scripts/GodotMetaStore.cs` — the cross-run profile in `user://` (permanent unlocks / discoveries).
 - `content/game.roguedeck.json` — the shipped game (refresh with `tools/sync-content.sh`).
 
@@ -61,6 +71,10 @@ godot --headless -- --smoke-marathon # play the WHOLE game (all five acts) and r
 godot --headless -- --smoke-tooltips # audit a combat screen: is anything NAMED but not explained?
 godot --headless -- --smoke-format   # every card in the hand is exactly the size it was handed,
                                      # ten clicks apart (windowed: it also takes the shot)
+godot --headless -- --smoke-shelf    # the relic strip at a HOSTILE count: wears 69 relics (one from every
+                                     # pool before a second from any), switches every seventh off, and
+                                     # reports rows, tiles per row, whether anything sits outside the
+                                     # panel and whether the sidebar scrolls. `--shelf N` for another count
 godot --headless -- --smoke-boss 5 --boss inanna --rounds 12   # a NAMED boss, N rounds in
 godot --headless -- --smoke-boss 5 --boss nanna_sin --rounds 6 --plays 3  # …playing 3 cards a round,
                                                               # for a fight whose state is what the player did

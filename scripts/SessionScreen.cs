@@ -75,7 +75,10 @@ public partial class SessionScreen : Control
         var side = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
         side.AddThemeConstantOverride("separation", 10);
         var sidePanel = new PanelContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
-        var sideScroll = new ScrollContainer();
+        // ⚠ NO SIDEWAYS SCROLL IN THE SIDEBAR. A ScrollContainer that may scroll horizontally gives its child
+        // the child's MINIMUM width; with it off, the child is stretched to the panel. That is the difference
+        // between a relic shelf that wraps into rows and one that is a single column of squares.
+        var sideScroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         _sidebar = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         sideScroll.AddChild(_sidebar);
         sidePanel.AddChild(sideScroll);
@@ -130,6 +133,8 @@ public partial class SessionScreen : Control
             _ = SmokeTooltips();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-format"))
             _ = SmokeFormat();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-shelf"))
+            _ = SmokeShelf();
     }
 
     // Walk the screen the way a mouse would and report what is EXPLAINED and what is not: every piece of text
@@ -2465,6 +2470,106 @@ public partial class SessionScreen : Control
     // self-only card would be spent by a real click and the hand would change under the measurement — the
     // state on screen (armed → rebuilt → cancelled → rebuilt) is exactly the one a click produces. PASS is
     // one size per slot, ten clicks apart.
+    // THE SHELF AT A HOSTILE COUNT. Four relics prove nothing: a strip that wraps is only tested by a run
+    // that has won enough to fill it, and the Boss pool alone holds 69 — a five-act run really can wear that
+    // many. So the probe puts them on rather than walking for them, because what is being measured is the
+    // LAYOUT and not the drop rate, and a layout does not care how a relic was earned.
+    //
+    // It asks three things a screenshot cannot: does every tile sit inside the panel, does the shelf wrap
+    // into rows instead of one column, and does the sidebar carry the overflow by scrolling rather than by
+    // pushing the log off the screen.
+    private async System.Threading.Tasks.Task SmokeShelf()
+    {
+        var wanted = SimArg("--shelf", 69);
+        var session = Session;
+        if (session is null)
+        {
+            GD.Print("smoke-shelf: no session");
+            GetTree().Quit();
+            return;
+        }
+
+        // One from every pool before a second from any of them, so all six frames are on the shelf however
+        // small the count is — a probe that filled the strip with 69 boss relics would look right and prove
+        // only that one frame works.
+        var presentation = GameHost.Instance.Blueprint.Presentation.Relics;
+        var byPool = GameHost.Instance.Blueprint.Relics
+            .GroupBy(r => presentation.GetValueOrDefault(r.Id)?.Frame ?? "normal", StringComparer.Ordinal)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => g.ToList())
+            .ToList();
+        var worn = new List<string>();
+        for (var round = 0; worn.Count < wanted; round++)
+        {
+            var got = false;
+            foreach (var pool in byPool.Where(pool => round < pool.Count))
+            {
+                if (worn.Count >= wanted) break;
+                worn.Add(pool[round].Id);
+                got = true;
+            }
+            if (!got) break;   // the document has fewer relics than the count asked for
+        }
+        foreach (var id in worn)
+            session.Run.AddRelic(new RogueDeck.Run.RelicInstance(
+                session.Run.Content.GetRelic(new RogueDeck.Run.RelicId(id))));
+        // A relic can be switched off mid-run, and "(off)" has to survive the move from a list to a shelf.
+        var off = 0;
+        for (var i = 6; i < session.Run.Relics.Count; i += 7, off++)
+            session.Run.Relics[i].SetEnabled(false);
+
+        Rebuild();
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        var shelf = FindShelf(this);
+        var tiles = shelf is null ? [] : shelf.GetChildren().OfType<Control>().ToList();
+        var rows = tiles.Select(t => Mathf.RoundToInt(t.Position.Y)).Distinct().Count();
+        var perRow = rows > 0 ? tiles.Count / rows : 0;
+        var panel = shelf?.GetParent() as Control;
+        var right = tiles.Count > 0 ? tiles.Max(t => t.GlobalPosition.X + t.Size.X) : -1;
+        var limit = panel is not null ? panel.GlobalPosition.X + panel.Size.X : GetViewportRect().Size.X;
+        var scroll = FindScroll(this);
+        var viewport = scroll?.Size.Y ?? 0;
+        var content = scroll?.GetVScrollBar()?.MaxValue ?? 0;
+
+        GD.Print($"smoke-shelf: worn={session.Run.Relics.Count} (asked {wanted}, {off} switched off) "
+            + $"tiles={tiles.Count} rows={rows} ~{perRow}/row "
+            + $"right={right:0}/{limit:0} outside={(right > limit + 1 ? "YES" : "no")} "
+            + $"content={content:0} viewport={viewport:0} scrolls={(content > viewport + 1 ? "yes" : "no")} "
+            + $"error={Session?.Error ?? "none"}");
+        if (tiles.Count > 0)
+            GD.Print($"  tile={tiles[0].Size.X:0}x{tiles[0].Size.Y:0} pools=" + string.Join(" ", byPool
+                .Select(pool => $"{presentation.GetValueOrDefault(pool[0].Id)?.Frame}:{pool.Count}")));
+        // WHAT THE HOVER ACTUALLY SAYS, read back out of the live tree. A headless run cannot hover, and
+        // "the tooltip was set" is not "the tooltip says the name and the rules" — so one is printed whole.
+        if (tiles.FirstOrDefault(t => !string.IsNullOrEmpty(t.TooltipText)) is { } sample)
+            GD.Print($"  hover ⟨{sample.TooltipText.Replace("\n", " ⏎ ")}⟩");
+        if (rows <= 1 && tiles.Count > 1)
+            GD.Print("  ⚠ ONE ROW — the shelf is not wrapping");
+        if (perRow <= 1 && tiles.Count > 1)
+            GD.Print("  ⚠ ONE COLUMN — the shelf was handed its minimum width, not the panel's");
+
+        ReportTooltips("shelf");
+        await CaptureThenQuit("smoke-shelf.png");
+    }
+
+    private static HFlowContainer? FindShelf(Godot.Node node)
+    {
+        if (node is HFlowContainer flow) return flow;
+        foreach (var child in node.GetChildren())
+            if (FindShelf(child) is { } found) return found;
+        return null;
+    }
+
+    private static ScrollContainer? FindScroll(Godot.Node node)
+    {
+        if (node is ScrollContainer scroll && FindShelf(scroll) is not null) return scroll;
+        foreach (var child in node.GetChildren())
+            if (FindScroll(child) is { } found) return found;
+        return null;
+    }
+
     private async System.Threading.Tasks.Task SmokeFormat()
     {
         var session = Session;
@@ -2605,56 +2710,48 @@ public partial class SessionScreen : Control
         foreach (var (resource, amount) in run.Resources.OrderBy(r => r.Key.Value, StringComparer.Ordinal))
             _sidebar.AddChild(MutedLabel($"{resource.Value}: {amount}"));
 
+        // ── the shelf ────────────────────────────────────────────────────────────
+        // What is worn is drawn as objects, not spelled out as a list. A relic strip only works if the eye
+        // can take the whole of it in at once, and the words are one hover away — the same words the list
+        // used to print, through the same glossary.
         if (run.Relics.Count > 0)
         {
-            _sidebar.AddChild(new Label { Text = "Relics" });
+            _sidebar.AddChild(new Label { Text = $"Relics ({run.Relics.Count})" });
+            var shelf = Shelf();
             foreach (var relic in run.Relics)
             {
-                var tip = Glossary.Explain(GameHost.Instance.Blueprint.Presentation.Relics
-                    .GetValueOrDefault(relic.Id.Value)?.FlavorText);
-                var text = $"{relic.Definition.DisplayName}{(relic.Enabled ? "" : " (off)")}";
-                // The shelf of framed squares is D4. Until then a relic that HAS a picture shows it here, so
-                // the moment a file lands in assets/art/relics it is visible in the game and not only in a
-                // count — an art slot nobody can see filling is an art slot nobody trusts.
-                var picture = CardVisuals.RelicArt(relic.Id.Value);
-                var label = MutedLabel(picture is null ? $"• {text}" : text);
-                label.MouseFilter = MouseFilterEnum.Stop; // tooltips need a hit-testable control
-                label.TooltipText = tip;
-                if (picture is null)
-                {
-                    _sidebar.AddChild(label);
-                    continue;
-                }
-                // ⚠ AN AUTOWRAPPING LABEL'S MINIMUM WIDTH IS ONE CHARACTER. An HBoxContainer hands every child
-                // its minimum and shares out only what is left over among the children that asked to expand,
-                // so a name put beside a picture without asking printed itself down the sidebar one letter
-                // per line. The row is a container; only a container's rules decide what its children get.
-                var row = new HBoxContainer { TooltipText = tip, MouseFilter = MouseFilterEnum.Stop };
-                label.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-                row.AddChild(new TextureRect
-                {
-                    Texture = picture,
-                    CustomMinimumSize = new Vector2(22, 22),
-                    ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-                    StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-                    TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
-                    MouseFilter = MouseFilterEnum.Ignore,
-                });
-                row.AddChild(label);
-                _sidebar.AddChild(row);
+                var look = GameHost.Instance.Blueprint.Presentation.Relics.GetValueOrDefault(relic.Id.Value);
+                shelf.AddChild(CardVisuals.Tile(new CardVisuals.RelicFace(
+                    Id: relic.Id.Value,
+                    Title: relic.Definition.DisplayName,
+                    // The pool the relic was won from, which the document names for exactly this reason: the
+                    // visual canon gives every pool its own frame, so the shelf is read by rank before a
+                    // single object on it is recognised. A relic without one gets the quiet frame.
+                    Pool: look?.Frame,
+                    Tooltip: $"{relic.Definition.DisplayName}{(relic.Enabled ? "" : " (off)")}\n"
+                        + Glossary.Explain(look?.FlavorText),
+                    Off: !relic.Enabled)));
             }
+            _sidebar.AddChild(shelf);
         }
+        // A consumable is worn the same way and is spent rather than kept, so it earns its own shelf under
+        // its own heading — same tile, no pool, because it was never drawn from one.
         if (run.Consumables.Count > 0)
         {
-            _sidebar.AddChild(new Label { Text = "Consumables" });
+            _sidebar.AddChild(new Label { Text = $"Consumables ({run.Consumables.Count})" });
+            var shelf = Shelf();
             foreach (var consumable in run.Consumables)
             {
-                var label = MutedLabel($"• {ConsumableName(consumable.DefinitionId.Value)}");
-                label.MouseFilter = MouseFilterEnum.Stop;
-                label.TooltipText = Glossary.Explain(GameHost.Instance.Blueprint.Presentation.Consumables
-                    .GetValueOrDefault(consumable.DefinitionId.Value)?.FlavorText);
-                _sidebar.AddChild(label);
+                var id = consumable.DefinitionId.Value;
+                var look = GameHost.Instance.Blueprint.Presentation.Consumables.GetValueOrDefault(id);
+                shelf.AddChild(CardVisuals.Tile(new CardVisuals.RelicFace(
+                    Id: id,
+                    Title: ConsumableName(id),
+                    Pool: look?.Frame,
+                    Tooltip: $"{ConsumableName(id)}\n{Glossary.Explain(look?.FlavorText)}",
+                    Off: false)));
             }
+            _sidebar.AddChild(shelf);
         }
 
         _sidebar.AddChild(new Label { Text = $"Deck ({run.Deck.Count})" });
@@ -2695,6 +2792,24 @@ public partial class SessionScreen : Control
             label.AddThemeFontSizeOverride("font_size", 12);
             _main.AddChild(label);
         }
+    }
+
+    // THE SHELF ITSELF. An HFlowContainer is the one container that fills a row and then starts another, so
+    // the strip grows downwards as relics are won and never sideways off the panel — and the sidebar already
+    // scrolls, so sixty-nine of them cost a scroll and not a layout.
+    //
+    // ⚠ A SCROLLCONTAINER HANDS ITS CHILD A MINIMUM, NOT A WIDTH — and a wrapping container's minimum width
+    // is ONE tile, so inside a scroll that may scroll sideways this shelf would have come out as a single
+    // column sixty-nine squares tall. The sidebar's horizontal scrolling is switched off where it is built,
+    // which is what makes the ScrollContainer stretch the shelf to the panel and lets it wrap. Third door
+    // into the same trap as D1's card minimum and D3's one-letter-per-line relic name: only a container's
+    // own rules decide what its children get.
+    private static HFlowContainer Shelf()
+    {
+        var shelf = new HFlowContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        shelf.AddThemeConstantOverride("h_separation", 4);
+        shelf.AddThemeConstantOverride("v_separation", 4);
+        return shelf;
     }
 
     private static Label MutedLabel(string text)
