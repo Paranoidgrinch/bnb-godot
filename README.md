@@ -30,6 +30,11 @@ presentation manifest.
   field sits in a fixed clipped window, because Godot clamps a Control's size *up* to its children's combined
   minimum and that is what used to change a card's shape when it was clicked (`--smoke-format` measures it).
   A card's picture is `assets/cards/art/<id>.png` and nothing else: the id IS the art code.
+  The back is `assets/cards/card-back.ogv` (moving, deck top) and `card-back.png` (still, everywhere
+  else) — a whole card already, border and rounded corners painted in, so it is drawn at full bleed with
+  no chrome. ⚠ Both are cut to the size they are DRAWN at, because a video texture cannot be mipmapped;
+  re-cut them from the master if the card ever resizes (the two ffmpeg lines are in
+  `VISUAL_OVERHAUL_PLAN.md` under D2).
 - `scripts/GodotMetaStore.cs` — the cross-run profile in `user://` (permanent unlocks / discoveries).
 - `content/game.roguedeck.json` — the shipped game (refresh with `tools/sync-content.sh`).
 

@@ -218,7 +218,7 @@ screen.
 
 ---
 
-## Phase D2 — the card back
+## Phase D2 — the card back  ✔ BUILT 2026-09-10
 
 **Answered 2026-09-10: the clip is genuinely new, and ffmpeg is installed.** The master is
 **36 s at 30 fps (1080 frames)**; what ships today is **12 s at 12 fps**, and no frame of the master matches
@@ -234,6 +234,67 @@ into a black vortex inside an ornate frame with violet corner gems.
    but the deck pile's own frame must be gold, or the corner reads as a second accent.
 
 ⚠ `CardVisuals` already limits how many backs animate at once (Godot decodes Theora on the CPU) — that stays.
+
+### What was actually built (2026-09-10)
+
+**The clip is not a picture that needs a frame. It is a whole card.** The plan's third point asked for a gold
+frame around the deck pile, on the reasoning that the back is violet-accented art next to a gold-accented UI
+and the corner would otherwise read as a second accent. Then somebody looked at the artwork — the same move
+that saved D1 — and the premise was wrong: the master already carries its own ornate border, corner
+medallions and all, with the card's rounded silhouette cut into the picture and plain black outside the
+round. A gold ring drawn around that is not an accent, it is a picture in the wrong frame, and the old
+wrapper would have done worse than that: `Framed()` put the back inside a bordered `PanelContainer` of card
+ground, so a *square* of lit ground behind *rounded* art would have lit four nubs at the corners — the exact
+bug D1 fixed on the front, arriving from the other side. So `Back()` now returns a plain `Control` with the
+picture at full bleed and no chrome at all, `Framed()` is gone, and the gold this corner owes the rest of the
+screen is paid by the pile's count instead. `Back(bool animated, float phase)` also lost `phase`: no caller
+ever passed it.
+
+**⚠⚠ A video texture cannot be mipmapped, and that decides the encode.** D1's lesson was that 1053 px of
+filigree drawn at 134 px turns to glitter unless mipmaps are on in *both* the `.import` and the
+`TextureFilter`. The back is the same filigree with the exit welded shut: a `VideoStreamPlayer` rebuilds its
+texture every tick, so there is no chain to build and no `LinearWithMipmaps` to reach for. The only remaining
+lever is the encode itself, so each rendition is cut to the size it is actually drawn at:
+
+| | cut to | why |
+|---|---|---|
+| `card-back.ogv` | **134×190**, 30 fps, Theora `-q:v 7`, 2.63 MB | 1:1 with the card, so it is never resampled at draw time at all |
+| `card-back.png` | **268×380**, mipmaps **on**, 178 KB | a still *can* carry a chain, so the poster keeps 2× of headroom |
+
+Measured against an ideal offline Lanczos reduction of the master, the moving back lands 3.73/255 away and
+the still 3.28 — and 5.00 from each other, which is the seam inside the pile and is invisible, because a
+still only ever shows as a 4 px sliver under the top card. The alternative, a 2× clip resampled down by the
+GPU, cost **20.6 MB** to land at 3.56: worse than the poster and eight times the file. ⚠ Both renditions are
+cut from `BaB-cardback-master.mp4`, which is **not in this repo** (34 MB); if `CardW`/`CardH` ever move,
+re-cut both:
+
+```
+ffmpeg -i BaB-cardback-master.mp4 -an -vf "scale=134:190:flags=lanczos" -c:v libtheora -q:v 7 -r 30 assets/cards/card-back.ogv
+ffmpeg -i BaB-cardback-master.mp4 -an -vf "scale=268:380:flags=lanczos" -frames:v 1 assets/cards/card-back.png
+```
+
+Theora encodes in 16×16 macroblocks and 134 is not a multiple of 16, so the encoder pads to 144×192 and
+writes a crop region. Godot honours it — the probe logs carry no decoder warning and the edges are clean —
+but that was a real risk of cutting to the card's size and is the thing to check first if the back ever
+shows a garbage edge.
+
+**The whole 36 s ships, because the clip has no shorter period.** Frame 1079 is 3.50/255 from frame 0 — the
+seam of a clean loop — while every interior sample (6 s, 12 s, 18 s, 24 s, 30 s) sits at 19–22. There is no
+half-turn to cut to; shortening it would put a visible jump in the deck corner. Against the old back that is
+3× the duration at 2.5× the frame rate for 0.4 MB more, and the poster came down from 1.32 MB to 178 KB, so
+the phase is net **+0.3 MB**.
+
+**⚠ A pile's footprint is its ink, not one card.** Making the count gold made a defect visible that had been
+there since the pile was built: `SetAnchorsPreset(BottomWide)` was being applied to a `Label` that had not
+been laid out yet, so its anchor rect was zero-high, its minimum height pushed it out of the bottom of the
+holder, and "Draw N" printed 2 px from the edge of the window, below the pane's own hairline. The holder now
+measures the stack's whole lean plus a caption band of its own, the cards are laid from the bottom of the
+lean upward so nothing is drawn above the footprint, and the count sits in an explicit 26 px band —
+clearance measured back off the screenshot: **31 px**.
+
+**Probes** (all on the shipped binary): `--smoke-format` 5/5 exact PASS · `--smoke-tooltips` 43/28/**0**,
+unchanged from D1, so the back's new `MouseFilter.Ignore` cost no hover · `--smoke-draw` clean (the flip's
+cover is a still back) · `--smoke-crowd` `enemies=3 … offscreen=no error=none` · `--smoke-boss 5`.
 
 ---
 

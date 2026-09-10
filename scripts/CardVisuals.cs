@@ -318,42 +318,62 @@ public static class CardVisuals
     }
 
     // ── the back ─────────────────────────────────────────────────────────────────
-    // animated=true plays the looping clip (Godot decodes it on the CPU, so only a FEW should ever animate at
-    // once — the deck's top card); everywhere else uses the still poster.
-    public static Control Back(bool animated, float phase = 0f)
+    // THE BACK IS ALREADY A WHOLE CARD. It arrives ornamented — corner medallions, a silver-and-violet
+    // border, and the card's rounded silhouette cut into the picture with plain black outside the round —
+    // so the old wrapper, a bordered panel of card ground, would have drawn a second frame around the first
+    // and lit four nubs of ground in the gaps at the corners: exactly the bug the front had in D1, arriving
+    // from the other direction. The back therefore gets no chrome at all. The picture IS the card, edge to
+    // edge, and the gold this corner owes the rest of the screen is paid by the pile's count, not by a ring
+    // around a painting.
+    //
+    // ⚠⚠ A VIDEO TEXTURE CANNOT BE MIPMAPPED. Its frame is rebuilt every tick, so there is no chain to
+    // build and no `LinearWithMipmaps` to reach for — D1's glitter trap with the exit welded shut. The only
+    // remaining lever is the encode, so each rendition is cut to the size it is actually drawn at: the clip
+    // at 134x190, where 1:1 means it is never resampled at all, and the poster at 2x WITH mipmaps, because
+    // a still can carry the chain the clip cannot. ⚠ Both are cut from `BaB-cardback-master.mp4`, which is
+    // NOT in this repo (34 MB); if CardW/CardH ever move, re-cut both — see VISUAL_OVERHAUL_PLAN.md D2 for
+    // the two ffmpeg lines.
+    //
+    // animated=true plays the looping clip (Godot decodes Theora on the CPU, so only a FEW should ever
+    // animate at once — the deck's top card); everywhere else uses the still poster.
+    public static Control Back(bool animated)
     {
+        var root = new Control
+        {
+            CustomMinimumSize = new Vector2(CardW, CardH),
+            Size = new Vector2(CardW, CardH),
+            ClipContents = true,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+
+        Control picture;
         if (animated)
         {
-            var video = new VideoStreamPlayer
+            // No Play() here: Autoplay already starts the clip the moment the player enters the tree, and
+            // calling it before that only prints "Condition !is_inside_tree() is true" — once per card back,
+            // which under a headless probe is often enough to bury everything else the run has to say.
+            picture = new VideoStreamPlayer
             {
                 Stream = Stream,
                 Autoplay = true,
                 Loop = true,
                 Expand = true,
-                CustomMinimumSize = new Vector2(CardW, CardH),
             };
-            // No Play() here: Autoplay already starts the clip the moment the player enters the tree, and
-            // calling it before that only prints "Condition !is_inside_tree() is true" — once per card back,
-            // which under a headless probe is often enough to bury everything else the run has to say.
-            return Framed(video);
         }
-        var still = new TextureRect
+        else
         {
-            Texture = Poster,
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            StretchMode = TextureRect.StretchModeEnum.Scale,
-            CustomMinimumSize = new Vector2(CardW, CardH),
-        };
-        return Framed(still);
-    }
+            picture = new TextureRect
+            {
+                Texture = Poster,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.Scale,
+                TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
+            };
+        }
 
-    // Wrap card content in a clipped, framed panel of the card size.
-    private static Control Framed(Control content)
-    {
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(CardW, CardH), ClipContents = true };
-        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.CardGround, new Color(MoonvineTheme.Accent, 0.4f), 6));
-        content.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        panel.AddChild(content);
-        return panel;
+        picture.MouseFilter = Control.MouseFilterEnum.Ignore;
+        picture.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        root.AddChild(picture);
+        return root;
     }
 }
