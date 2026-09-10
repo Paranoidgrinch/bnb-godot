@@ -18,6 +18,11 @@ prints a warning and falls back to the Godot default rather than crashing the ru
 ⚠ **No screen may load a font of its own.** The moment one does, "change the font later" stops being this
 one line and becomes twenty edits scattered across `SessionScreen`, `MapView` and `Boot`.
 
+**The card face is the strongest argument for changing it.** `CardVisuals` sizes a card's name to the frame's
+title band and shrinks it until it fits, but the longest names in the game (*Break the Great Seal of
+Execution*, 33 characters) still reach the ellipsis at the floor size in a 105 px band. A condensed face is
+the one edit that buys them back — and it is this edit.
+
 ## Colours
 
 There is no `.tres` theme file — the whole palette is `scripts/MoonvineTheme.cs`, which is also the only

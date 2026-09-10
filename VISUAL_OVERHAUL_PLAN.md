@@ -116,7 +116,7 @@ into twenty.
 
 ---
 
-## Phase D1 — the card face
+## Phase D1 — the card face  ✔ BUILT 2026-09-10
 
 **Deliverable:** `CardVisuals.Face(...)` — one card widget, built from the master layout, used by hand, deck,
 pickers, shop and the deck list. `CardBlockButton` in `SessionScreen` becomes a thin caller.
@@ -153,6 +153,68 @@ pickers, shop and the deck list. `CardBlockButton` in `SessionScreen` becomes a 
 
 **Done when:** `--smoke-draw`, `--smoke-target`, `--smoke-crowd` and `--smoke-boss 5` capture a hand of the
 new faces; clicking a card ten times changes nothing about its size; `--smoke-tooltips` reports no new mutes.
+
+### What was actually built (2026-09-10)
+
+`CardVisuals.Face(CardFace, onClick, scale)` renders one card; `CardBlockButton` in `SessionScreen` now only
+decides what is TRUE of a card (name, price, payable, marks) and hands it over. The frame is laid over the
+fields, so frame and text can never disagree about where a field is. Card 112 × 156 → **134 × 190**.
+
+**The format bug was real, and it was not what the plan predicted.** `--smoke-format` was written first and
+run against the OLD face, which is the only reason we know: a card did not drift across clicks, it was
+**never the size it was handed at all**. Every card came out **136 × 169** — 24 px too wide, because the
+`PanelContainer`'s stylebox adds 12 px of content margin on each side to the combined minimum — and *Cower
+Behind a Desk* came out **136 × 192**, another 23 px taller than its neighbours, because its title wrapped to
+two lines. A row of cards that are neither the same shape nor the shape asked for, stepping 124 px apart at
+136 px wide and hanging out of the row into the End-turn button, is what "the card changes format when I
+click it" looks like from the player's side. After: **134 × 190 on every slot, ten clicks apart, PASS.**
+
+The fix is structural, not a tweak: the root is a **plain `Control`** (its combined minimum is exactly its
+`CustomMinimumSize`, whatever it holds — only Containers propagate a child's minimum upward), every field
+sits in a fixed clipped window anchored by fraction, and the frame `TextureRect` is `IgnoreSize` so it does
+not report the artwork's own 1053 × 1494.
+
+**Four things the screenshots taught that no amount of reading would have:**
+
+| what | why |
+|---|---|
+| ⚠ **the card ground had to become LIGHT** (`CardGround` `#0a0507` → `#241015`) | the master frame is black tracery with a few silver highlights; on D0's near-black card ground the frame was simply *not there*. A card is legible because its FIELDS are lit and the frame is the dark border around them. This is the one place the ramp runs the other way, and the reason is written into `MoonvineTheme`. |
+| the ground is a **rounded** Panel, not a ColorRect | a lit square behind a frame with 7.4 %-radius corners shows as four bright nubs past the artwork. Everywhere else the frame covers its own ground. |
+| **mipmaps, on both sides** | 1053 px of filigree shrunk to 134 px without mipmaps samples one pixel in eight: the frame came out as glitter. `mipmaps/generate=true` in `card-frame.png.import` **and** `LinearWithMipmaps` on the TextureRect — either alone does nothing. |
+| ⚠ **measure with the spacing you will draw with** | `GetMultilineStringSize` asks the *font*; a `Label` then adds the theme's `line_spacing` (3 px) between lines, so a paragraph measured to fit exactly lost its last line to the clip. The rules Label sets that constant to 0 and `FitBlock` measures the same block. |
+
+**Type fits the field instead of the field fitting the type.** `FitLine`/`FitBlock` pick the largest size at
+which the name fits the band and the rules fit the plaque. A name gets QUIETER, never re-wrapped — wrapping
+is what used to change the card's shape. What still does not fit is clipped with an ellipsis and the hover
+has it whole. The longest names in the game (*Break the Great Seal of Execution*, 33 characters) do reach the
+ellipsis at the floor size; a condensed typeface would buy them back, and that is exactly what
+`MoonvineTheme.FontPath` is for.
+
+**Two decisions the phase forced:**
+
+- **The ring takes a number and nothing else.** The cost hole is 6.8 % of the card's width — a glyph and a
+  digit do not both fit — so `CostBadge` prints the amount and the hover says what it is denominated in.
+  Every card in the game is priced in energy today; the hover is where it stays honest if one is not.
+- **The mark chips sit ABOVE the click overlay**, or the overlay swallows the hover that explains them — so
+  each chip is itself a button that plays the card, and the card behaves the same wherever you click it.
+
+**The hand is held, not shelved.** Up to five cards it is a plain row at a full gap; past that the step
+closes and the cards overlap left-under-right, and the whole row leans into a shallow fan — a fixed 9°
+*spread* shared out, not a fixed angle per card, so a hand of twelve leans no further than a hand of four, it
+just leans in smaller increments. An overlap without the lean reads as a layout that ran out of room; with it
+it reads as a hand of cards. ⚠ And the hand now draws **in front of the deck**: the draw pile is added to the
+combat root after the hand column, so by tree order it lay over the leftmost card — a card dealt underneath
+the deck it came out of. (In front is fine, the player said; behind is not.)
+
+**The art slot is already wired** (the structure, not the pictures — the files are D3): `assets/cards/art/<id>.png`,
+looked up and cached by id, and until one exists the window is an empty socket with the card's code printed
+in it, so an unfilled card is obviously unfilled and the person painting it can read which one it is off the
+screen.
+
+**Probes:** `--smoke-format` (new, 5/5 slots exact, 0 off over 10 clicks) · `--smoke-crowd` · `--smoke-draw` ·
+`--smoke-target` (block plays, attack arms — the targeting rule survived the rebuild) · `--smoke-tooltips`
+(43 labelled controls, 28 with a hover, **0** naming something the glossary knows with no hover) ·
+`--smoke-boss 5 --boss inanna`.
 
 ---
 

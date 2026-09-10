@@ -24,9 +24,13 @@ public static class MoonvineTheme
     public static readonly Color Hairline = new("3b1419");      // the quiet line between two things
     public static readonly Color Blood = new("5c1219");         // a heavier divider; the ground of a filled track
 
-    // The ground a CARD is printed on — a shade under the page, so a card reads as an object lying on it
-    // rather than a hole cut in it. D1 prints the master frame over this.
-    public static readonly Color CardGround = new("0a0507");
+    // ⚠ THE GROUND A CARD IS PRINTED ON IS LIT, NOT DARK — and it is the one place the ramp runs the other
+    // way. D0 made this a shade UNDER the page so a card would read as an object lying on it. Then D1 laid
+    // the master frame over it and the frame was gone: the frame is black ornamental tracery with a few
+    // silver highlights, and black tracery on a near-black page is not a frame, it is a rumour. A card is
+    // legible because its FIELDS are lit and the frame is the dark border around them, so the card ground
+    // sits well above the page and the frame draws its own silhouette against it.
+    public static readonly Color CardGround = new("241015");
 
     // ── type ─────────────────────────────────────────────────────────────────────
     // Warm-biased neutrals. A pure grey on a red ground looks like a grey that was never chosen.

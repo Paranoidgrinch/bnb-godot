@@ -24,6 +24,12 @@ presentation manifest.
   everything you can touch, amber for everything that wants your attention) and one font hook. It is the only
   place in the frontend allowed to name a colour, and `theme/README.md` says how to swap the typeface in one
   line.
+- `scripts/CardVisuals.cs` — **the card**. One widget printed on the master frame `assets/cards/card-frame.png`,
+  whose holes ARE the fields: every one is a measured fraction of the card, so the same layout serves a hand
+  card and a thumbnail. ⚠ Nothing on a card may report a minimum size — the root is a plain `Control` and each
+  field sits in a fixed clipped window, because Godot clamps a Control's size *up* to its children's combined
+  minimum and that is what used to change a card's shape when it was clicked (`--smoke-format` measures it).
+  A card's picture is `assets/cards/art/<id>.png` and nothing else: the id IS the art code.
 - `scripts/GodotMetaStore.cs` — the cross-run profile in `user://` (permanent unlocks / discoveries).
 - `content/game.roguedeck.json` — the shipped game (refresh with `tools/sync-content.sh`).
 
@@ -40,6 +46,8 @@ godot --headless -- --smoke-timing  # per-action latency (~17 ms/action)
 godot --headless -- --smoke-statuses # carried state reads as its authored name, not its id
 godot --headless -- --smoke-marathon # play the WHOLE game (all five acts) and report rooms + latency
 godot --headless -- --smoke-tooltips # audit a combat screen: is anything NAMED but not explained?
+godot --headless -- --smoke-format   # every card in the hand is exactly the size it was handed,
+                                     # ten clicks apart (windowed: it also takes the shot)
 godot --headless -- --smoke-boss 5 --boss inanna --rounds 12   # a NAMED boss, N rounds in
 godot --headless -- --smoke-boss 5 --boss nanna_sin --rounds 6 --plays 3  # …playing 3 cards a round,
                                                               # for a fight whose state is what the player did
