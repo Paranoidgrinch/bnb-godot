@@ -48,7 +48,7 @@ public static class CardVisuals
     private static Control Framed(Control content)
     {
         var panel = new PanelContainer { CustomMinimumSize = new Vector2(CardW, CardH), ClipContents = true };
-        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(new Color("050505"), new Color(MoonvineTheme.Accent, 0.4f), 6));
+        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.CardGround, new Color(MoonvineTheme.Accent, 0.4f), 6));
         content.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         panel.AddChild(content);
         return panel;

@@ -122,8 +122,8 @@ public partial class MapView : Control
     // Edges drawn beneath the room buttons (children draw on top of _Draw).
     public override void _Draw()
     {
-        var traveled = new Color(MoonvineTheme.AccentDark, 0.9f);
-        var ahead = new Color(MoonvineTheme.TextMuted, 0.35f);
+        var traveled = new Color(MoonvineTheme.Accent, 0.75f); // the road you walked, in gold
+        var ahead = new Color(MoonvineTheme.TextMuted, 0.3f);
         foreach (var edge in _map.Edges)
         {
             if (!_positions.TryGetValue(edge.From, out var from) || !_positions.TryGetValue(edge.To, out var to))
@@ -215,17 +215,22 @@ public partial class MapView : Control
         _ => role,
     };
 
+    // THE MAP'S LEGEND IS A SENTENCE, not nine tastes. A room is coloured by what it DOES to you:
+    // the warm ramp fights you and gets hotter the harder it is, gold sells to you, violet surprises you,
+    // steel mends you, copper builds for you. The four ember shades are the only colours in the game that
+    // are not theme tokens — they exist to be told apart from ONE ANOTHER at a glance on a shrunken map,
+    // which is a job no single token can do.
     public static Color RoleColor(string role) => role switch
     {
-        MapNodeTags.Combat => new Color("d9a066"),
-        MapNodeTags.MultiCombat => new Color("d98a5c"),
-        MapNodeTags.Elite => new Color("e07070"),
-        MapNodeTags.Boss => new Color("e05050"),
-        MapNodeTags.Shop => new Color("e0c98a"),
-        MapNodeTags.Rest => new Color("8ab6e0"),
-        MapNodeTags.Treasure => new Color("e0c98a"),
-        MapNodeTags.Workbench => MoonvineTheme.Accent,
-        MapNodeTags.Event => new Color("c79ae0"),
+        MapNodeTags.Combat => new Color("b4553f"),      // rust — an ordinary fight
+        MapNodeTags.MultiCombat => new Color("c9633a"), // brighter rust — several of them
+        MapNodeTags.Elite => new Color("d8443f"),       // hotter still
+        MapNodeTags.Boss => new Color("e0313c"),        // the hottest thing on the map; it ends the act
+        MapNodeTags.Shop => MoonvineTheme.Accent,
+        MapNodeTags.Treasure => MoonvineTheme.AccentLight,
+        MapNodeTags.Rest => MoonvineTheme.Steel,
+        MapNodeTags.Workbench => MoonvineTheme.Copper,
+        MapNodeTags.Event => MoonvineTheme.Arcane,
         _ => MoonvineTheme.TextMuted,
     };
 }
