@@ -86,12 +86,20 @@ public static class MoonvineTheme
 
     // Intent-kind accents for enemy telegraphs. An ATTACK is the one intent that is aimed at the player, so
     // it — and only it — gets the signal colour.
+    //
+    // ⚠ SPECIAL IS NOT UNKNOWN, and it used to be painted as if it were. 305 of the 1046 intents this game
+    // ships are Special — nearly a third of everything an enemy ever telegraphs, and Act V's gods lean on it —
+    // so a third of all telegraphs were wearing the colour that means "no information here". They are the
+    // opposite: a Special is a declared kind whose whole content is that it is NOT one of the four, which is
+    // to say READ THE WORDS. So it gets the plain text colour — the brightest thing in the ramp that is not a
+    // shorthand — and only a genuinely undeclared intent stays muted.
     public static Color IntentColor(RogueDeck.Scenario.Authoring.IntentKind kind) => kind switch
     {
         RogueDeck.Scenario.Authoring.IntentKind.Attack => Signal,
         RogueDeck.Scenario.Authoring.IntentKind.Defend => Steel,
         RogueDeck.Scenario.Authoring.IntentKind.Buff => Accent,
         RogueDeck.Scenario.Authoring.IntentKind.Debuff => Arcane,
+        RogueDeck.Scenario.Authoring.IntentKind.Special => Text,
         _ => TextMuted,
     };
 
