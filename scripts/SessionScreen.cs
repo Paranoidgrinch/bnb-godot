@@ -3329,7 +3329,8 @@ public partial class SessionScreen : Control
             GetTree().Quit();
             return;
         }
-        panel.Fill("The enemy's intent said 9 damage and it hit me for 14.");
+        panel.Fill("--smoke-bug-run probe: not a real report. (Sent from inside a fight to prove that "
+            + "Esc captures the fight and that the diagnostics know the room.)");
         for (var i = 0; i < 3; i++)
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         GetViewport().GetTexture().GetImage().SavePng("user://smoke-bug-run.png");

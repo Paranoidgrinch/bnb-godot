@@ -229,6 +229,12 @@ public static class BugReport
         var fromEnv = OS.GetEnvironment(WebhookEnv);
         if (Usable(fromEnv))
             return fromEnv.Trim();
+        // ⚠ A PROBE DOES NOT POST INTO THE LIVE CHANNEL. Once bugreport.cfg sits in a dev checkout, every
+        // `--smoke-bug` run would file a report against the real channel, and a probe that spams the place
+        // where real reports arrive is a probe somebody switches off. Under a smoke run the environment
+        // variable is therefore the ONLY way to reach a webhook: deliberate, per command, never by accident.
+        if (OS.GetCmdlineUserArgs().Any(a => a.StartsWith("--smoke", StringComparison.Ordinal)))
+            return null;
         foreach (var path in new[]
                  {
                      $"user://{WebhookFile}",

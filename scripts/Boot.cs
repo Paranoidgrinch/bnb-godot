@@ -148,7 +148,8 @@ public partial class Boot : Control
             GetTree().Quit();
             return;
         }
-        panel.Fill("The deck pile showed the same card twice after I discarded a Permit A38.");
+        panel.Fill("--smoke-bug probe: not a real report. (Sent to prove the window, the four "
+            + "attachments and the upload; a real one says what actually went wrong.)");
         for (var i = 0; i < 3; i++)
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         GetViewport().GetTexture().GetImage().SavePng("user://smoke-bug.png");
