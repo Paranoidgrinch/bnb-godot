@@ -123,6 +123,36 @@ godot -- --smoke-elite    # an elite
 godot -- --smoke-crowd    # the widest fight it can reach: does the enemy row still fit on the screen?
 godot -- --smoke-boss 2   # walk to that act's BOSS and capture it (the phase banner, the dial, the chips)
 godot -- --smoke-reward   # the card reward
+godot -- --smoke-bug      # the bug-report window on the title screen: fills it in, SENDS it, and says what
+                          # landed in the folder — four files or it is not a report
+godot -- --smoke-bug-run  # the same as a player makes one: mid-fight, Esc, the button in the menu
+```
+
+## Bug reports
+The one diagnostic the player writes. Everything else in this frontend is a measurement; none of it can notice
+that an intent read as nonsense or that a card did the opposite of its words. `scripts/BugReport.cs` +
+`scripts/BugReportPanel.cs`: a button on the title screen and in the Esc menu, one text box, and with the
+message go **the save** (so the bug can be resumed rather than guessed at), **a screenshot**, **the diagnostics**
+(seed, room, version, content document) and **the tail of `user://logs/godot.log`**.
+
+Two rules it is built around:
+- **The picture is taken before the window opens.** A player presses Esc *because* something on screen is
+  wrong; one step later that something is behind a dimmed sheet. `BugReport.Remember` is called one line before
+  any overlay exists, and the dialog shows the thumbnail so the player can see which moment they caught.
+- **The local copy is written before the network is touched.** A report that fails to upload is still a report:
+  it lands in `user://bug-reports/<timestamp>/` (the last ten are kept) and the window says where.
+
+**The webhook is never committed.** It is a write credential for a channel and this repository is public, so
+`bugreport.cfg` is gitignored and looked for in four places, in this order: the `BNB_BUGREPORT_WEBHOOK`
+environment variable · `user://bugreport.cfg` · `res://bugreport.cfg` (a dev checkout) · beside the executable
+(where `tools/export.sh` copies it, so changing the channel does not mean exporting the game again). With no
+file anywhere the feature still works and stops at the local copy.
+
+To take reports, put a Discord webhook URL (Channel → Edit → Integrations → Webhooks → New Webhook → Copy
+Webhook URL) on one line in `bugreport.cfg` at the project root. To prove the upload without a channel:
+```
+tools/bug-sink.py 8787 &                                    # takes the multipart body apart BY HAND
+BNB_BUGREPORT_WEBHOOK=http://127.0.0.1:8787/hook godot -- --smoke-bug
 ```
 
 ## Simulating runs (bug hunting)

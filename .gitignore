@@ -4,3 +4,7 @@
 
 build/
 __pycache__/
+
+# The bug-report webhook is a write credential for a channel and this repository is public.
+# It lives here only on a machine that sends reports; tools/export.sh copies it beside the binary.
+bugreport.cfg
