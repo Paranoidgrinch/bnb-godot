@@ -141,6 +141,8 @@ public partial class SessionScreen : Control
             _ = SmokeTooltips();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-format"))
             _ = SmokeFormat();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-bug-run"))
+            _ = SmokeBugInRun();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-shelf"))
             _ = SmokeShelf();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-deck"))
@@ -528,7 +530,7 @@ public partial class SessionScreen : Control
     }
 
     // Where the run stands, in the two names that identify a room: its map id and what is being fought there.
-    private static string Where(InteractiveRunSession session)
+    internal static string Where(InteractiveRunSession session)
     {
         var here = session.Run.CurrentNodeId?.Value ?? "nowhere";
         var node = session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == here);
@@ -1554,17 +1556,37 @@ public partial class SessionScreen : Control
     {
         if (@event is null || !@event.IsActionPressed("ui_cancel"))
             return;
-        if (GetNodeOrNull("SettingsOverlay") is { } open)
+        // Esc closes the topmost thing first. The report window is opened FROM the settings window, so it is
+        // the one on top; without this, Esc out of a half-typed report would reopen the settings behind it.
+        if (GetNodeOrNull(BugReportPanel.OverlayName) is { } reporting)
+        {
+            reporting.QueueFree();
+        }
+        else if (GetNodeOrNull("SettingsOverlay") is { } open)
         {
             open.QueueFree();
         }
         else
         {
-            var overlay = SettingsPanel.Overlay(() => GetNodeOrNull("SettingsOverlay")?.QueueFree());
+            // ⚠ THE SCREEN IS CAPTURED HERE, one line before the veil exists. A player presses Esc because
+            // something on screen is wrong; one step later that something is behind a dimmed sheet and a
+            // dialog, and a screenshot taken then is a picture of the menu. See BugReport.Remember.
+            BugReport.Remember(GetViewport());
+            var overlay = SettingsPanel.Overlay(
+                () => GetNodeOrNull("SettingsOverlay")?.QueueFree(),
+                OpenBugReport);
             overlay.Name = "SettingsOverlay";
             AddChild(overlay);
         }
         GetViewport().SetInputAsHandled();
+    }
+
+    // The settings window steps aside for the report window — two stacked dialogs over a fight is one too many,
+    // and Esc is ambiguous with both open.
+    private void OpenBugReport()
+    {
+        GetNodeOrNull("SettingsOverlay")?.QueueFree();
+        BugReportPanel.Open(this);
     }
 
     private void Rebuild()
@@ -3253,6 +3275,81 @@ public partial class SessionScreen : Control
     // It asks three things a screenshot cannot: does every tile sit inside the panel, does the shelf wrap
     // into rows instead of one column, and does the sidebar carry the overflow by scrolling rather than by
     // pushing the log off the screen.
+    // THE REPORT AS A PLAYER ACTUALLY MAKES ONE: mid-fight, Esc, the button in the menu. The title-screen probe
+    // (--smoke-bug) covers the window; this covers the two things only a run can prove — that Esc captures the
+    // fight BEFORE the menu covers it, and that the diagnostics block knows which room, seed and fight this was.
+    // Those act/seed/health lines are never executed by the title-screen path.
+    private async System.Threading.Tasks.Task SmokeBugInRun()
+    {
+        var session = Session;
+        var play = Play;
+        for (var step = 0; step < 300 && session is not null && play is not null; step++)
+        {
+            if (play.CombatDriver?.Current is { IsHeroTurn: true })
+                break;
+            if (session.IsAwaitingNodeChoice)
+                session.PickNode((session.PendingNodeChoices.FirstOrDefault(n => n.HasTag(MapNodeTags.Combat))
+                    ?? session.PendingNodeChoices[0]).Id.Value);
+            else if (session.IsAwaitingInterlude)
+                session.Continue();
+            else if (session.IsAwaitingEntities)
+                session.PickEntities([0]);
+            else if (session.IsAwaitingChoice)
+                session.Pick(session.PendingChoices[^1].Id);
+            else if (play.CombatDriver?.Current is { } combat)
+                play.CombatDriver.EndTurn();
+            else
+                break;
+        }
+        for (var i = 0; i < 4; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        // Esc through the REAL handler, so the capture happens where a player's keystroke makes it happen.
+        var escape = new InputEventAction { Action = "ui_cancel", Pressed = true };
+        _UnhandledInput(escape);
+        for (var i = 0; i < 3; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        GD.Print($"smoke-bug-run: menu open={GetNodeOrNull("SettingsOverlay") is not null}"
+            + $" · screen remembered={BugReport.LastScreen is not null}");
+
+        if (FindButton(GetNodeOrNull("SettingsOverlay"), "Report a bug") is not { } button)
+        {
+            GD.Print("smoke-bug-run: THE MENU HAS NO REPORT BUTTON");
+            GetTree().Quit();
+            return;
+        }
+        button.EmitSignal(BaseButton.SignalName.Pressed);
+        for (var i = 0; i < 3; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        if (GetNodeOrNull(BugReportPanel.OverlayName)
+                ?.FindChild(nameof(BugReportPanel), recursive: true, owned: false) is not BugReportPanel panel)
+        {
+            GD.Print("smoke-bug-run: the window did not open");
+            GetTree().Quit();
+            return;
+        }
+        panel.Fill("The enemy's intent said 9 damage and it hit me for 14.");
+        for (var i = 0; i < 3; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        GetViewport().GetTexture().GetImage().SavePng("user://smoke-bug-run.png");
+        await panel.Submit();
+        GD.Print("smoke: screenshot user://smoke-bug-run.png");
+        GetTree().Quit();
+    }
+
+    private static Button? FindButton(Godot.Node? root, string text)
+    {
+        if (root is null)
+            return null;
+        if (root is Button button && button.Text.Contains(text, StringComparison.Ordinal))
+            return button;
+        foreach (var child in root.GetChildren())
+            if (FindButton(child, text) is { } found)
+                return found;
+        return null;
+    }
+
     private async System.Threading.Tasks.Task SmokeShelf()
     {
         var wanted = SimArg("--shelf", 69);

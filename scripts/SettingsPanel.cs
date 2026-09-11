@@ -12,12 +12,17 @@ namespace BnbGodot;
 public partial class SettingsPanel : PanelContainer
 {
     private readonly Action? _onClose;
+    private readonly Action? _onReportBug;
     private OptionButton _mode = null!;
     private OptionButton _size = null!;
     private OptionButton _scale = null!;
     private CheckBox _vsync = null!;
 
-    public SettingsPanel(Action? onClose = null) => _onClose = onClose;
+    public SettingsPanel(Action? onClose = null, Action? onReportBug = null)
+    {
+        _onClose = onClose;
+        _onReportBug = onReportBug;
+    }
 
     public override void _Ready()
     {
@@ -86,6 +91,23 @@ public partial class SettingsPanel : PanelContainer
         _vsync.Toggled += _ => Commit();
         column.AddChild(Row("Frames", _vsync));
 
+        // THE BUG BUTTON LIVES WHERE THE PLAYER ALREADY IS. This panel *is* the Esc menu, and Esc is what
+        // somebody presses the moment the game does something wrong — so the report is one keystroke and one
+        // click away from the wrongness, with the screen already captured (BugReport.Remember) from before this
+        // window covered it.
+        if (_onReportBug is { } report)
+        {
+            var bug = new Button
+            {
+                Text = "🐞  Report a bug",
+                CustomMinimumSize = new Vector2(0, 40),
+                TooltipText = "Send what went wrong, with your save and a picture of the screen.",
+            };
+            bug.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
+            bug.Pressed += () => report();
+            column.AddChild(bug);
+        }
+
         var close = new Button { Text = "Close", CustomMinimumSize = new Vector2(0, 40) };
         close.Pressed += () => _onClose?.Invoke();
         column.AddChild(close);
@@ -126,7 +148,7 @@ public partial class SettingsPanel : PanelContainer
         _size.Disabled = (DisplaySettings.WindowKind)_mode.GetSelectedId() != DisplaySettings.WindowKind.Windowed;
 
     // The dialog as a full-screen overlay: a dimmed sheet with the panel centred on it. `onClose` frees it.
-    public static Control Overlay(Action onClose)
+    public static Control Overlay(Action onClose, Action? onReportBug = null)
     {
         var veil = new Control { MouseFilter = MouseFilterEnum.Stop };
         veil.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -136,7 +158,7 @@ public partial class SettingsPanel : PanelContainer
 
         var center = new CenterContainer();
         center.SetAnchorsPreset(LayoutPreset.FullRect);
-        center.AddChild(new SettingsPanel(onClose));
+        center.AddChild(new SettingsPanel(onClose, onReportBug));
         veil.AddChild(center);
         return veil;
     }
