@@ -7,6 +7,9 @@ config_version=5
 [application]
 
 config/name="Bureaucrats & Broomsticks"
+; THE NUMBER A BUG REPORT NAMES. It travels in every report (scripts/BugReport.cs) and is the only thing that
+; says which build a player was holding — raise it when a build goes to anyone who is not sitting here.
+config/version="0.1.0"
 run/main_scene="res://scenes/Boot.tscn"
 config/features=PackedStringArray("4.7", "C#")
 

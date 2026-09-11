@@ -60,7 +60,7 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run"))
         {
             host.StartNewRun(seed: 7,
                 health: userArgs.Any(a => a is "--smoke-marathon" or "--smoke-crowd" or "--smoke-boss") ? 9999 : null);
@@ -78,6 +78,12 @@ public partial class Boot : Control
             OpenSettings();
             _ = CaptureThenQuit("user://smoke-settings.png");
         }
+        // THE REPORT, SENT. The one screen whose whole job is to leave the machine, so the probe does not stop
+        // at a picture of the form: it fills the box in, presses Send, and then says what actually landed in the
+        // folder — four files or it is not a report. Point BNB_BUGREPORT_WEBHOOK at a listener and the same run
+        // exercises the upload for real.
+        if (userArgs.Contains("--smoke-bug") && !DisplayServer.GetName().Contains("headless"))
+            _ = SmokeBugReport();
     }
 
     // An unfilled slot is NORMAL, so this probe cannot fail on a count — it reports one. What it does assert
@@ -126,6 +132,60 @@ public partial class Boot : Control
         GetViewport().GetTexture().GetImage().SavePng(file);
         GD.Print($"smoke: screenshot {file}");
         GetTree().Quit();
+    }
+
+    private async System.Threading.Tasks.Task SmokeBugReport()
+    {
+        for (var i = 0; i < 4; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        OpenBugReport();
+        var panel = GetNodeOrNull(BugReportPanel.OverlayName)
+            ?.FindChild(nameof(BugReportPanel), recursive: true, owned: false) as BugReportPanel;
+        if (panel is null)
+        {
+            GD.Print("smoke-bug: the window did not open");
+            GetTree().Quit();
+            return;
+        }
+        panel.Fill("The deck pile showed the same card twice after I discarded a Permit A38.");
+        for (var i = 0; i < 3; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        GetViewport().GetTexture().GetImage().SavePng("user://smoke-bug.png");
+
+        GD.Print($"smoke-bug: webhook={(BugReport.Webhook() is null ? "none (local only)" : "configured")}");
+        await panel.Submit();
+        for (var i = 0; i < 3; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        GetViewport().GetTexture().GetImage().SavePng("user://smoke-bug-sent.png");
+
+        ReportFolders();
+        GD.Print("smoke: screenshot user://smoke-bug.png + user://smoke-bug-sent.png");
+        GetTree().Quit();
+    }
+
+    // What a report is made of, on disk: the probe's real assertion. A window that looks right and writes an
+    // empty folder has reported nothing.
+    private static void ReportFolders()
+    {
+        if (DirAccess.Open(BugReport.Folder) is not { } dir)
+        {
+            GD.Print($"smoke-bug: NO FOLDER at {BugReport.Folder}");
+            return;
+        }
+        var folders = dir.GetDirectories();
+        GD.Print($"smoke-bug: {folders.Length} report(s) kept (at most {BugReport.KeepFolders})");
+        foreach (var folder in folders[^System.Math.Min(1, folders.Length)..])
+        {
+            var path = $"{BugReport.Folder}/{folder}";
+            var files = DirAccess.Open(path)?.GetFiles() ?? [];
+            var sizes = files.Select(f =>
+            {
+                using var file = Godot.FileAccess.Open($"{path}/{f}", Godot.FileAccess.ModeFlags.Read);
+                return $"{f} {file?.GetLength() ?? 0}B";
+            });
+            GD.Print($"  {folder}: {files.Length} files — {string.Join(" · ", sizes)}");
+        }
     }
 
     private async System.Threading.Tasks.Task CaptureTitleThenQuit()
@@ -193,6 +253,22 @@ public partial class Boot : Control
         quit.Pressed += () => GetTree().Quit();
         actions.AddChild(quit);
         root.AddChild(actions);
+
+        // A QUIETER SECOND ROW, on purpose. Reporting a bug is not one of the four things anybody came to this
+        // screen to do, so it does not get a button the size of "New run" — but it has to be reachable with no
+        // run at all, because the bug that stops somebody from starting one can only be reported from here.
+        var aside = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        var bug = new Button
+        {
+            Text = "🐞  Report a bug",
+            Flat = true,
+            CustomMinimumSize = new Vector2(0, 32),
+            TooltipText = "Send what went wrong, with your save and a picture of the screen.",
+        };
+        bug.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+        bug.Pressed += OpenBugReport;
+        aside.AddChild(bug);
+        root.AddChild(aside);
     }
 
     private Control CharacterCard(GameHost host, RunCharacter character, bool unlocked)
@@ -275,9 +351,23 @@ public partial class Boot : Control
     {
         if (GetNodeOrNull("SettingsOverlay") is not null)
             return;
-        var overlay = SettingsPanel.Overlay(() => GetNodeOrNull("SettingsOverlay")?.QueueFree());
+        BugReport.Remember(GetViewport());   // before the veil — see BugReport.Remember
+        var overlay = SettingsPanel.Overlay(
+            () => GetNodeOrNull("SettingsOverlay")?.QueueFree(),
+            OpenBugReport);
         overlay.Name = "SettingsOverlay";
         AddChild(overlay);
+    }
+
+    // Either the button on the title screen (nothing covers the game, so capture now) or the one inside the
+    // settings window (which captured the screen when IT opened, so do not capture this window).
+    private void OpenBugReport()
+    {
+        if (GetNodeOrNull("SettingsOverlay") is { } settings)
+            settings.QueueFree();
+        else
+            BugReport.Remember(GetViewport());
+        BugReportPanel.Open(this);
     }
 
     private void GoToSession() => GetTree().ChangeSceneToFile("res://scenes/Session.tscn");
