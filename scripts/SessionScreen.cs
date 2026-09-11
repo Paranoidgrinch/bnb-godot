@@ -17,6 +17,7 @@ public partial class SessionScreen : Control
     private ScrollContainer _mainScroll = null!;
     private Control _combatRoot = null!;
     private VBoxContainer _sidebar = null!;
+    private const int SidebarWidth = 320;
     private RichTextLabel _log = null!;
 
     // Transient pick state owned by the view (mirrors RunSessionView's _selected/_cardPicks/_combatTarget).
@@ -77,7 +78,7 @@ public partial class SessionScreen : Control
         mainPanel.AddChild(mainHolder);
         split.AddChild(mainPanel);
 
-        var side = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
+        var side = new VBoxContainer { CustomMinimumSize = new Vector2(SidebarWidth, 0) };
         side.AddThemeConstantOverride("separation", 10);
         var sidePanel = new PanelContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         // ⚠ NO SIDEWAYS SCROLL IN THE SIDEBAR. A ScrollContainer that may scroll horizontally gives its child
@@ -88,7 +89,7 @@ public partial class SessionScreen : Control
         sideScroll.AddChild(_sidebar);
         sidePanel.AddChild(sideScroll);
         side.AddChild(sidePanel);
-        var logPanel = new PanelContainer { CustomMinimumSize = new Vector2(320, 200) };
+        var logPanel = new PanelContainer { CustomMinimumSize = new Vector2(SidebarWidth, 200) };
         _log = new RichTextLabel { FitContent = false, ScrollFollowing = true, BbcodeEnabled = false };
         logPanel.AddChild(_log);
         side.AddChild(logPanel);
@@ -239,6 +240,22 @@ public partial class SessionScreen : Control
         return (add ? " + " : "")
             + $"{slots["cards"]} card · {slots["relics"]} relic · {slots["enemies"]} body · "
             + $"{slots["characters"]} hero · {furniture} frame";
+    }
+
+    // HOW MUCH OF A COLUMN THE ARENA ACTUALLY SHOWS. D4a chose to let the arena SCROLL rather than push the
+    // hand off the bottom, and "what does not fit is reachable rather than gone" has been the answer ever
+    // since — but nobody had ever put a number on how much does not fit. At an Act V boss the answer turned
+    // out to be "the telegraph", which is not a thing a player can be asked to go looking for. This is the
+    // number to watch whenever anything in a column grows.
+    private void ReportArena()
+    {
+        if (_regionArena is not { } band || !IsInstanceValid(band)
+            || _enemyRow is not { } row || !IsInstanceValid(row))
+            return;
+        var tallest = row.GetChildren().OfType<Control>().Select(c => c.Size.Y).DefaultIfEmpty(0).Max();
+        var shown = band.Size.Y;
+        GD.Print($"  arena: viewport {shown:0} tall, tallest column {tallest:0}"
+            + (tallest > shown + 1 ? $" — {tallest - shown:0} BELOW THE FOLD (scroll)" : " — all of it visible"));
     }
 
     // What on this screen is explained, and what names something without offering a hover.
@@ -571,6 +588,9 @@ public partial class SessionScreen : Control
             + $"right={rowRight:0}/{screen:0} offscreen={(rowRight > screen + 1 ? "YES" : "no")} "
             + $"error={Session?.Error ?? Play?.Error ?? "none"}");
         GD.Print($"  facing: {Facing()}");
+
+        ReportArena();
+
         if (bodies < Wanted)
             GD.Print($"  NOTE no fight of {Wanted}+ bodies was reached inside the budget");
 
@@ -675,6 +695,7 @@ public partial class SessionScreen : Control
         GD.Print($"smoke-boss {act}: act={Session?.Run.ActNumber} boss={(AtABoss() ? "yes" : "NO")} "
             + $"round={combat?.Round} ended={_walkEnded} error={Session?.Error ?? Play?.Error ?? "none"}");
         GD.Print($"  facing: {Facing()}");
+        ReportArena();   // an Act V arena is the shortest in the game — its rule band costs it 104 points
         // The Divine Rule Area, read back out of the tree it was built into: a headless probe cannot take a
         // screenshot, so this is the only way to say that the one UI surface Act V's design REQUIRES is
         // actually on the screen and not merely a method that returned without throwing.
@@ -1645,33 +1666,59 @@ public partial class SessionScreen : Control
         // A GAUNTLET SAYS WHO IS COMING, and the title card is where "from the beginning of the act" actually
         // is: Act V draws three gods of six, and the design requires the three and their order to be visible
         // before the first of them is fought, not after.
-        if (RollCall(session.Run) is { Count: > 1 } gods)
-            name += $"\n\n{string.Join("  ▸  ", gods)}";
-        Banner(name);
+        Banner(name, RollCall(session.Run) is { Count: > 1 } gods ? string.Join("  ▸  ", gods) : null);
     }
 
-    // A title card that fades away by itself: the whole screen dimmed, the act's name across it.
-    private void Banner(string text)
+    // A title card that fades away by itself: the whole screen dimmed, the act's name across it, and under it
+    // — QUIETER — whoever the act is bringing. They used to be one label at one size, so the roll call shouted
+    // as loudly as the act's own name and the card had no first thing to read. A subtitle is a subtitle.
+    private void Banner(string text, string? under = null)
     {
         if (!IsInsideTree())
             return; // a headless probe can redraw on its way out of the tree; there is nobody to show it to
 
+        // ⚠ NOT OVER A PROBE. Every boss screenshot in the battery is taken in the first seconds of an act, so
+        // the card was standing over the one screen the shot was for — six reviews of a dimmed veil. A title
+        // card is for a human watching the game start; a probe is not watching.
+        if (_fastForward)
+            return;
+
         var veil = new ColorRect { Color = new Color(MoonvineTheme.Bg, 0.82f), MouseFilter = MouseFilterEnum.Ignore };
         veil.SetAnchorsPreset(LayoutPreset.FullRect);
-        var label = new Label
+
+        var column = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
+        column.AddThemeConstantOverride("separation", 14);
+        column.SetAnchorsPreset(LayoutPreset.FullRect);
+        column.Alignment = BoxContainer.AlignmentMode.Center;
+
+        var title = new Label
         {
             Text = text,
-            // A title card can name a rule — Act V's roll call is three gods called after the things they
-            // do — and the seconds it is up are seconds a player may reach for one of those names.
-            TooltipText = Glossary.Explain(null, text),
             HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
-        label.SetAnchorsPreset(LayoutPreset.FullRect);
-        label.AddThemeFontSizeOverride("font_size", 34);
-        label.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
-        veil.AddChild(label);
+        title.AddThemeFontSizeOverride("font_size", 34);
+        title.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
+        column.AddChild(title);
+
+        if (under is not null)
+        {
+            var roll = new Label
+            {
+                Text = under,
+                // A title card can name a rule — Act V's gods are called after the things they do — and the
+                // seconds it is up are seconds a player may reach for one of those names.
+                TooltipText = Glossary.Explain(null, under),
+                MouseFilter = MouseFilterEnum.Stop,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            };
+            roll.AddThemeFontSizeOverride("font_size", 20);
+            roll.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
+            column.AddChild(roll);
+        }
+
+        veil.AddChild(column);
         AddChild(veil);
 
         var fade = CreateTween();
@@ -2300,7 +2347,14 @@ public partial class SessionScreen : Control
     // coordinates in the file that need to be true, and they are true at every resolution.
     private const int PaneInset = 20;
     private const int HeadlineBand = 30;   // "Round N"
-    private const int DivineBand = 104;    // Act V's rule area — the same spot in every one of its fights
+    // Act V's rule area — the same spot in every one of its fights.
+    //
+    // ⚠ IT WAS 104 AND THAT PUT THE PRIORITY BACKWARDS. A god's decree is read ONCE, on entering the room; the
+    // telegraph under it is read every single turn — and at 104 the band left the arena 222 points, which is
+    // not enough for a column to show what the god is about to do. The design requires the rule to sit in the
+    // same PLACE in every Act V fight, which it still does; it never required it to be tall enough for its
+    // longest decree, and it has had a scroll of its own and a hover since the day it was built.
+    private const int DivineBand = 80;
     private const int HintBand = 22;       // "click an enemy to play it"
     private const int HandBand = 214;      // a card plus the fan's lean
     private const int ControlBand = 44;    // End turn, consumables
@@ -2367,8 +2421,18 @@ public partial class SessionScreen : Control
 
         // Arena: hero far left, enemies far right, a stretchy gap between.
         var arena = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
-        var heroBox = CombatantBox(combat, hero, isHero: true, HeroColumn);
-        heroBox.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        var column = EnemyColumn(enemies.Count);
+        var nameBand = NameBandFor(
+            enemies.Select(e => (Name(e, combat), column)).Append((Name(hero, combat), HeroColumn)));
+        // The arena is what is left of the canvas between the bands above it and the hand below.
+        var arenaHeight = GetViewportRect().Size.Y - arenaTop - BottomBand;
+        var bodyHeight = BodyHeightFor(arenaHeight, nameBand);
+
+        var heroBox = CombatantBox(combat, hero, isHero: true, HeroColumn, nameBand, bodyHeight, arenaHeight);
+        // ⚠ THE COLUMNS HANG FROM A COMMON TOP, they are not each centred in the row. Centred, a body carrying
+        // three status chips sits higher than one carrying none, and what the arena runs out of room for is a
+        // different part of every column. Hung, the row reads as a row and the overflow is in one place.
+        heroBox.SizeFlagsVertical = SizeFlags.ShrinkBegin;
         arena.AddChild(heroBox);
         // The enemies take the rest of the room and stand at the far end of it. A FLOW row, not a fixed one:
         // the widest fight in the game is four bodies beside the hero, and five 200-wide columns with their
@@ -2379,13 +2443,12 @@ public partial class SessionScreen : Control
         {
             Alignment = FlowContainer.AlignmentMode.End,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            SizeFlagsVertical = SizeFlags.ShrinkCenter,
+            SizeFlagsVertical = SizeFlags.ShrinkBegin,
         };
         enemyRow.AddThemeConstantOverride("h_separation", enemies.Count <= 2 ? ColumnGap : CrowdGap);
         enemyRow.AddThemeConstantOverride("v_separation", CrowdGap);
-        var column = EnemyColumn(enemies.Count);
         foreach (var enemy in enemies)
-            enemyRow.AddChild(CombatantBox(combat, enemy, isHero: false, column));
+            enemyRow.AddChild(CombatantBox(combat, enemy, isHero: false, column, nameBand, bodyHeight, arenaHeight));
         arena.AddChild(enemyRow);
         _enemyRow = enemyRow;
 
@@ -2745,7 +2808,18 @@ public partial class SessionScreen : Control
     private const int NarrowestColumn = 110;
     private const int ColumnGap = 24;
     private const int CrowdGap = 12;   // a crowd spends its room on the columns, not on the air between them
-    private const int BodyHeight = 150; // the room a body stands in, whatever it is a picture of
+    private const int BodyHeight = 150; // the most room a body may stand in, whatever it is a picture of
+    private const int ShortBody = 90;   // …and the least, when the arena has to buy back room — see BodyHeightFor
+
+    // What the fixed parts of a column cost, so the chips at its foot can be told what is left. Estimates, and
+    // named as such: a Label's height is not knowable before it is laid out. They are checked by measurement
+    // rather than by arithmetic — `--smoke-crowd` and `--smoke-boss` print the arena's viewport against the
+    // tallest column, and that number is what says whether these are still true.
+    private const int HealthBarHeight = 22;
+    private const int PhaseLine = 22;      // one phase, at 15 pt
+    private const int PromisePlate = 74;   // the first telegraph: a head line, two wrapped lines, its margins
+    private const int ForecastPlate = 50;  // a later day, quieter and usually one line
+    private const int NameSize = 16;    // the name over a body
 
     // How wide ONE enemy column may be, given how many of them there are.
     //
@@ -2768,10 +2842,59 @@ public partial class SessionScreen : Control
 
     // A combatant's column: name, a stick-figure placeholder, an HP bar, energy (hero) or intent (enemy),
     // and its status chips. When a card is armed, an enemy box becomes a clickable target.
-    private Control CombatantBox(InteractiveCombat combat, CombatantState combatant, bool isHero, int width)
+    // HOW TALL A BODY MAY STAND. It was a constant, and at an Act V boss the constant was wrong: the divine
+    // rule takes a fixed 104-point band out of the arena, and name + figure + health bar alone then fill
+    // everything that is left — so NISABA'S TELEGRAPH WAS BELOW THE FOLD AT ROUND ONE. A player who cannot see
+    // what a god is about to do is not playing the fight, and no amount of scrolling is a substitute for a
+    // telegraph being where the eye already is.
+    //
+    // So the figure yields. It is the least informative part of the column — a picture of the thing, next to
+    // the three facts that decide the turn — and it is the only part with any give in it. What must be legible
+    // without scrolling is reserved first; the body takes what is left, down to a floor of 90 points, and an
+    // ordinary fight with room to spare is untouched at the full 150.
+    private static int BodyHeightFor(float arenaHeight, int nameBand)
+    {
+        // The health bar, one telegraph plate, one row of chips, and the separations between all of them.
+        const int MustBeLegible = 22 + 74 + 26 + 24;
+        return Mathf.Clamp(
+            Mathf.FloorToInt(arenaHeight - nameBand - MustBeLegible), ShortBody, BodyHeight);
+    }
+
+    // ONE BAND FOR THE WHOLE ARENA, as tall as the longest name in THIS fight. A name that wraps used to make
+    // its own column taller and push its health bar a line below its neighbours' — three bars at three heights
+    // in the one row whose entire job is to be compared across. A fixed two-line band fixed that and charged
+    // 25 points to every fight whose names all fit on one line, which the arena (already 44 short of its
+    // tallest column) cannot afford. So it is measured: the tallest name decides, and a fight of short names
+    // pays nothing.
+    //
+    // ⚠ MEASURED WITH THE LINE SPACING THE LABEL WILL DRAW WITH. GetMultilineStringSize asks the FONT how tall
+    // the block is; a Label then adds the theme's line_spacing between every line. The same trap the card's
+    // plaque documents — a band measured to fit exactly loses its last line to the clip.
+    private static int NameBandFor(IEnumerable<(string Name, int Width)> columns)
+    {
+        var face = MoonvineTheme.Font ?? ThemeDB.Singleton.FallbackFont;
+        var one = face.GetHeight(NameSize);
+        var tallest = 0f;
+        foreach (var (name, width) in columns)
+        {
+            var block = face.GetMultilineStringSize(name, HorizontalAlignment.Center, width, NameSize).Y;
+            var lines = Mathf.Max(1, Mathf.RoundToInt(block / one));
+            tallest = Mathf.Max(tallest, lines * one + (lines - 1) * 3);
+        }
+        return Mathf.CeilToInt(tallest) + 2;
+    }
+
+    private Control CombatantBox(
+        InteractiveCombat combat, CombatantState combatant, bool isHero, int width, int nameBand,
+        int bodyHeight, float arenaHeight)
     {
         var box = new VBoxContainer { CustomMinimumSize = new Vector2(width, 0) };
         box.AddThemeConstantOverride("separation", 4);
+        // WHAT THIS COLUMN HAS SPENT SO FAR, so the chips at the foot of it can be told what is left. Every
+        // other part of a column is a fixed size and MUST be legible without scrolling — a telegraph the
+        // player has to go looking for is not a telegraph — and the chips are the one part that grows without
+        // limit. So the chips are the part that is bounded, and they are bounded by the room, not by a count.
+        var spent = 4;
 
         // The name WRAPS. Without that it is the widest thing in the column and its full length becomes the
         // column's floor, which quietly defeats every attempt to make a crowd fit: "Lower Appellate Step" is
@@ -2785,11 +2908,16 @@ public partial class SessionScreen : Control
             Text = named,
             TooltipText = Glossary.Explain(null, named),
             HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(width, 0),
+            // ⚠ EVERY NAME IN THE ARENA GETS THE SAME BAND — see NameBandFor. Free to be its own height, a
+            // name that wraps drops its own health bar a line below its neighbours'.
+            CustomMinimumSize = new Vector2(width, nameBand),
+            ClipText = true,
         };
-        name.AddThemeFontSizeOverride("font_size", 16);
+        name.AddThemeFontSizeOverride("font_size", NameSize);
         box.AddChild(name);
+        spent += nameBand + 4;
 
         // The body: its picture if the file is there, the stick figure until it is. A hero has a character
         // slot rather than an enemy one, so it keeps the figure for now.
@@ -2799,14 +2927,19 @@ public partial class SessionScreen : Control
             facing: isHero ? 1 : -1,
             dead: !combatant.IsAlive,
             width: width - 20,
-            height: BodyHeight);
+            height: bodyHeight);
         box.AddChild(figure);
+        spent += bodyHeight + 4;
 
         box.AddChild(HealthBar(combatant, width - 30));
+        spent += HealthBarHeight + 4;
 
         // The phase goes directly above what the body is about to do, because that is the line it corrects.
         if (PhaseBanner(combat, combatant) is { } phase)
+        {
             box.AddChild(phase);
+            spent += PhaseLine * PhaseCount(combatant) + 4;
+        }
 
         if (isHero)
         {
@@ -2817,6 +2950,7 @@ public partial class SessionScreen : Control
             };
             energy.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
             box.AddChild(energy);
+            spent += 24 + 4;
         }
         else if (combatant.IsAlive)
         {
@@ -2829,29 +2963,13 @@ public partial class SessionScreen : Control
             var days = combat.UpcomingIntentsFor(combatant.Id);
             for (var ahead = 0; ahead < days.Count; ahead++)
             {
-                var intent = days[ahead];
-                var head = ahead == 0
-                    ? $"{RogueDeck.Scenario.Authoring.IntentDisplay.Glyph(intent.Kind)} "
-                        + RogueDeck.Scenario.Authoring.IntentDisplay.KindWord(intent.Kind)
-                    : $"then {new string('I', ahead + 1)}";
-                var intentLabel = new Label
-                {
-                    Text = $"{head}\n{intent.Label}",
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                    // What it is about to do names things; hovering says what they are.
-                    MouseFilter = MouseFilterEnum.Stop,
-                    TooltipText = Glossary.Explain(null, intent.Label),
-                };
-                intentLabel.AddThemeColorOverride(
-                    "font_color",
-                    ahead == 0 ? MoonvineTheme.IntentColor(intent.Kind) : MoonvineTheme.TextMuted);
-                box.AddChild(intentLabel);
+                box.AddChild(IntentPlate(days[ahead], ahead, width));
+                spent += (ahead == 0 ? PromisePlate : ForecastPlate) + 4;
             }
         }
 
         if (StatusChips(combat, combatant) is { } chips)
-            box.AddChild(Bounded(chips, combatant, width));
+            box.AddChild(Bounded(chips, combatant, width, Mathf.FloorToInt(arenaHeight) - spent));
 
         // A framed panel around the column; enemies highlight + become clickable when a card is armed.
         var panel = new PanelContainer();
@@ -2872,7 +2990,17 @@ public partial class SessionScreen : Control
         return panel;
     }
 
-    private static Control HealthBar(CombatantState combatant, int width)
+    // The run's health, on the SAME bar a fight draws. It was a line of text out here and a filled track in
+    // there, for one number — and this is the one the player reads between rooms, deciding whether to take
+    // the elite. A magnitude drawn as a magnitude in one place and spelled out in the other is two facts as
+    // far as the eye is concerned.
+    private static Control RunHealthBar(RunState run, int width) =>
+        Track(run.Health.Current, run.Health.Max, block: 0, width);
+
+    private static Control HealthBar(CombatantState combatant, int width) =>
+        Track(combatant.Health.Current, combatant.Health.Max, Block(combatant), width);
+
+    private static Control Track(int current, int max, int block, int width)
     {
         var holder = new Control { CustomMinimumSize = new Vector2(width, 22) };
         // A health bar is a MAGNITUDE, not an alert, so it is allowed the red the warnings gave up: blood
@@ -2880,16 +3008,15 @@ public partial class SessionScreen : Control
         var bg = new ColorRect { Color = MoonvineTheme.BgRaised };
         bg.SetAnchorsPreset(LayoutPreset.FullRect);
         holder.AddChild(bg);
-        var ratio = combatant.Health.Max > 0 ? Mathf.Clamp((float)combatant.Health.Current / combatant.Health.Max, 0, 1) : 0;
+        var ratio = max > 0 ? Mathf.Clamp((float)current / max, 0, 1) : 0;
         var fill = new ColorRect { Color = MoonvineTheme.Harm };
         fill.SetAnchorsPreset(LayoutPreset.FullRect);
         fill.AnchorRight = ratio;
         fill.OffsetRight = 0;
         holder.AddChild(fill);
-        var block = Block(combatant);
         var label = new Label
         {
-            Text = $"{combatant.Health.Current}/{combatant.Health.Max}" + (block > 0 ? $"   🛡{block}" : ""),
+            Text = $"{current}/{max}" + (block > 0 ? $"   🛡{block}" : ""),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -3354,9 +3481,19 @@ public partial class SessionScreen : Control
     {
         var run = session.Run;
         _sidebar.AddChild(new Label { Text = Play?.HeroName ?? "You" });
-        _sidebar.AddChild(MutedLabel($"HP {run.Health.Current}/{run.Health.Max}"));
+
+        // HEALTH IS THE SAME BAR IT IS IN A FIGHT. It was a line of text here and a filled track three inches
+        // to the left, for the same number — and this is the one the player reads between rooms, when deciding
+        // whether to take the elite. A magnitude that is drawn as a magnitude in one place and spelled out in
+        // the other is two facts as far as the eye is concerned.
+        _sidebar.AddChild(RunHealthBar(run, SidebarWidth - PaneInset * 2));
+
+        // ⚠ AND THE RESOURCES BY THEIR NAMES. "gold: 276" printed the resource's ID, which is the same fault
+        // the way-screen's "Use standard.scheduled_the_collapse" was — the document names these things and the
+        // run playback already holds the table.
         foreach (var (resource, amount) in run.Resources.OrderBy(r => r.Key.Value, StringComparer.Ordinal))
-            _sidebar.AddChild(MutedLabel($"{resource.Value}: {amount}"));
+            _sidebar.AddChild(MutedLabel(
+                $"{Play?.ResourceNames.GetValueOrDefault(resource.Value) ?? Humanized(resource.Value)}: {amount}"));
 
         // ── the shelf ────────────────────────────────────────────────────────────
         // What is worn is drawn as objects, not spelled out as a list. A relic strip only works if the eye
@@ -3475,14 +3612,33 @@ public partial class SessionScreen : Control
         return button;
     }
 
+    // A passing word — a run saved, a rule that refused a play. It was a bare line of amber text laid straight
+    // over whatever happened to be beneath it, which on a hand of cards is a sentence written across a card.
+    // It gets a ground of its own, and it fades out rather than vanishing: a message that disappears between
+    // two frames is one the player is never sure they saw.
     private void Toast(string message)
     {
-        var label = new Label { Text = message };
+        var plate = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore };
+        plate.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.BgRaised, MoonvineTheme.Signal));
+        var label = new Label { Text = message, HorizontalAlignment = HorizontalAlignment.Center };
         label.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
-        label.SetAnchorsPreset(LayoutPreset.CenterBottom);
-        label.Position -= new Vector2(0, 48);
-        AddChild(label);
-        GetTree().CreateTimer(2.5).Timeout += () => label.QueueFree();
+        plate.AddChild(label);
+
+        // CenterBottom anchors a control by its top-left to the middle of the bottom edge, so a plate as wide
+        // as its words hangs off to the right of centre unless it is pulled back by half of itself. The bare
+        // Label had the same fault and nobody saw it, because a line of text with no ground has no edge to be
+        // wrong about.
+        plate.SetAnchorsPreset(LayoutPreset.CenterBottom);
+        AddChild(plate);
+        // ⚠ ASK FOR THE MINIMUM, NOT THE SIZE. A control added this frame has not been laid out yet and its
+        // Size is still zero, so a plate centred on Size.X is not centred at all — it is exactly where the
+        // un-centred bare Label used to be, and the bug would have looked like the fix.
+        plate.Position -= new Vector2(plate.GetCombinedMinimumSize().X / 2, 56);
+
+        var fade = CreateTween();
+        fade.TweenInterval(2.2);
+        fade.TweenProperty(plate, "modulate:a", 0.0f, 0.6);
+        fade.TweenCallback(Callable.From(plate.QueueFree));
     }
 
     // ── ported display helpers (RunSessionView.razor) ────────────────────────────
@@ -3557,27 +3713,34 @@ public partial class SessionScreen : Control
     //
     // By an Act-III boss the player can be wearing two dozen statuses, and a column as tall as its chip list
     // pushes everything below the arena off the screen — or, once the arena itself scrolls, pushes the ENEMY's
-    // health bar and intent below the fold at round one, which is the same fault wearing a different hat. The
-    // chips are the part that grows without limit, so the chips are the part that is bounded; a body carrying
-    // an ordinary handful is untouched.
-    private static Control Bounded(Control chips, CombatantState combatant, int width)
+    // health bar and intent below the fold at round one, which is the same fault wearing a different hat.
+    //
+    // ⚠ IT USED TO BOUND BY A COUNT, AND A COUNT IS THE WRONG QUESTION. Eight chips was the trigger, and at
+    // Nisaba — an Act V arena, 104 points of it spent on the divine rule — a body wearing FOUR was enough to
+    // push the boss's telegraph 149 points below the fold. What matters is not how many chips there are but
+    // how much room is left after the things that must be legible, so that is what is asked. Under two rows'
+    // worth, the chips scroll in two rows: a column whose fixed parts do not fit is a fight the arena cannot
+    // show, and the scroll is the honest way to say so.
+    private static Control Bounded(Control chips, CombatantState combatant, int width, int room)
     {
-        const int TallEnoughToBound = 8;
-        // The same set the chips are drawn from: the phase is not one of them (it is a banner now), so a
-        // body wearing one must not be counted as one chip taller than it looks.
-        if (combatant.Statuses.Count(s => s.Visibility == StatusVisibility.Visible && !IsPhase(s))
-            <= TallEnoughToBound)
-            return chips;
+        const int ChipRow = 26;
+        const int Floor = ChipRow * 2;
+        var rows = combatant.Statuses.Count(s => s.Visibility == StatusVisibility.Visible && !IsPhase(s));
+        if (rows * ChipRow <= room)
+            return chips;   // it fits in the room this column has; nothing to bound
 
         var view = new ScrollContainer
         {
-            CustomMinimumSize = new Vector2(width, 150),
+            CustomMinimumSize = new Vector2(width, Mathf.Max(Floor, room)),
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
         chips.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         view.AddChild(chips);
         return view;
     }
+
+    private static int PhaseCount(CombatantState combatant) =>
+        combatant.Statuses.Count(s => s.Visibility == StatusVisibility.Visible && IsPhase(s));
 
     // ACT V'S ONE SHARED RULE, and it is a UI rule (boss master §Act V §4): each god owns a prominent area
     // that always sits in the same place and says what reality currently means in its fight. Its words come
@@ -3641,6 +3804,69 @@ public partial class SessionScreen : Control
     //
     // WHICH statuses are phases is the document's word, not this frontend's guess: the presentation manifest
     // tags them. A game that tags none loses nothing — every status simply stays a chip, as before.
+    // WHAT IT IS ABOUT TO DO — the one line on this screen a player reads every single turn, and until D6 it
+    // was set in the same weight as the four lines around it. It is a PLATE now: a ground of its own and a
+    // rail down its leading edge in the intent's colour, so what kind of turn is coming can be read from the
+    // colour of a band before a word of it is read. That is the whole point of a telegraph.
+    //
+    // ⚠ THE RAIL IS ON THE LEFT AND NOTHING ELSE IS. A box outlined all the way round is a panel, and the
+    // column is already made of panels; one edge reads as an accent instead of as another container.
+    private static Control IntentPlate(
+        RogueDeck.Scenario.Authoring.ActionIntent intent, int ahead, int width)
+    {
+        // AS FAR PAST THE FIRST AS THE PLAYER CAN SEE. The engine projects an enemy's next several actions for
+        // a hero who has been granted the sight (the Article of Full Disclosure; Nanshe's Ration Tablet, which
+        // shows all three days of a Distribution before the first). The extra days are a FORECAST and are
+        // drawn as one — quiet ground, quiet rail, numbered — because the first line is the promise.
+        var promise = ahead == 0;
+        var colour = promise ? MoonvineTheme.IntentColor(intent.Kind) : MoonvineTheme.TextMuted;
+
+        var plate = new PanelContainer
+        {
+            MouseFilter = MouseFilterEnum.Pass, // the targeting overlay keeps the click
+            // What it is about to do names things; hovering says what they are.
+            TooltipText = Glossary.Explain(null, intent.Label),
+        };
+        var box = MoonvineTheme.Panel(
+            promise ? MoonvineTheme.BgRaised : MoonvineTheme.BgPanelStrong, colour, radius: 4);
+        box.BorderWidthTop = box.BorderWidthBottom = box.BorderWidthRight = 0;
+        box.BorderWidthLeft = promise ? 3 : 2;
+        box.ContentMarginLeft = 8;
+        box.ContentMarginRight = box.ContentMarginTop = box.ContentMarginBottom = 5;
+        plate.AddThemeStyleboxOverride("panel", box);
+
+        var column = new VBoxContainer { MouseFilter = MouseFilterEnum.Pass };
+        column.AddThemeConstantOverride("separation", 1);
+
+        var head = new Label
+        {
+            Text = promise
+                ? $"{RogueDeck.Scenario.Authoring.IntentDisplay.Glyph(intent.Kind)} "
+                    + RogueDeck.Scenario.Authoring.IntentDisplay.KindWord(intent.Kind)
+                : $"then {new string('I', ahead + 1)}",
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        head.AddThemeFontSizeOverride("font_size", promise ? 15 : 12);
+        head.AddThemeColorOverride("font_color", colour);
+        column.AddChild(head);
+
+        var says = new Label
+        {
+            Text = intent.Label,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            // ⚠ The plate is inside a column of a FIXED width and a Label's minimum is its longest word; without
+            // a ceiling a body whose intent says "Reconsideration" widens every column in the arena.
+            CustomMinimumSize = new Vector2(width - 34, 0),
+        };
+        says.AddThemeFontSizeOverride("font_size", promise ? 14 : 12);
+        says.AddThemeColorOverride("font_color", promise ? MoonvineTheme.TextSoft : MoonvineTheme.TextMuted);
+        column.AddChild(says);
+
+        plate.AddChild(column);
+        return plate;
+    }
+
     private static Control? PhaseBanner(InteractiveCombat combat, CombatantState combatant)
     {
         var registry = combat.State.DefinitionRegistry;
@@ -3696,25 +3922,44 @@ public partial class SessionScreen : Control
             return null;
 
         var flow = new HFlowContainer { Alignment = FlowContainer.AlignmentMode.Center };
-        flow.AddThemeConstantOverride("h_separation", 8);
+        flow.AddThemeConstantOverride("h_separation", 4);
+        flow.AddThemeConstantOverride("v_separation", 4);
 
         foreach (var status in shown)
         {
             StatusDefinition? definition = null;
             registry?.TryGetStatus(status.DefinitionId, out definition);
-
-            var chip = new Label
-            {
-                Text = StatusText(status, definition),
-                MouseFilter = Control.MouseFilterEnum.Pass, // let the targeting overlay keep the click
-                TooltipText = Glossary.Explain(StatusTooltip(status, definition), definition?.DescriptionKey),
-            };
-            chip.AddThemeColorOverride("font_color", status.Polarity switch
+            var colour = status.Polarity switch
             {
                 StatusPolarity.Buff => MoonvineTheme.Accent,
                 StatusPolarity.Debuff => MoonvineTheme.Harm,
                 _ => MoonvineTheme.TextMuted,
-            });
+            };
+            var hover = Glossary.Explain(StatusTooltip(status, definition), definition?.DescriptionKey);
+
+            // ⚠ A CHIP HAS TO BE AN OBJECT. These were coloured text in a row, and four of them under a body
+            // read as a sentence about it rather than as four things it is carrying — which is the one
+            // question the row exists to answer: how MANY, and are they mine or against me. A ground and a
+            // hairline make them countable at a glance; the polarity keeps the colour it had.
+            var chip = new PanelContainer
+            {
+                MouseFilter = Control.MouseFilterEnum.Pass, // let the targeting overlay keep the click
+                TooltipText = hover,
+            };
+            var box = MoonvineTheme.Panel(MoonvineTheme.BgRaised, new Color(colour, 0.45f), radius: 4);
+            box.ContentMarginLeft = box.ContentMarginRight = 6;
+            box.ContentMarginTop = box.ContentMarginBottom = 2;
+            chip.AddThemeStyleboxOverride("panel", box);
+
+            var text = new Label
+            {
+                Text = StatusText(status, definition),
+                MouseFilter = Control.MouseFilterEnum.Pass,
+                TooltipText = hover,
+            };
+            text.AddThemeFontSizeOverride("font_size", 13);
+            text.AddThemeColorOverride("font_color", colour);
+            chip.AddChild(text);
             flow.AddChild(chip);
         }
         return flow;

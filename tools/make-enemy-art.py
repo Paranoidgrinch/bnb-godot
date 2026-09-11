@@ -10,8 +10,9 @@ The figure's SIZE is the kind of body, which the document already worked out fro
 horns. A mimic sits with the elites — it is met where they are met — and every plate prints its role in words
 as well, so nothing has to be read off a silhouette.
 
-The plate is 600 x 900 portrait on TRANSPARENCY, which is the shape the arena asks for: a body is drawn 150
-points tall with its aspect kept and is never mirrored, so it faces LEFT, towards the player. Transparent
+The plate is 600 x 900 portrait on TRANSPARENCY, which is the shape the arena asks for: a body is drawn 90 to
+150 points tall with its aspect kept and is never mirrored, so it faces LEFT, towards the player. (The range,
+not a number: the figure is the part of a column that yields when the arena is short, so it has to read at 90.) Transparent
 because a body stands in the arena, not in a frame — a placeholder with a ground would draw a box around
 every combatant and teach the wrong thing about the real picture.
 

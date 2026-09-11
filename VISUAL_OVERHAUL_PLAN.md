@@ -769,13 +769,78 @@ Suites at the gate: Core 1469 · Scenario 755 · Run 581 · Sandbox 373 · bnb-c
 
 ---
 
-## Phase D6 — the rest of the screen
+## Phase D6 — the rest of the screen  ✔ BUILT 2026-09-11
 
-The parts that will look wrong once the cards look right: the map (`MapView`, 8 of the 16 colour literals),
-enemy and hero panels, the intent telegraph, buttons, banners, the act heading, toasts. No new structure —
-the palette, the frame idiom and the spacing from D0/D1 carried through, plus one honest pass over every
-screenshot probe. **`--smoke-tooltips` runs on combat, crowd and each boss** and may not report more mutes
-than it does today.
+The map half of this phase stays out, at the user's call: it belongs to the **map rework** that follows, not
+to a pass that would only repaint what is about to be rebuilt. What is here is the arena, the panels, the
+telegraph, the banners and the toast.
+
+**The telegraph is a plate.** What an enemy is about to do is the one line on the screen a player reads every
+single turn, and it was set in the same weight as the four lines around it. It has a ground of its own now and
+a rail down its leading edge in the intent's colour, so what KIND of turn is coming reads off a band of colour
+before a word of it is read. The forecast days behind it — the sight Nanshe's Ration Tablet and the Article of
+Full Disclosure grant — are drawn as a forecast: quiet ground, quiet rail, numbered.
+
+⚠ **And a third of all telegraphs were wearing the colour that means "no information".** `IntentColor` mapped
+everything outside Attack/Defend/Buff/Debuff to `TextMuted`, which put **Special** — 305 of the 1046 intents
+this game ships, and the kind Act V's gods lean on — in the same grey as an intent nobody declared. Special is
+the opposite of unknown: it is a declared kind whose content is *this is not one of the four*, which is to say
+READ THE WORDS. It gets the plain text colour; only a genuinely undeclared intent stays muted.
+
+**The row reads as a row.** A name that wrapped made its own column taller and dropped its health bar a line
+below its neighbours' — three bars at three heights, in the one row whose whole job is to be compared across.
+The name band is now one measured height for the whole arena: as tall as the longest name in THIS fight, so a
+fight of short names pays nothing and every figure, bar and telegraph lands on one y. The columns hang from a
+common top instead of each being centred.
+
+**A chip is an object.** Statuses were coloured text in a row, and four of them under a body read as a
+sentence about it rather than as four things it is carrying — which is the only question the row answers: how
+many, and are they mine or against me. They have a ground and a hairline now, in the polarity's colour.
+
+### The arena had no room, and nobody had ever counted it
+
+D4a chose to let the arena SCROLL rather than push the hand off the bottom — *"what does not fit is reachable
+rather than gone"* — and that answer went four phases without a number against it. `ReportArena()` prints one
+now (`--smoke-crowd`, `--smoke-boss`), and the first thing it said was that **at Nisaba the arena showed 222
+points of a 371-point column: the boss's telegraph was 149 below the fold at round one.** A player who cannot
+see what a god is about to do is not playing the fight, and no amount of scrolling is a substitute for the
+telegraph being where the eye already is.
+
+Three changes, in the order of how much each was worth:
+
+1. **The chips are bounded by ROOM, not by a count.** Eight chips was the old trigger; at Nisaba a body
+   wearing four was enough. Every other part of a column is a fixed size and must be legible without
+   scrolling, so the chips — the one part that grows without limit — are handed what is left and scroll
+   inside it. (149 → 101.)
+2. **The figure yields.** `BodyHeight` was a constant; it is now a range, 150 down to a floor of **90**. The
+   figure is the least informative part of a column — a picture of the thing, beside the three facts that
+   decide the turn — and the only part with any give. The art brief says 90–150 now, and that the silhouette
+   has to read at 90.
+3. **The divine rule band went 104 → 80, because the priority was backwards.** A god's decree is read ONCE,
+   on entering the room; the telegraph under it is read every turn. The design requires the rule to sit in the
+   same PLACE in every Act V fight — which it still does — and never required it to be as tall as its longest
+   decree; it has had a scroll and a hover of its own since the day it was built. (101 → 77, and the whole
+   telegraph is above the fold.)
+
+What is still below the fold at Nisaba is the chip list, which is the right thing to have put there.
+
+**Smaller things in the same pass.** The sidebar's health was a line of TEXT while a fight three inches away
+drew a filled track for the same number — it is the same bar now, and it is the one the player reads between
+rooms deciding whether to take the elite. `gold: 276` printed the resource's raw id and now prints its name
+(the last of the same fault D5 cleared off the way-screen). The act title card set its roll call of gods at
+the same 34 pt as the act's own name, so the card had no first thing to read — the roll call is a subtitle at
+20 pt — and the card no longer draws over a probe, which had been quietly eating every boss screenshot in the
+battery. The toast was a bare line of amber text laid across whatever was beneath it (on a hand, across a
+card); it has a ground, it fades, and it is centred on its real width.
+
+**Measured.**
+
+    smoke-boss 5:  arena viewport 246, tallest column 323 — 77 below (was 222 / 371 — 149)
+    smoke-crowd:   arena viewport 334, tallest column 379 — 45 below
+    smoke-art:     709 slots asked for, 709 filled
+    smoke-format:  5 slots, asked for 134x190, 0 off over 10 clicks — PASS
+    smoke-tooltips: 0 named-but-unexplained controls on shelf, crowd, reward, shop, event, rest, upgrade
+    smoke-marathon: Victory acts=5 rooms=111 seconds=434 (407 before this pass; the D7 gate asks ≤592)
 
 ---
 

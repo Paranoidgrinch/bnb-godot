@@ -5,7 +5,7 @@ One picture per card, per relic, per body and per character, named by the code i
 
     assets/art/cards/<id>.png       the card's window   — 11:10 landscape, drawn at 122 × 110
     assets/art/relics/<id>.png      the relic's square  — square, drawn small
-    assets/art/enemies/<id>.png     the body's column   — portrait, drawn 150 tall, aspect kept
+    assets/art/enemies/<id>.png     the body's column   — portrait, drawn 90–150 tall, aspect kept
     assets/art/characters/<id>.png  the player, on the title screen — a body, facing the other way
 
 A body is every enemy, elite and boss (269 of them). It is never mirrored by the game, so draw it facing
