@@ -85,6 +85,8 @@ Headless checks (no window):
 ```
 godot --headless -- --smoke        # boot: prints "loaded: …" and quits
 godot --headless -- --smoke-art     # the art census: how many of the 709 slots have a file
+godot --headless -- --smoke-generators # both map generators, same seed, side by side: rows and rooms per act
+                                     # — what "New run ▸" is actually asking the player to choose between
 godot --headless -- --smoke-full    # auto-plays the first rooms and reports the state
 godot --headless -- --smoke-timing  # per-action latency (~17 ms/action)
 godot --headless -- --smoke-statuses # carried state reads as its authored name, not its id
@@ -95,6 +97,7 @@ godot --headless -- --smoke-format   # every card in the hand is exactly the siz
 godot --headless -- --smoke-deck     # (windowed) the draw pile's clip keeps playing across three card plays
 godot --headless -- --smoke-window   # (windowed) the same fight at three window sizes, measured in canvas units
 godot --headless -- --smoke-settings # (windowed) a picture of the settings dialog
+godot --headless -- --smoke-newrun   # (windowed) a picture of the New run dialog and its two answers
 godot --headless -- --smoke-shelf    # the relic strip at a HOSTILE count: wears 69 relics (one from every
                                      # pool before a second from any), switches every seventh off, and
                                      # reports rows, tiles per row, whether anything sits outside the

@@ -1,5 +1,6 @@
 using Godot;
 using RogueDeck.Run;
+using RogueDeck.Sandbox.Composition;
 
 namespace BnbGodot;
 
@@ -46,6 +47,15 @@ public partial class Boot : Control
             GetTree().Quit();
             return;
         }
+        // BOTH GENERATORS, SIDE BY SIDE, on the same seed (map rework S15). A question about the DOCUMENT and
+        // the engine rather than about a screen, so it is answered before one is built — and the point of it is
+        // that the two columns differ: same acts, same lengths, different maps.
+        if (userArgs.Contains("--smoke-generators"))
+        {
+            ReportGenerators(blueprint);
+            GetTree().Quit();
+            return;
+        }
         // Any session smoke boots straight into a seeded run; SessionScreen runs the matching probe + quits.
         // The run simulator: a seeded random walk over the real screens, one run per process.
         if (userArgs.Contains("--sim"))
@@ -63,7 +73,11 @@ public partial class Boot : Control
         if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run"))
         {
             host.StartNewRun(seed: 7,
-                health: userArgs.Any(a => a is "--smoke-marathon" or "--smoke-crowd" or "--smoke-boss") ? 9999 : null);
+                health: userArgs.Any(a => a is "--smoke-marathon" or "--smoke-crowd" or "--smoke-boss") ? 9999 : null,
+                // Every session probe walks the DESIGN, which since the map rework is v0.0.1 — and `--legacy`
+                // walks the same probe over the old maps instead. A probe that cannot name its generator is a
+                // probe that cannot say whether what it found is about the map or about the game.
+                mapGenerator: userArgs.Contains("--legacy") ? MapGenerators.RuleBased : MapGenerators.Strategic);
             CallDeferred(nameof(GoToSession));
             return;
         }
@@ -72,6 +86,13 @@ public partial class Boot : Control
 
         if (userArgs.Contains("--smoke-title") && !DisplayServer.GetName().Contains("headless"))
             _ = CaptureTitleThenQuit();
+        // The one question "New run ▸" asks, opened the way a player opens it. A picture, because what this
+        // window has to get right is not arithmetic — it is whether two sentences make the choice clear.
+        if (userArgs.Contains("--smoke-newrun") && !DisplayServer.GetName().Contains("headless"))
+        {
+            NewRunPanel.Open(this, _ => { });
+            _ = CaptureThenQuit("user://smoke-newrun.png");
+        }
         // The settings dialog, opened the way a player opens it, with a picture of what they get.
         if (userArgs.Contains("--smoke-settings") && !DisplayServer.GetName().Contains("headless"))
         {
@@ -84,6 +105,108 @@ public partial class Boot : Control
         // exercises the upload for real.
         if (userArgs.Contains("--smoke-bug") && !DisplayServer.GetName().Contains("headless"))
             _ = SmokeBugReport();
+    }
+
+    // WHAT THE PLAYER IS ACTUALLY CHOOSING BETWEEN, in numbers, for both answers the dialog offers. Every act
+    // of a whole run is laid out twice from one seed and its rooms are counted, because "the maps are different"
+    // is the claim the dialog makes on the title screen and this is the only place it is checked from the side
+    // the player stands on — through the shipped document, the way Godot loads it.
+    //
+    // It reports rather than asserts, with one exception: an act that comes out EMPTY is a run nobody can play,
+    // and the exit code says so. Everything else is for reading.
+    private static readonly HashSet<string> RoleTags = new(StringComparer.Ordinal)
+    {
+        MapNodeTags.Combat, MapNodeTags.MultiCombat, MapNodeTags.Elite, MapNodeTags.Boss, MapNodeTags.Mimic,
+        MapNodeTags.Shop, MapNodeTags.Rest, MapNodeTags.Event, MapNodeTags.Treasure, MapNodeTags.Workbench,
+    };
+
+    private void ReportGenerators(RunBlueprint blueprint)
+    {
+        const int seed = 20260914;
+        var broken = 0;
+        foreach (var generator in new[] { MapGenerators.RuleBased, MapGenerators.Strategic })
+        {
+            GD.Print($"smoke-generators: {generator} ({RunPreferences.Title(generator)})");
+            IReadOnlyList<RunActPlan> plan;
+            try
+            {
+                plan = blueprint.BuildActPlan(seed, startingLoadout: 0, generator);
+            }
+            catch (Exception ex)
+            {
+                GD.Print($"    COULD NOT LAY OUT A RUN: {ex.Message.Split('\n')[0]}");
+                broken++;
+                continue;
+            }
+
+            for (var act = 0; act < plan.Count; act++)
+            {
+                var map = plan[act].Map;
+                var rows = map.Nodes.Count == 0
+                    ? 0
+                    : map.Nodes.Select(node => node.Id.Value.Split('c')[0]).Distinct().Count();
+                // A room's role is a tag on it (MapNodeTags), which is what both generators write and what the
+                // map screen reads — so counting those counts what the player will actually walk past.
+                var rooms = map.Nodes
+                    .SelectMany(node => node.Tags.Where(RoleTags.Contains))
+                    .GroupBy(tag => tag)
+                    .OrderBy(group => group.Key, StringComparer.Ordinal)
+                    .Select(group => $"{group.Key} {group.Count()}");
+                GD.Print($"    act {act + 1}: {rows} rows, {map.Nodes.Count} rooms — {string.Join(", ", rooms)}");
+                if (map.Nodes.Count == 0)
+                    broken++;
+            }
+        }
+        broken += ResumeKeepsItsMap(blueprint);
+
+        GD.Print(broken == 0
+            ? "smoke-generators: both generators lay out every act, and a resumed run keeps the map it had"
+            : $"smoke-generators: FAILED — {broken} problem(s)");
+        if (broken > 0)
+            GetTree().Quit(1);
+    }
+
+    // THE THING THAT WOULD ACTUALLY RUIN A PLAYER'S EVENING. A BnB map is never stored — it is regenerated from
+    // the run's seed — so a generator choice that lived in the menu instead of in the run would hand a resumed
+    // run a different map: you close the game standing in front of an elite and come back to a shop. The engine
+    // carries the choice in the save (`RunSaveData.MapGenerator`) and this is that promise checked from the
+    // side the player stands on, through the shipped document, with no file and no menu in the way.
+    private static int ResumeKeepsItsMap(RunBlueprint blueprint)
+    {
+        var broken = 0;
+        foreach (var generator in new[] { MapGenerators.RuleBased, MapGenerators.Strategic })
+        {
+            using var play = new RunPlayback(() => { });
+            play.Start(blueprint, seed: 4711, interactive: true, mapGenerator: generator);
+            var before = MapSignature(play);
+            var json = play.SaveJson();
+            if (json is null)
+            {
+                GD.Print($"    {generator}: the run would not save — {play.Error}");
+                broken++;
+                continue;
+            }
+
+            using var resumed = new RunPlayback(() => { });
+            resumed.Resume(blueprint, RunSaveJson.FromJson(json), interactive: true);
+            var after = MapSignature(resumed);
+            var same = before == after && before.Length > 0;
+            GD.Print($"    {generator}: saved and resumed — the map is "
+                + (same ? "the same one" : "A DIFFERENT MAP"));
+            if (!same)
+                broken++;
+        }
+        return broken;
+    }
+
+    // The map as one string: every room, what stands in it, and every edge. Enough that a map which came back
+    // with the same shape but a different fight in room four reads as a different map, because it is one.
+    private static string MapSignature(RunPlayback play)
+    {
+        if (play.Session?.Run.Map is not { } map)
+            return "";
+        return string.Join("|", map.Nodes.Select(node => $"{node.Id.Value}:{node.Payload}:{string.Join(",", node.Tags)}"))
+            + "##" + string.Join("|", map.Edges.Select(edge => $"{edge.From.Value}>{edge.To.Value}"));
     }
 
     // An unfilled slot is NORMAL, so this probe cannot fail on a count — it reports one. What it does assert
@@ -228,11 +351,15 @@ public partial class Boot : Control
 
         var start = new Button { Text = "New run ▸", CustomMinimumSize = new Vector2(160, 44) };
         start.Disabled = host.Blueprint.Characters.Count > 0 && _selectedCharacter is null;
-        start.Pressed += () =>
+        // The one question a new run asks: which map generator lays it out. Both ship and they make different
+        // games, so the answer cannot be a build-time constant — and it is asked HERE rather than in Settings
+        // because it belongs to the run being started, not to the machine (see NewRunPanel).
+        start.Pressed += () => NewRunPanel.Open(this, generator =>
         {
-            host.StartNewRun(seed: (int)(Time.GetUnixTimeFromSystem() % int.MaxValue), _selectedCharacter);
+            host.StartNewRun(seed: (int)(Time.GetUnixTimeFromSystem() % int.MaxValue), _selectedCharacter,
+                mapGenerator: generator);
             GoToSession();
-        };
+        });
         actions.AddChild(start);
 
         if (host.HasSave)

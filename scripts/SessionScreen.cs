@@ -351,6 +351,7 @@ public partial class SessionScreen : Control
         var playsThisTurn = 0;
         var refused = new HashSet<CardInstanceId>();
         var barren = new HashSet<string>(StringComparer.Ordinal);
+        var timesPlayed = new Dictionary<string, int>(StringComparer.Ordinal);
         string? lastPlayed = null;
         var tableBeforeThePlay = "";
         void NewTurn()
@@ -359,6 +360,7 @@ public partial class SessionScreen : Control
             lastPlayed = null;
             refused.Clear();
             barren.Clear();
+            timesPlayed.Clear();
         }
 
         for (var step = 0; step < 20000 && session is not null && play is not null && !session.IsComplete; step++)
@@ -435,6 +437,15 @@ public partial class SessionScreen : Control
                         driver.PlayCard(card.Id, target);
                         if (Refused(driver.Current, stepsBefore))
                             refused.Add(card.Id);
+                        // THE SAME FOURTH GUARD THE SIMULATOR HAS, and the marathon needed it the moment the
+                        // maps changed: Act III's Make Amends puts a fresh COPY of itself in your hand, so
+                        // every play moves the table and none of them is barren. A greedy player plays it
+                        // fifty times, and this probe then reports a stuck turn that is nothing of the kind.
+                        // Nobody plays one card six times in a turn — and with that said, the fifty-card stop
+                        // below goes back to meaning what it is for: a turn that genuinely cannot end.
+                        timesPlayed[card.DefinitionId.value] = timesPlayed.GetValueOrDefault(card.DefinitionId.value) + 1;
+                        if (timesPlayed[card.DefinitionId.value] >= 6)
+                            barren.Add(card.DefinitionId.value);
                         if (++playsThisTurn >= PlaysInATurnNobodyMakes)
                         {
                             reason = $"a turn at {Where(session)} played {playsThisTurn} cards without ending "

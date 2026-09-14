@@ -53,11 +53,15 @@ public partial class GameHost : Godot.Node
 
     public string GameTitle => Blueprint?.Presentation.Game?.FlavorText ?? "RogueDeck game";
 
-    public void StartNewRun(int seed, string? characterId = null, int? health = null)
+    // `mapGenerator` is MapGenerators.RuleBased or .Strategic; null means the player's remembered preference.
+    // It is passed HERE and nowhere else: from this moment it belongs to the run, travels in its save, and a
+    // resume reads it back out of the save rather than out of the menu (see RunPreferences).
+    public void StartNewRun(int seed, string? characterId = null, int? health = null, string? mapGenerator = null)
     {
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
-        Play.Start(health is { } hp ? WithHealth(Blueprint, hp) : Blueprint, seed, interactive: true, characterId);
+        Play.Start(health is { } hp ? WithHealth(Blueprint, hp) : Blueprint, seed, interactive: true, characterId,
+            mapGenerator ?? RunPreferences.MapGenerator);
         EmitChanged();
     }
 

@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using Godot;
+using RogueDeck.Run;
 
 namespace BnbGodot;
 
@@ -134,7 +135,12 @@ public static class BugReport
                 Say("health", $"{run.Health.Current}/{run.Health.Max}");
                 Say("deck", $"{run.Deck.Count} cards · {run.Relics.Count} relics · {run.Consumables.Count} consumables");
                 Say("awaiting", Awaiting(session));
-                Say("map", $"{run.Map.Nodes.Count} nodes · at {run.CurrentNodeId?.Value ?? "—"}");
+                // THE GENERATOR IS PART OF THE MAP LINE, not an afterthought. From the moment two of them
+                // ship, a report about a broken map is ambiguous until it says which one drew it — and the
+                // run's own answer is the one that counts, since a resumed run rebuilds the maps it had
+                // rather than the ones the menu currently prefers.
+                Say("map", $"{run.Map.Nodes.Count} nodes · laid out by "
+                    + $"{MapGenerators.Name(run.GeneratedMapGenerator)} · at {run.CurrentNodeId?.Value ?? "—"}");
             }
             if (play.CombatDriver?.Current is { } combat)
                 Say("combat", $"round {combat.Round} · hand {combat.Hand.Count} "
