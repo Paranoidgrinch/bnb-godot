@@ -33,6 +33,24 @@ public partial class Boot : Control
         GD.Print($"loaded: {host.GameTitle} ({blueprint.Cards.Count} cards, {blueprint.Map.Nodes.Count} map nodes)");
 
         var userArgs = OS.GetCmdlineUserArgs();
+        // THE SECOND HALF OF --smoke-quit: this is the title screen the button led back to. Reported from here
+        // rather than from the session, because by the time the scene change has happened the node that pressed
+        // the button no longer exists — and what is being checked is exactly what this screen knows.
+        if (userArgs.Contains("--smoke-quit") && SessionScreen.SmokeQuitLeftAt is { } leftAt)
+        {
+            BuildTitle(host);
+            var save = host.HasSave
+                ? RunSaveJson.FromJson(Godot.FileAccess.GetFileAsString("user://run-save.json"))
+                : null;
+            var offered = FindButton(this, "Continue run") is not null;
+            var sameRoom = save?.CurrentNodeId == leftAt;
+            GD.Print($"smoke-quit: back on the title · save on disk={host.HasSave}"
+                + $" · \"Continue run\" offered={offered}"
+                + $" · saved room={save?.CurrentNodeId ?? "—"}"
+                + $" {(sameRoom ? "(the room it was left in)" : $"— LEFT AT {leftAt}")}");
+            GetTree().Quit(host.HasSave && offered && sameRoom ? 0 : 1);
+            return;
+        }
         if (userArgs.Contains("--smoke"))
         {
             GetTree().Quit();
@@ -70,7 +88,7 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit"))
         {
             host.StartNewRun(seed: 7,
                 health: userArgs.Any(a => a is "--smoke-marathon" or "--smoke-crowd" or "--smoke-boss") ? 9999 : null,
@@ -114,6 +132,20 @@ public partial class Boot : Control
     //
     // It reports rather than asserts, with one exception: an act that comes out EMPTY is a run nobody can play,
     // and the exit code says so. Everything else is for reading.
+    // The first button under `root` whose text contains `text`. Depth-first, because a dialog puts its buttons
+    // inside a margin inside a column and a probe should not have to know that.
+    private static Button? FindButton(Godot.Node? root, string text)
+    {
+        if (root is null)
+            return null;
+        if (root is Button button && button.Text.Contains(text, StringComparison.Ordinal))
+            return button;
+        foreach (var child in root.GetChildren())
+            if (FindButton(child, text) is { } found)
+                return found;
+        return null;
+    }
+
     private static readonly HashSet<string> RoleTags = new(StringComparer.Ordinal)
     {
         MapNodeTags.Combat, MapNodeTags.MultiCombat, MapNodeTags.Elite, MapNodeTags.Boss, MapNodeTags.Mimic,

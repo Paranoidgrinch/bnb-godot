@@ -143,6 +143,8 @@ public partial class SessionScreen : Control
             _ = SmokeFormat();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-bug-run"))
             _ = SmokeBugInRun();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-quit"))
+            _ = SmokeSaveAndQuit();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-shelf"))
             _ = SmokeShelf();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-deck"))
@@ -1585,11 +1587,30 @@ public partial class SessionScreen : Control
             BugReport.Remember(GetViewport());
             var overlay = SettingsPanel.Overlay(
                 () => GetNodeOrNull("SettingsOverlay")?.QueueFree(),
-                OpenBugReport);
+                OpenBugReport,
+                SaveAndQuitToTitle);
             overlay.Name = "SettingsOverlay";
             AddChild(overlay);
         }
         GetViewport().SetInputAsHandled();
+    }
+
+    // LEAVING A RUN, ON PURPOSE. The game already autosaves at every point the player has settled something,
+    // so this is rarely the save that matters — but "rarely" is not what somebody wants to be told about the
+    // hour they just played, so the run is written here and now, and the title screen is only reached if that
+    // worked. A failed save keeps the player exactly where they are and says why: walking away from a run
+    // because a dialog said nothing is how an evening gets lost.
+    private void SaveAndQuitToTitle()
+    {
+        if (GameHost.Instance.SaveRun() is { } problem)
+        {
+            // The overlay goes first: a toast hangs off the bottom of the SCREEN, and behind a dimmed sheet it
+            // is a message the player is told and cannot read.
+            GetNodeOrNull("SettingsOverlay")?.QueueFree();
+            Toast($"Not saved, so not leaving: {problem}");
+            return;
+        }
+        GetTree().ChangeSceneToFile("res://scenes/Boot.tscn");
     }
 
     // The settings window steps aside for the report window — two stacked dialogs over a fight is one too many,
@@ -3360,6 +3381,73 @@ public partial class SessionScreen : Control
             if (FindButton(child, text) is { } found)
                 return found;
         return null;
+    }
+
+    // LEAVING A RUN AND FINDING IT AGAIN. The button is one line of UI and the promise behind it is the whole
+    // point: what is on disk when the player lands back on the title has to be the room they were standing in,
+    // and the title has to offer it back.
+    //
+    // IT LEAVES MID-FIGHT, on purpose. That is when somebody actually has to stop playing, it is the case the
+    // old save model could not take at all, and a save written between rooms is the easy half of the promise.
+    // So this walks until a fight is under way and the hero is holding cards, and goes from there.
+    //
+    // This half presses the button and STOPS. The other half is Boot's: the probe is finished by the screen the
+    // button leads to, which is the only way to check the landing without reporting from a node the scene
+    // change has already freed.
+    public static string? SmokeQuitLeftAt { get; private set; }
+    public static int SmokeQuitVisited { get; private set; }
+
+    private async System.Threading.Tasks.Task SmokeSaveAndQuit()
+    {
+        for (var step = 0; step < 400; step++)
+        {
+            var session = Session;
+            var play = Play;
+            if (session is null || play is null)
+                break;
+            if (play.CombatDriver?.Current is { IsHeroTurn: true })
+                break;
+            if (session.IsAwaitingNodeChoice)
+                session.PickNode(session.PendingNodeChoices[0].Id.Value);
+            else if (session.IsAwaitingInterlude)
+                session.Continue();
+            else if (session.IsAwaitingEntities)
+                session.PickEntities([0]);
+            else if (session.IsAwaitingChoice)
+                session.Pick(session.PendingChoices[^1].Id);
+            else if (play.CombatDriver?.Current is not null)
+                play.CombatDriver.EndTurn();
+            // Nothing pending is not the same as nothing happening: the session settles between frames, so a
+            // loop that broke here walked exactly one room and called it a walk.
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
+        for (var i = 0; i < 4; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        // Esc through the REAL handler, so the menu is the one a keystroke builds.
+        _UnhandledInput(new InputEventAction { Action = "ui_cancel", Pressed = true });
+        for (var i = 0; i < 3; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        if (FindButton(GetNodeOrNull("SettingsOverlay"), "Save and quit") is not { } button)
+        {
+            GD.Print("smoke-quit: THE ESCAPE MENU HAS NO SAVE-AND-QUIT BUTTON");
+            GetTree().Quit(1);
+            return;
+        }
+
+        // A picture of the menu the player actually sees, when there is a window to take it from. What this
+        // button has to get right is not arithmetic — it is whether the wording reads as safe.
+        if (!DisplayServer.GetName().Contains("headless"))
+            GetViewport().GetTexture()?.GetImage()?.SavePng("user://smoke-quit.png");
+
+        SmokeQuitLeftAt = Session?.Run.CurrentNodeId?.Value ?? "—";
+        SmokeQuitVisited = Session?.Run.VisitedNodes.Count ?? 0;
+        var fighting = Play?.CombatDriver?.Current;
+        GD.Print($"smoke-quit: leaving act {Session?.Run.ActNumber} at {SmokeQuitLeftAt} after "
+            + $"{SmokeQuitVisited} room(s), "
+            + (fighting is null ? "between rooms" : $"mid-fight on round {fighting.Round}"));
+        button.EmitSignal(BaseButton.SignalName.Pressed);
     }
 
     private async System.Threading.Tasks.Task SmokeShelf()

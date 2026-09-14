@@ -13,15 +13,17 @@ public partial class SettingsPanel : PanelContainer
 {
     private readonly Action? _onClose;
     private readonly Action? _onReportBug;
+    private readonly Action? _onSaveAndQuit;
     private OptionButton _mode = null!;
     private OptionButton _size = null!;
     private OptionButton _scale = null!;
     private CheckBox _vsync = null!;
 
-    public SettingsPanel(Action? onClose = null, Action? onReportBug = null)
+    public SettingsPanel(Action? onClose = null, Action? onReportBug = null, Action? onSaveAndQuit = null)
     {
         _onClose = onClose;
         _onReportBug = onReportBug;
+        _onSaveAndQuit = onSaveAndQuit;
     }
 
     public override void _Ready()
@@ -108,6 +110,23 @@ public partial class SettingsPanel : PanelContainer
             column.AddChild(bug);
         }
 
+        // …AND SO DOES THE WAY OUT. Esc is also what somebody presses when they have to stop playing, and
+        // until now this window could only be closed: leaving a run meant quitting the program and trusting
+        // that the autosave had caught the last thing they did. Saying it out loud — save, then put me back on
+        // the title screen — is one button, and it is the only one here that is about the RUN rather than about
+        // the window, which is why the caller supplies it and the title screen passes nothing.
+        if (_onSaveAndQuit is { } leave)
+        {
+            var quit = new Button
+            {
+                Text = "Save and quit to title",
+                CustomMinimumSize = new Vector2(0, 40),
+                TooltipText = "Saves this run and returns to the title screen. Continue run picks it up again.",
+            };
+            quit.Pressed += () => leave();
+            column.AddChild(quit);
+        }
+
         var close = new Button { Text = "Close", CustomMinimumSize = new Vector2(0, 40) };
         close.Pressed += () => _onClose?.Invoke();
         column.AddChild(close);
@@ -148,7 +167,7 @@ public partial class SettingsPanel : PanelContainer
         _size.Disabled = (DisplaySettings.WindowKind)_mode.GetSelectedId() != DisplaySettings.WindowKind.Windowed;
 
     // The dialog as a full-screen overlay: a dimmed sheet with the panel centred on it. `onClose` frees it.
-    public static Control Overlay(Action onClose, Action? onReportBug = null)
+    public static Control Overlay(Action onClose, Action? onReportBug = null, Action? onSaveAndQuit = null)
     {
         var veil = new Control { MouseFilter = MouseFilterEnum.Stop };
         veil.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -158,7 +177,7 @@ public partial class SettingsPanel : PanelContainer
 
         var center = new CenterContainer();
         center.SetAnchorsPreset(LayoutPreset.FullRect);
-        center.AddChild(new SettingsPanel(onClose, onReportBug));
+        center.AddChild(new SettingsPanel(onClose, onReportBug, onSaveAndQuit));
         veil.AddChild(center);
         return veil;
     }

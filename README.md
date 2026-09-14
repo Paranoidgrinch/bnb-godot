@@ -98,6 +98,8 @@ godot --headless -- --smoke-deck     # (windowed) the draw pile's clip keeps pla
 godot --headless -- --smoke-window   # (windowed) the same fight at three window sizes, measured in canvas units
 godot --headless -- --smoke-settings # (windowed) a picture of the settings dialog
 godot --headless -- --smoke-newrun   # (windowed) a picture of the New run dialog and its two answers
+godot --headless -- --smoke-quit     # Esc mid-fight, "Save and quit to title", and then the title screen
+                                     # itself checks the run came back: on disk, offered, same room
 godot --headless -- --smoke-shelf    # the relic strip at a HOSTILE count: wears 69 relics (one from every
                                      # pool before a second from any), switches every seventh off, and
                                      # reports rows, tiles per row, whether anything sits outside the
