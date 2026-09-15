@@ -18,6 +18,8 @@ public partial class SettingsPanel : PanelContainer
     private OptionButton _size = null!;
     private OptionButton _scale = null!;
     private CheckBox _vsync = null!;
+    private HSlider _music = null!;
+    private Label _musicValue = null!;
 
     public SettingsPanel(Action? onClose = null, Action? onReportBug = null, Action? onSaveAndQuit = null)
     {
@@ -93,6 +95,41 @@ public partial class SettingsPanel : PanelContainer
         _vsync.Toggled += _ => Commit();
         column.AddChild(Row("Frames", _vsync));
 
+        // ⚠ ONE SLIDER, SHOWN TWICE. This panel is the title screen's Settings AND the Esc menu, so there is
+        // nothing here to keep in step with anything: both are this control, reading and writing the one
+        // stored setting. A player who finds the music too loud finds that out four rooms into a run, which
+        // is exactly why it may not live on the title screen alone.
+        AudioSettings.Load();
+        _music = new HSlider
+        {
+            MinValue = 0,
+            MaxValue = 100,
+            Step = 1,
+            Value = AudioSettings.MusicVolume,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(0, 24),
+            TooltipText = "How loud the music is. 0 turns it off. Takes effect as you drag it.",
+        };
+        _musicValue = new Label
+        {
+            Text = Volume(AudioSettings.MusicVolume),
+            CustomMinimumSize = new Vector2(46, 0),
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        _musicValue.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
+        // ValueChanged and not drag_ended: the whole point of a volume slider is that you hear the answer
+        // while you are still holding it.
+        _music.ValueChanged += value =>
+        {
+            AudioSettings.SetMusicVolume((int)value);
+            _musicValue.Text = Volume((int)value);
+        };
+        var music = new HBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        music.AddThemeConstantOverride("separation", 10);
+        music.AddChild(_music);
+        music.AddChild(_musicValue);
+        column.AddChild(Row("Music volume", music));
+
         // THE BUG BUTTON LIVES WHERE THE PLAYER ALREADY IS. This panel *is* the Esc menu, and Esc is what
         // somebody presses the moment the game does something wrong — so the report is one keystroke and one
         // click away from the wrongness, with the screen already captured (BugReport.Remember) from before this
@@ -133,6 +170,9 @@ public partial class SettingsPanel : PanelContainer
 
         RefreshEnabled();
     }
+
+    // "Off" and not "0 %": zero is the one value on this slider that is a different KIND of answer.
+    private static string Volume(int percent) => percent <= 0 ? "Off" : $"{percent} %";
 
     private static Control Row(string label, Control control)
     {

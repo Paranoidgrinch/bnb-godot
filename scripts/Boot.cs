@@ -74,6 +74,16 @@ public partial class Boot : Control
             GetTree().Quit();
             return;
         }
+        // THE MUSIC, WITHOUT A SPEAKER. Two questions, neither of which needs a screen or an ear: are the ten
+        // files there and will each of them LOOP (an .ogg that ships without the flag plays once and leaves
+        // the game silent — invisible until somebody sits still for four minutes), and does the priority in
+        // the design document survive contact with the code. The second is a table because that is what it
+        // is: a state goes in, exactly one track comes out.
+        if (userArgs.Contains("--smoke-music"))
+        {
+            _ = SmokeMusic();
+            return;
+        }
         // Any session smoke boots straight into a seeded run; SessionScreen runs the matching probe + quits.
         // The run simulator: a seeded random walk over the real screens, one run per process.
         if (userArgs.Contains("--sim"))
@@ -116,6 +126,14 @@ public partial class Boot : Control
         {
             OpenSettings();
             _ = CaptureThenQuit("user://smoke-settings.png");
+        }
+        // The credits, which are a LEGAL OBLIGATION and not decoration — nine of the ten tracks are CC BY.
+        // A picture, because what this screen has to get right is whether ten attributions and their links
+        // are readable at once, which no assertion can answer.
+        if (userArgs.Contains("--smoke-credits") && !DisplayServer.GetName().Contains("headless"))
+        {
+            OpenCredits();
+            _ = CaptureThenQuit("user://smoke-credits.png");
         }
         // THE REPORT, SENT. The one screen whose whole job is to leave the machine, so the probe does not stop
         // at a picture of the form: it fills the box in, presses Send, and then says what actually landed in the
@@ -239,6 +257,127 @@ public partial class Boot : Control
             return "";
         return string.Join("|", map.Nodes.Select(node => $"{node.Id.Value}:{node.Payload}:{string.Join(",", node.Tags)}"))
             + "##" + string.Join("|", map.Edges.Select(edge => $"{edge.From.Value}>{edge.To.Value}"));
+    }
+
+    private static int _musicProblems;
+
+    private void ReportMusic()
+    {
+        var director = MusicDirector.Instance;
+        if (director is null)
+        {
+            GD.Print("smoke-music: the director autoload is not there");
+            _musicProblems = 1;
+            return;
+        }
+
+        var missing = 0;
+        var unlooped = 0;
+        var total = 0.0;
+        GD.Print("smoke-music: the files");
+        foreach (var (track, file, present, loops, seconds) in director.Inventory())
+        {
+            total += seconds;
+            if (!present)
+                missing++;
+            else if (!loops)
+                unlooped++;
+            GD.Print($"    {track,-9} {(present ? $"{seconds,6:0.0}s" : "  —   ")} "
+                + $"{(present ? loops ? "loops" : "DOES NOT LOOP" : "MISSING")}  {file}");
+        }
+
+        // The document's priority list, as the cases that distinguish it from any other ordering. Act V is
+        // first because it is the exception the whole table exists to state: in the gauntlet there is no
+        // separate boss music, and an elite there is still Act V.
+        (string Where, MusicDirector.Track Want, int Act, bool Fight, bool Boss, bool Elite, bool Shop, bool Campfire)[] cases =
+        [
+            ("act I map",            MusicDirector.Track.ActOne,   1, false, false, false, false, false),
+            ("act II map",           MusicDirector.Track.ActTwo,   2, false, false, false, false, false),
+            ("act III map",          MusicDirector.Track.ActThree, 3, false, false, false, false, false),
+            ("act IV map",           MusicDirector.Track.ActFour,  4, false, false, false, false, false),
+            ("act I shop",           MusicDirector.Track.Shop,     1, false, false, false, true,  false),
+            ("act III campfire",     MusicDirector.Track.Campfire, 3, false, false, false, false, true),
+            ("act II elite fight",   MusicDirector.Track.Elite,    2, true,  false, true,  false, false),
+            ("act IV boss fight",    MusicDirector.Track.Boss,     4, true,  true,  false, false, false),
+            ("standing on the boss", MusicDirector.Track.ActFour,  4, false, true,  false, false, false),
+            ("won, still on it",     MusicDirector.Track.ActTwo,   2, false, true,  false, false, false),
+            ("act V map",            MusicDirector.Track.ActFive,  5, false, false, false, false, false),
+            ("act V final boss",     MusicDirector.Track.ActFive,  5, true,  true,  false, false, false),
+            ("act V elite",          MusicDirector.Track.ActFive,  5, true,  false, true,  false, false),
+        ];
+
+        var wrong = 0;
+        GD.Print("smoke-music: what plays where");
+        foreach (var c in cases)
+        {
+            var got = MusicDirector.Cue(c.Act, c.Fight, c.Boss, c.Elite, c.Shop, c.Campfire);
+            var ok = got == c.Want;
+            if (!ok)
+                wrong++;
+            GD.Print($"    {c.Where,-22} → {got,-9} {(ok ? "" : $"EXPECTED {c.Want}")}");
+        }
+
+        _musicProblems = missing + unlooped + wrong > 0 ? 1 : 0;
+        GD.Print(_musicProblems == 0
+            ? $"smoke-music: all 10 tracks present and looping ({total / 60:0.0} minutes of music), "
+                + $"and all {cases.Length} states pick the track the design asks for"
+            : $"smoke-music: FAILED — {missing} missing, {unlooped} not looping, {wrong} wrong cue(s)");
+    }
+
+    // The two behaviours that are not visible in a table: a screen that asks for what is already playing
+    // must NOT restart it, and an errand into a shop must hand the act theme back AT THE BAR IT WAS ON.
+    // Both need time to pass, which is why this is the one probe here that waits for frames.
+    private async System.Threading.Tasks.Task SmokeMusic()
+    {
+        ReportMusic();
+
+        var director = MusicDirector.Instance;
+        if (director is null || _musicProblems != 0)
+        {
+            GetTree().Quit(_musicProblems);
+            return;
+        }
+
+        async System.Threading.Tasks.Task Beat(int frames = 30)
+        {
+            for (var i = 0; i < frames; i++)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
+
+        GD.Print("smoke-music: what the director does");
+        director.Want(MusicDirector.Track.Title);
+        GD.Print($"    title screen        → {director.LastAction}");
+        await Beat();
+
+        director.Want(MusicDirector.Track.ActOne);
+        GD.Print($"    start a run         → {director.LastAction}");
+        await Beat(90);
+
+        // The same screen redrawing. The act theme must be left strictly alone.
+        director.Want(MusicDirector.Track.ActOne);
+        var keptPlaying = director.LastAction.Contains("already playing", StringComparison.Ordinal);
+        GD.Print($"    redraw the map      → {director.LastAction} {(keptPlaying ? "" : "— SHOULD NOT HAVE CHANGED")}");
+
+        director.Want(MusicDirector.Track.Shop);
+        GD.Print($"    walk into a shop    → {director.LastAction}");
+        await Beat(60);
+
+        director.Want(MusicDirector.Track.ActOne);
+        var resumed = director.LastAction.Contains("resumed at", StringComparison.Ordinal);
+        GD.Print($"    leave the shop      → {director.LastAction}"
+            + $" {(resumed ? "" : "— the act theme restarted from the top")}");
+
+        // ⚠ A dummy audio driver may not advance a playback position, so "did not resume" is reported and
+        // never failed on: under `--headless` there is no clock behind the sound. The claim this probe can
+        // make everywhere is the one above it — that an unchanged state changes nothing.
+        var headless = DisplayServer.GetName().Contains("headless");
+        if (!keptPlaying)
+            _musicProblems = 1;
+        GD.Print(_musicProblems == 0
+            ? $"smoke-music: the director holds a playing track and {(resumed ? "resumes" : "restarts")}"
+                + $" the act theme after an errand{(headless && !resumed ? " (no audio clock under --headless)" : "")}"
+            : "smoke-music: FAILED — a redraw restarted the music");
+        GetTree().Quit(_musicProblems);
     }
 
     // An unfilled slot is NORMAL, so this probe cannot fail on a count — it reports one. What it does assert
@@ -414,6 +553,11 @@ public partial class Boot : Control
         actions.AddChild(quit);
         root.AddChild(actions);
 
+        // THE TITLE SCREEN IS WHERE THE MUSIC STARTS, and the only screen that can put it back once a run
+        // has ended. Asked for here rather than in _Ready because the probes above return before this point
+        // — a headless census should not start a four-minute orchestral loop it will never hear.
+        MusicDirector.Instance?.Want(MusicDirector.Track.Title);
+
         // A QUIETER SECOND ROW, on purpose. Reporting a bug is not one of the four things anybody came to this
         // screen to do, so it does not get a button the size of "New run" — but it has to be reachable with no
         // run at all, because the bug that stops somebody from starting one can only be reported from here.
@@ -428,6 +572,21 @@ public partial class Boot : Control
         bug.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
         bug.Pressed += OpenBugReport;
         aside.AddChild(bug);
+
+        // CREDITS BELONG ON THE MAIN MENU and nowhere else — every track in the game is used under a licence
+        // that asks for attribution, so this button is a condition of shipping the music, not a nicety. It
+        // keeps the quiet row for the same reason the bug button does: nobody came here to read it, but it
+        // has to be findable without starting a run.
+        var credits = new Button
+        {
+            Text = "Credits",
+            Flat = true,
+            CustomMinimumSize = new Vector2(0, 32),
+            TooltipText = "The music in this game, and who made it.",
+        };
+        credits.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+        credits.Pressed += OpenCredits;
+        aside.AddChild(credits);
         root.AddChild(aside);
     }
 
@@ -516,6 +675,15 @@ public partial class Boot : Control
             () => GetNodeOrNull("SettingsOverlay")?.QueueFree(),
             OpenBugReport);
         overlay.Name = "SettingsOverlay";
+        AddChild(overlay);
+    }
+
+    private void OpenCredits()
+    {
+        if (GetNodeOrNull("CreditsOverlay") is not null)
+            return;
+        var overlay = CreditsPanel.Overlay(() => GetNodeOrNull("CreditsOverlay")?.QueueFree());
+        overlay.Name = "CreditsOverlay";
         AddChild(overlay);
     }
 

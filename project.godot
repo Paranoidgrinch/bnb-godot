@@ -20,6 +20,10 @@ project/assembly_name="BnbGodot"
 [autoload]
 
 GameHost="*res://scripts/GameHost.cs"
+; The music. An autoload because it has to outlive the scene change from the title screen into a run —
+; a director owned by a screen would stop the moment that screen was freed, which is the moment a run
+; starts. Listed after GameHost so the game document is loaded before anything asks what act it is in.
+MusicDirector="*res://scripts/MusicDirector.cs"
 
 [display]
 

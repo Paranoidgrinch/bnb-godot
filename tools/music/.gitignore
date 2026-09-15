@@ -1,0 +1,9 @@
+# The untouched downloads (200 MB of WAV) and everything rendered from them. The sources are
+# reproduced exactly by ./fetch.sh, which checks them against the SHA-256 in
+# assets/music/SOURCES.md — so the bytes are recorded here even though the files are not.
+src/
+cand/
+out/
+verify.json
+baked.json
+sweep-all.json

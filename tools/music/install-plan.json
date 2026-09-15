@@ -1,0 +1,102 @@
+{
+  "secret_sanctum": {
+    "path": "cand/secret_sanctum__loop_1.2.wav",
+    "out": "music_title_secret_sanctum.ogg",
+    "state": "title",
+    "from": "sweep",
+    "runner_up": null,
+    "loop_seconds": 283.94,
+    "join_percentile": 70.8,
+    "verdict": "inaudible"
+  },
+  "waystone_inn": {
+    "path": "cand/waystone_inn__deep_60_1.2.wav",
+    "out": "music_campfire_waystone_inn.ogg",
+    "state": "campfire",
+    "from": "deep",
+    "runner_up": "87.7 from the sweep pass",
+    "loop_seconds": 96.85,
+    "join_percentile": 22.2,
+    "verdict": "inaudible"
+  },
+  "savvy_merchant": {
+    "path": "cand/savvy_merchant__loop_0.25.wav",
+    "out": "music_shop_savvy_merchant.ogg",
+    "state": "shop",
+    "from": "sweep",
+    "runner_up": null,
+    "loop_seconds": 115.55,
+    "join_percentile": 49.1,
+    "verdict": "inaudible"
+  },
+  "victoriana_loop": {
+    "path": "cand/victoriana_loop__deep_24_1.2.wav",
+    "out": "music_act1_victoriana_loop.ogg",
+    "state": "act1",
+    "from": "deep",
+    "runner_up": "93.7 from the sweep pass",
+    "loop_seconds": 69.28,
+    "join_percentile": 84.8,
+    "verdict": "inaudible"
+  },
+  "dark_chamber": {
+    "path": "cand/dark_chamber__deep_60_0.6.wav",
+    "out": "music_act2_dark_chamber.ogg",
+    "state": "act2",
+    "from": "deep",
+    "runner_up": "92.0 from the sweep pass",
+    "loop_seconds": 160.0,
+    "join_percentile": 72.5,
+    "verdict": "inaudible"
+  },
+  "forest_whisper_theme": {
+    "path": "cand/forest_whisper_theme__loop_2.5.wav",
+    "out": "music_act3_forest_whisper_theme.ogg",
+    "state": "act3",
+    "from": "sweep",
+    "runner_up": "60.5 from the deep pass",
+    "loop_seconds": 44.44,
+    "join_percentile": 26.1,
+    "verdict": "inaudible"
+  },
+  "eternal_sands": {
+    "path": "cand/eternal_sands__deep_40_1.2.wav",
+    "out": "music_act4_eternal_sands.ogg",
+    "state": "act4",
+    "from": "deep",
+    "runner_up": "81.6 from the sweep pass",
+    "loop_seconds": 67.3,
+    "join_percentile": 35.2,
+    "verdict": "inaudible"
+  },
+  "dark_descent": {
+    "path": "cand/dark_descent__loop_1.2.wav",
+    "out": "music_elite_dark_descent.ogg",
+    "state": "elite",
+    "from": "sweep",
+    "runner_up": "91.2 from the deep pass",
+    "loop_seconds": 37.61,
+    "join_percentile": 88.9,
+    "verdict": "inaudible"
+  },
+  "desecrated_temple": {
+    "path": "cand/desecrated_temple__loop_1.2.wav",
+    "out": "music_boss_desecrated_temple.ogg",
+    "state": "boss",
+    "from": "sweep",
+    "runner_up": null,
+    "loop_seconds": 66.49,
+    "join_percentile": 81.7,
+    "verdict": "inaudible"
+  },
+  "land_of_the_great_gods": {
+    "path": "cand/land_of_the_great_gods__loop_2.5.wav",
+    "out": "music_act5_land_of_the_great_gods.ogg",
+    "state": "act5",
+    "from": "sweep",
+    "runner_up": null,
+    "loop_seconds": 145.48,
+    "join_percentile": 61.2,
+    "verdict": "inaudible"
+  }
+}

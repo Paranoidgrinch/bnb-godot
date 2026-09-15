@@ -1,0 +1,23 @@
+[
+  {
+    "file": "dark_descent.wav",
+    "seconds": 37.61,
+    "silence_head_s": 0.0,
+    "silence_tail_s": 0.0,
+    "tail_slope_db": 0.1,
+    "lufs": -8.6,
+    "lra": 4.5,
+    "peak_dbtp": 0.7,
+    "seam": {
+      "step_db": -54.7,
+      "head_db": -11.7,
+      "tail_db": -11.3,
+      "level_gap_db": 0.5,
+      "band_gap_db": [
+        0.7,
+        0.1,
+        0.2
+      ]
+    }
+  }
+]

@@ -29,6 +29,25 @@ presentation manifest.
   skipped under `--smoke*` and `--sim`: every screenshot probe here compares against numbers taken from a
   1280 × 720 window.
 - `scripts/SettingsPanel.cs` — that dialog, on the title screen and on **Esc** inside a run.
+- `scripts/MusicDirector.cs` — **the music**: an autoload (it has to outlive the scene change from the
+  title screen into a run) holding two `AudioStreamPlayer`s that crossfade between ten tracks. A screen never
+  names a file — it says WHERE THE PLAYER IS (`MusicDirector.Want`), and `MusicDirector.Cue` reduces the run
+  state to exactly one track in the priority order Act V ▸ boss ▸ elite ▸ campfire ▸ shop ▸ act ▸ title. Asked
+  from `SessionScreen.Render`, so every route into a shop, a fight or the next act reports itself without
+  anyone remembering to. ⚠ `Want` is idempotent — a redraw must not restart the music, and a fight redraws
+  several times a second. An act theme resumes AT THE BAR IT WAS ON after a shop or an elite; everything else
+  starts from the top. ⚠ Act V is the exception the priority table exists to state: the gauntlet has one theme
+  for its map, its elites and its final boss alike.
+- `scripts/AudioSettings.cs` — **how loud**, and the one place it is decided: a single global Music Volume in
+  `user://settings.cfg`, on an audio bus the two players route through. The title screen's slider and the Esc
+  menu's slider are not two settings kept in step — `SettingsPanel` is one object shown in both places, so
+  they are the same control. ⚠ Both this and `DisplaySettings` **Load before they Save**: a fresh `ConfigFile`
+  writes only its own section and would take the other one with it.
+- `scripts/CreditsPanel.cs` — the **Credits** button on the title screen. Not a nicety: nine of the ten tracks
+  are CC BY and attribution is the condition they are used on. Each entry carries what that author's own page
+  asks for (three of them ask for more than a name), a clickable licence, a clickable **Source**, and the note
+  that the file was edited to loop. `assets/music/SOURCES.md` is the full record — URL, SHA-256 of the exact
+  download, and what was done to it.
 - `scripts/MoonvineTheme.cs` — **the whole look**: one palette (a near-black page bled red, antique gold for
   everything you can touch, amber for everything that wants your attention) and one font hook. It is the only
   place in the frontend allowed to name a colour, and `theme/README.md` says how to swap the typeface in one
@@ -86,6 +105,7 @@ Headless checks (no window):
 godot --headless -- --smoke        # boot: prints "loaded: …" and quits
 godot --headless -- --smoke-art     # the art census: how many of the 709 slots have a file
 godot --headless -- --smoke-generators # both map generators, same seed, side by side: rows and rooms per act
+godot --headless -- --smoke-music   # the ten tracks: present, LOOPING, and the right one for each state
                                      # — what "New run ▸" is actually asking the player to choose between
 godot --headless -- --smoke-full    # auto-plays the first rooms and reports the state
 godot --headless -- --smoke-timing  # per-action latency (~17 ms/action)

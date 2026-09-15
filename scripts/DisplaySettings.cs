@@ -72,6 +72,11 @@ public static class DisplaySettings
     public static void Save()
     {
         var file = new ConfigFile();
+        // ⚠ LOAD BEFORE WRITING. A ConfigFile saves what IT holds, not what the file on disk holds, so a
+        // fresh one would write `[display]` over the whole of settings.cfg and take every other section with
+        // it — silently, and only for players who had already changed something else. There is a second
+        // section now (AudioSettings' `[audio]`), and there will be a third.
+        file.Load(Path);
         file.SetValue(Section, "mode", Mode.ToString());
         file.SetValue(Section, "width", Size.X);
         file.SetValue(Section, "height", Size.Y);

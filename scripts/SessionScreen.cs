@@ -508,6 +508,15 @@ public partial class SessionScreen : Control
             + $"error={session?.Error ?? Play?.Error ?? "none"} stopped because {reason}");
         foreach (var line in byAct)
             GD.Print($"  {line}");
+        // THE MUSIC, OVER A WHOLE GAME. The one place the cue policy is asked every question in the order a
+        // player would meet them — five acts, every shop, campfire, elite and boss. The number is the point:
+        // it should be a few dozen over a hundred rooms. Thousands would mean the music restarts on redraws,
+        // and one would mean it never follows the run at all.
+        if (MusicDirector.Instance is { } music)
+            GD.Print($"  music: {music.Changes} changes over {rooms.Count} rooms, "
+                + $"{music.Visited.Count} of 10 tracks reached "
+                + $"({string.Join(" ", music.Visited.OrderBy(t => t.ToString(), StringComparer.Ordinal))}), "
+                + $"ending on {music.Current}");
         GetTree().Quit();
     }
 
@@ -1699,6 +1708,34 @@ public partial class SessionScreen : Control
         RenderSidebar(session);
         _log.Text = string.Join("\n", session.Run.Log.TakeLast(60).Select(entry => entry.Message));
         AnnounceAct(session);
+        SetMusic(session);
+    }
+
+    // WHERE THE PLAYER IS, told to the music. Asked on every redraw and not on transitions, because a
+    // transition is a thing somebody has to remember to report and a redraw is not: every route into a shop,
+    // a campfire, a fight or the next act passes through here, including the ones added next year.
+    // MusicDirector.Want is idempotent, so the hundreds of redraws a fight causes cost one comparison each.
+    private void SetMusic(InteractiveRunSession session)
+    {
+        // ⚠ NO PROBE GUARD HERE. Working out what should be playing is a dictionary lookup and a few tag
+        // tests, and a whole-game probe is the ONLY thing that ever asks the policy every question in the
+        // order a player would. The expensive half — starting and crossfading streams — is what the probe
+        // skips, and the director skips it itself (MusicDirector.Silent), so this path is walked in full.
+        var node = session.Run.CurrentNodeId?.Value is { } id
+            ? session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == id)
+            : null;
+        // ⚠ A BOSS ROOM IS NOT A BOSS FIGHT. The player stands on the boss node before the fight starts and
+        // again after it is won, collecting the reward — and the document asks for the act's theme at both,
+        // with the boss theme only for the fight itself. So the tags say WHICH battle music, and the combat
+        // driver says WHETHER there is a battle.
+        var inCombat = Play?.CombatDriver?.Current is not null;
+        MusicDirector.Instance?.Want(MusicDirector.Cue(
+            actNumber: session.Run.ActNumber,
+            inCombat: inCombat,
+            boss: node?.HasTag(MapNodeTags.Boss) ?? false,
+            elite: node?.HasTag(MapNodeTags.Elite) ?? false,
+            shop: node?.HasTag(MapNodeTags.Shop) ?? false,
+            rest: node?.HasTag(MapNodeTags.Rest) ?? false));
     }
 
     // Crossing into the next act is the biggest thing that happens outside a fight, and the engine does it by
