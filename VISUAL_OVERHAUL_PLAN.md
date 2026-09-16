@@ -884,13 +884,22 @@ doors. `SAAL II` over a doorway is not a mood board, it is the act title card (`
 `SessionScreen.cs:1744`) with the frame around it already designed.
 
 ⚠ **A PHOTOGRAPH IS NOT A PALETTE — measured before assuming.** Sampling the materials out of the nine files
-(glare-rejected medians) gives the same material a different colour in every photograph: the red field reads
-`#9e504a` under a warm spot in 2610 and sits three stops darker on the lintel of 2600; the black marble is
-`#2f2b28` in one frame and `#807c7c` two metres away where the vitrine reflects a window. The **only** material
-that measured the same twice is the wood — `#2e1c0e` (2627) and `#392a20` (2629) — because it is matte and
-nobody lights it. So the numbers do not come from the photographs. The palette stays `MoonvineTheme`'s, which
-was chosen for a dark room and has been proven legible over seven phases; the photographs supply **grain,
-veining, moulding profile and layout**, and the tint they are drawn in is ours.
+(glare-rejected medians) gives the same material a different colour in every photograph: the **red field** is
+`#583332` on the lintel of 2600 and `#9e504a` in 2610, a factor of 1.7 in luminance between two photographs of
+the same stone; the **black marble** is `#1a1510` on the doorpost of 2629 and `#424143` on the jamb of 2600,
+two metres from a window the vitrine is reflecting. The **only** material that measured the same twice is the
+**wood** — `#2d1c0f` (2627) and `#301808` (2629) — because it is matte and nobody lights it. So the numbers do
+not come from the photographs. The palette stays `MoonvineTheme`'s, which was chosen for a dark room and has
+been proven legible over seven phases; the photographs supply **grain, veining, moulding profile and layout**,
+and the tint they are drawn in is ours.
+
+⚠⚠ **AND FOUR OF THE NINE PHOTOGRAPHS ARE LYING ON THEIR SIDE.** Every file on disk is 4032 × 3024; 2597,
+2600, 2609 and 2629 are portraits carrying an EXIF orientation flag. **ffmpeg honours that flag and PIL does
+not**, so the first sampling pass — fractions read off an ffmpeg-scaled preview, applied with PIL — cropped a
+different part of the picture than the one being looked at, and reported the red field of `SAAL II` as a grey
+`#221e19` that is the dark marble above it. The numbers above are the second pass, with
+`ImageOps.exif_transpose` applied. **Anything that reads these photographs — the material generator included —
+transposes first**, and a crop is checked by writing it out and looking at it, not by trusting the fraction.
 
 ### What is checked in the code
 
