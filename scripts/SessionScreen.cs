@@ -4239,7 +4239,10 @@ public partial class SessionScreen : Control
         // ★ A DECREE IS READ OFF STONE. This is the one band in a fight that is read ONCE, on entering the
         // room, and never changes while the fight runs — which is exactly what a plaque is for, and what
         // separates it from the telegraph under it that changes every turn.
-        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.JasperField(padH: 14, padV: 10));
+        // ⚠ THE PLAQUE PAYS WHAT THE PANEL PAID, NOT A PIXEL MORE. D6 spent a whole pass winning back arena
+        // height and left this band at 80 points; a material that quietly adds 4 to it is a material that
+        // costs layout, which is the one thing D8 may not do. Same content margins as the panel it replaced.
+        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.JasperField(padH: 12, padV: 8));
         var pad = new MarginContainer();
         foreach (var side in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })
             pad.AddThemeConstantOverride(side, 10);

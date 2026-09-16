@@ -845,7 +845,7 @@ card); it has a ground, it fades, and it is centred on its real width.
 
 ---
 
-## Phase D8 — the material pass: wood, stone, and writing in gold  ▶ PROPOSED 2026-09-16
+## Phase D8 — the material pass: wood, stone, and writing in gold  ✔ BUILT 2026-09-16
 
 **Why there is an eighth phase.** D0's fourth risk, written before any of this was built: *"A palette is not a
 look."* Seven phases later that is exactly half true. Every **object** on the screen has a look now — the card
@@ -985,6 +985,67 @@ No rule, number, pool or fight changes — the same fence as the rest of this pl
 bnb-godot is a single assembler line in **bnb-content** filling `Presentation.Encounters[*].Art`, verified the
 way D3's and D4's were: regenerate, diff old against new, and expect **294 leaf differences, 0 only-old, 0
 only-new**, every one of them `Art` null → a path.
+
+---
+
+### What was actually built (2026-09-16)
+
+Committed across bnb-godot (`328126a` → `2e38d34`) and bnb-content (`7e81b83`). Suite 1501/1501.
+
+**The lessons, in the order they were paid for.**
+
+⚠⚠ **A RAMP IS A CONTRAST CHANGE.** Normalising a grain to sigma 7 and then mapping it through three stops
+spanning a third of the range delivers sigma 1.3 — a wood nobody can see. Gain is solved against the ramped
+output.
+
+⚠⚠ **A MIRRORED TILE IS A RORSCHACH, AND IT SHOWS AT SIGMA 7.** Four flipped quadrants put a butterfly axis
+down the middle of the marble. The seam is healed in a band instead, so the mirroring is local to a strip.
+*Measuring contrast said nothing about this; only looking did.*
+
+⚠⚠ **GRAIN IS A WAVELENGTH IN SCREEN PIXELS, NOT A FRACTION OF A TILE.** An 80 px centre whose lowest
+components ran three cycles across it is 8 px a stripe, and the settings dialog came out in corduroy. D2's
+rule (encode at the size it is drawn) one layer up.
+
+⚠⚠ **A SUB-CROP OF A SEAMLESS TILE IS NOT A SEAMLESS TILE.** A nine-patch repeats its centre, and the centre
+of a 128 px piece is a 96 px crop whose own edges match nothing. Centres are generated at centre size.
+
+⚠⚠ **THE PAGE IS NOT A TABLET, AND A WALL IS NOT FURNITURE.** Wood on `PanelContainer` also landed on the main
+container: 940 × 700 of it, where the repeat shows and the grain competes with everything standing on it. The
+page keeps its ground; the furniture wears the material.
+
+⚠⚠ **A MATERIAL MAY NOT COST LAYOUT.** The carved border is 8 px and not 16, because a stylebox's content
+margin must clear its texture margin, and 16 would have forced 20 px of padding into every panel in a game
+whose arena D6 fought for. The jasper plaque likewise pays exactly what the panel it replaced paid.
+
+⚠⚠ **THE SCRIM LIVES IN THE SLOT, NOT IN THE PICTURE**, and ⚠⚠ **the picture goes INSIDE the pane, not
+behind it** — hung on the screen's root it was loaded, drawn, paid for and invisible, because since D8-1 the
+pane wears an opaque stylebox. The only trace of an entire act's background was one letter beside the sidebar.
+
+⚠⚠ **A HEADING DOES NOT WRAP**, and a `TextureRect` hands its texture's size up as a minimum. D1 met this in
+the card, D3 in the sidebar, D4 in the shelf, D8-2 in the heading and D8's opening in the logo: **a picture
+does not decide how big it is drawn, the layout does.** Five doorways, one room.
+
+**Measured.**
+
+    smoke-marathon:  Victory acts=5 rooms=110 seconds=540.8 (D6: 434; the gate asks <= 592)
+                     — and the marathon is HEADLESS, so none of that is drawing. It scales with ANSWERS
+                       (472 / 716 / 1391 / 1971 per act) at a flat ~0.1 s each: the replay model's shape,
+                       and the walker's new measure rule spends more turns per fight.
+    smoke-art:       714 of 714 (229 cards, 210 relics, 269 bodies, 1 character, 5 rooms)
+    smoke-format:    5 slots, 134x190, 0 off over 10 clicks — PASS
+    smoke-tooltips:  0 named-but-unexplained on combat, crowd, shelf, map, rest
+    smoke-crowd:     offscreen=no, arena 894 tall / column 332 — all visible
+    smoke-shelf:     worn=69 tiles=69 rows=14 outside=no scrolls=yes
+    smoke-window:    1280/1600/1920 — arena 880-967 x 334, hand clear at all three
+    smoke-generators both generators lay out every act; a resumed run keeps its map
+    smoke-boss 5:    act=5 boss=yes round=7 vs Utu — arena 246 / column 372, 126 below the fold
+                     — D6 measured 323 at NISABA; the same probe reports 372 before and after D8 touched
+                       the plaque's padding, so the difference is Utu's two-line name, not this phase.
+
+**Open, and V-7's rather than D8's.** At Utu it is the enemy's INTENT that sits below the fold, not the chip
+list D6 deliberately put there — a player who cannot see what a god is about to do is not playing the fight.
+And `--smoke-timing` reports **147 ms/action** where this repository's README says ~17; one of those two
+numbers has been wrong for a long time.
 
 ---
 
