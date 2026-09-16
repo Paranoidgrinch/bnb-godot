@@ -152,12 +152,19 @@ def seamless(image, n, feather=None):
 def wood_grain(n, sigma, seed=7):
     """Wood is drawn, not photographed: the two photographs show it in perspective, and a plank's grain is a
     periodic thing that a tile can simply BE, instead of being cut to look like one."""
+    # ⚠⚠ GRAIN IS A WAVELENGTH IN SCREEN PIXELS, NOT A FRACTION OF A TILE. The first panel tiled a 80 px
+    # centre whose lowest components ran three cycles across it — about 8 px per stripe, five repeats across a
+    # dialog — and the settings box came out in corduroy. Wood at panel size is FINE and QUIET: the low
+    # frequencies that make a plank look like a plank at arm's length are the ones that make it look like a
+    # barcode at 240. So the spectrum starts at 13, the falloff is gentle enough to keep the fine lines, and
+    # the panel tiles at 240 px instead of 80 — D2's rule (encode at the size it is drawn) one layer up.
     rnd = random.Random(seed)
-    parts = [(f, rnd.uniform(0, 2 * math.pi), 1.0 / f ** 0.55) for f in (3, 5, 7, 11, 13, 17, 23, 31, 41, 53)]
+    parts = [(f, rnd.uniform(0, 2 * math.pi), 1.0 / f ** 0.25)
+             for f in (13, 17, 23, 29, 37, 41, 53, 61, 73, 89, 101)]
     grey = Image.new("L", (n, n))
     px = grey.load()
     for y in range(n):
-        wobble = 7 * math.sin(2 * math.pi * y / n) + 3 * math.sin(4 * math.pi * y / n + 1.1)
+        wobble = 3 * math.sin(2 * math.pi * y / n) + 1.5 * math.sin(4 * math.pi * y / n + 1.1)
         for x in range(n):
             u = 2 * math.pi * ((x + wobble) % n) / n
             v = sum(a * math.sin(f * u + p) for f, p, a in parts)
@@ -215,7 +222,7 @@ def nine_patch_ground(kind, size, border, sigma=PANEL_SIGMA):
     return image
 
 
-def panel_wood(size=96, border=8, rim=False):
+def panel_wood(size=256, border=8, rim=False):
     """The everyday panel: a wood ground in a carved edge. Nine-patch margins = `border`.
 
     ⚠ THE BORDER IS 8 AND NOT 16 BECAUSE OF THE ARENA. A stylebox's content margin has to clear its texture
@@ -226,7 +233,7 @@ def panel_wood(size=96, border=8, rim=False):
     `rim` adds the gold hairline an overlay wants: a dialog on top of the game says so with one gold line,
     which is what the accent has meant since D0.
     """
-    image = nine_patch_ground("wood", size, border)
+    image = nine_patch_ground("wood", size, border, sigma=5.0)
     draw = ImageDraw.Draw(image)
     edge = (0x08, 0x05, 0x03, 255)
     lift = (0x3c, 0x28, 0x14, 255)

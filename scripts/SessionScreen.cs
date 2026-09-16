@@ -64,6 +64,13 @@ public partial class SessionScreen : Control
         AddChild(split);
 
         var mainPanel = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        // ⚠⚠ THE PAGE IS NOT A TABLET, AND A WALL IS NOT FURNITURE. Making PanelContainer wear wood put the
+        // material on this container too — 940 x 700 of it, half the screen, where the tile's repeat is
+        // plainly visible and the grain competes with everything standing on it. In the reference the wood is
+        // the DOORWAY and the CABINET; what they are set into is dark stone. So the page keeps the near-black
+        // ground it has had since D0 — and it is also the surface the act's own picture arrives on in D8-3,
+        // which is the second reason nothing decorative belongs here.
+        mainPanel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.Bg, MoonvineTheme.Hairline));
         var mainHolder = new Control();
         _mainScroll = new ScrollContainer();
         _mainScroll.SetAnchorsPreset(LayoutPreset.FullRect);
