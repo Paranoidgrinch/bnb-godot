@@ -104,7 +104,14 @@ public partial class Splash : ColorRect
                 Texture = logo,
                 StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
                 TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
-                CustomMinimumSize = new Vector2(0, 220),
+                // ⚠⚠ A TEXTURERECT HANDS ITS TEXTURE'S SIZE UP AS A MINIMUM. The mark is 980 x 1024 as a file,
+                // so the column dutifully gave it 980 x 1024, it filled the screen and pushed the words that
+                // name the studio clean off the bottom. `IgnoreSize` is what makes the CustomMinimumSize the
+                // only size it asks for — D1's container lesson in a fifth doorway, and it never gets less
+                // surprising: a picture does not decide how big it is drawn, the layout does.
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                CustomMinimumSize = new Vector2(0, 240),
+                SizeFlagsVertical = SizeFlags.ShrinkCenter,
                 MouseFilter = MouseFilterEnum.Ignore,
             };
             column.AddChild(mark);
