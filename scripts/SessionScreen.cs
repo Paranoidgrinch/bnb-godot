@@ -1823,13 +1823,13 @@ public partial class SessionScreen : Control
         // A GAUNTLET SAYS WHO IS COMING, and the title card is where "from the beginning of the act" actually
         // is: Act V draws three gods of six, and the design requires the three and their order to be visible
         // before the first of them is fought, not after.
-        Banner(name, RollCall(session.Run) is { Count: > 1 } gods ? string.Join("  ▸  ", gods) : null);
+        Banner(act, name, RollCall(session.Run) is { Count: > 1 } gods ? string.Join("  ▸  ", gods) : null);
     }
 
     // A title card that fades away by itself: the whole screen dimmed, the act's name across it, and under it
     // — QUIETER — whoever the act is bringing. They used to be one label at one size, so the roll call shouted
     // as loudly as the act's own name and the card had no first thing to read. A subtitle is a subtitle.
-    private void Banner(string text, string? under = null)
+    private void Banner(int act, string text, string? under = null)
     {
         if (!IsInsideTree())
             return; // a headless probe can redraw on its way out of the tree; there is nobody to show it to
@@ -1848,32 +1848,17 @@ public partial class SessionScreen : Control
         column.SetAnchorsPreset(LayoutPreset.FullRect);
         column.Alignment = BoxContainer.AlignmentMode.Center;
 
-        var title = new Label
-        {
-            Text = text,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        title.AddThemeFontSizeOverride("font_size", 34);
-        title.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
-        column.AddChild(title);
-
+        // ★ THE CARD IS A DOORWAY NOW. Crossing into an act is walking through one, and the object that says
+        // so is the same one the way-screen carries at the top of every room — one lintel, two sizes, so the
+        // place a player has just entered is named in the same voice from the card to the map to the room.
+        var doorway = Lintel.Make(act, text, under, grand: true);
+        doorway.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
+        doorway.CustomMinimumSize = new Vector2(620, 0);
         if (under is not null)
-        {
-            var roll = new Label
-            {
-                Text = under,
-                // A title card can name a rule — Act V's gods are called after the things they do — and the
-                // seconds it is up are seconds a player may reach for one of those names.
-                TooltipText = Glossary.Explain(null, under),
-                MouseFilter = MouseFilterEnum.Stop,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            };
-            roll.AddThemeFontSizeOverride("font_size", 20);
-            roll.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
-            column.AddChild(roll);
-        }
+            // A title card can name a rule — Act V's gods are called after the things they do — and the
+            // seconds it is up are seconds a player may reach for one of those names.
+            doorway.TooltipText = Glossary.Explain(null, under);
+        column.AddChild(doorway);
 
         veil.AddChild(column);
         AddChild(veil);
@@ -2388,10 +2373,11 @@ public partial class SessionScreen : Control
             : null;
         if (name is not null)
         {
-            var label = new Label { Text = name, AutowrapMode = TextServer.AutowrapMode.WordSmart };
-            label.AddThemeFontSizeOverride("font_size", 15);
-            label.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
-            _main.AddChild(label);
+            // A heading is an OBJECT on the page, not a band across it: shrink to what it says, and sit where
+            // the label it replaced sat.
+            var heading = Lintel.Make(run.ActNumber, name);
+            heading.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+            _main.AddChild(heading);
         }
         if (run.Map.Nodes.Count > 0)
             Muted($"Room {run.VisitedNodes.Count} of about {LongestRoute(run.Map)}");

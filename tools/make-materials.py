@@ -281,16 +281,19 @@ def field_jasper(size=128, border=10):
 
 def moulding_gold(width=96, height=18):
     """Egg-and-dart, tileable across: an egg, a dart, an egg. The only ornament allowed to be gold."""
+    # ⚠ A COURSE OF MOULDING IS A TEXTURE, NOT A ROW OF MEDALS. The first one was lit like jewellery — a
+    # bright body with a brighter highlight — and thirty of them across a heading turned the top of the screen
+    # into a strip of coins that outshouted the act's own name. On the stone it is dim brass catching one
+    # edge of the light: the body is the DARK gold, only the top edge is the accent, and the dart is a hint.
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     step = width // 4
     for i in range(4):
         x = i * step
-        draw.ellipse([x + 2, 2, x + step - 8, height - 3], fill=(*GOLD_DARK, 255), outline=(*GOLD, 255))
-        draw.ellipse([x + 4, 4, x + step - 10, height - 5], fill=(*GOLD, 255))
-        draw.ellipse([x + 5, 5, x + step - 13, height - 9], fill=(*GOLD_LIGHT, 255))
-        draw.polygon([(x + step - 6, 2), (x + step - 2, height // 2), (x + step - 6, height - 3)],
-                     fill=(*GOLD, 255), outline=(*GOLD_LIGHT, 255))
+        draw.ellipse([x + 2, 2, x + step - 8, height - 3], fill=(*GOLD_DARK, 235))
+        draw.arc([x + 2, 2, x + step - 8, height - 3], 190, 350, fill=(*GOLD, 235), width=1)
+        draw.polygon([(x + step - 6, 3), (x + step - 3, height // 2), (x + step - 6, height - 4)],
+                     fill=(*GOLD_DARK, 220))
     return image
 
 
