@@ -1,8 +1,9 @@
 # Visual Overhaul Plan — the game stops looking like a test harness
 
-**Status:** proposed 2026-09-10. Runs BEFORE `ACT_IV_V_BUILD_PLAN.md` step **V-7**, at the user's decision:
-the full suites and the whole-game gates are worth running against the game that ships, not against the one
-that is about to be re-skinned.
+**Status:** proposed 2026-09-10; **D0–D6 built**, **D8 added 2026-09-16** at the user's request (the material
+pass — see below; it runs before the D7 gate, which then covers it). The whole arc runs BEFORE
+`ACT_IV_V_BUILD_PLAN.md` step **V-7**, at the user's decision: the full suites and the whole-game gates are
+worth running against the game that ships, not against the one that is about to be re-skinned.
 
 **Scope, in the user's words:** the card face (the new master front), the card back (the new master clip),
 cards 20 % larger in hand and on the draw pile, an art slot per card and per relic that stays EMPTY for now
@@ -844,13 +845,148 @@ card); it has a ground, it fades, and it is centred on its real width.
 
 ---
 
+## Phase D8 — the material pass: wood, stone, and writing in gold  ▶ PROPOSED 2026-09-16
+
+**Why there is an eighth phase.** D0's fourth risk, written before any of this was built: *"A palette is not a
+look."* Seven phases later that is exactly half true. Every **object** on the screen has a look now — the card
+face, the back, the shelf tile, the plate, the chip, the telegraph rail. What has none is the **ground they
+stand on**: the whole game is drawn over a single `ColorRect` in `MoonvineTheme.Bg` (`SessionScreen.cs:57`, and
+the same rect again at `Boot.cs:19`), and every panel over it is a flat fill with a hairline — `Panel()` returns
+a `StyleBoxFlat` and is called from **31** places. A flat fill is what a tool looks like.
+
+**Scope, in the user's words (2026-09-16):** instead of the plain dark-red wash, *ornamented dark wood together
+with this very dark red stone and the gold lettering*, and *a background picture of its own per act in combat*.
+Placeholders to begin with — the point of the phase is that the **frame** of the game is finished now, so that
+cards, relics, enemies and backgrounds can be painted and dropped in one at a time while balancing runs.
+
+### The reference, and what it is not
+
+Nine photographs from the Naturhistorisches Museum Wien (`~/Downloads/IMG_2596…2629.jpg`, 2026-09-16). They are
+reference, never assets: each one has vitrine glare, a wall label, an exit sign or a visitor's hand in it.
+
+Three of them (2600, 2610, 2629) are the same construction photographed three times, and that construction is
+the whole proposal:
+
+- a **frame** of black marble with white veining
+- a **field** of oxblood stone set into it
+- **antique gold used exactly twice**: as the writing on the field (`SAAL II`, `VII`), and as one moulding — an
+  egg-and-dart — along the cornice
+- and 2627 is the same building in its warm register: dark carved wood, dentils, corner rosettes, gold roman
+  numerals on the lintel, doorway inside doorway inside doorway
+
+★ **THE GRAMMAR IS FRAME / FIELD / WRITING, AND THE GAME ALREADY SPEAKS IT.** A relic tile is a pool frame
+around a ground (D4); a card is a frame around fields (D1). What D8 does is give those three parts a MATERIAL
+instead of a fill — and then stop. Gold stays what D0 made it: the thing you can touch, and the writing. If
+gold becomes a surface, nothing on the screen is an accent any more.
+
+★ **AND THE REFERENCE IS ALREADY OUR SUBJECT MATTER.** The run is five acts in roman numerals walked through
+doors. `SAAL II` over a doorway is not a mood board, it is the act title card (`AnnounceAct`,
+`SessionScreen.cs:1744`) with the frame around it already designed.
+
+⚠ **A PHOTOGRAPH IS NOT A PALETTE — measured before assuming.** Sampling the materials out of the nine files
+(glare-rejected medians) gives the same material a different colour in every photograph: the red field reads
+`#9e504a` under a warm spot in 2610 and sits three stops darker on the lintel of 2600; the black marble is
+`#2f2b28` in one frame and `#807c7c` two metres away where the vitrine reflects a window. The **only** material
+that measured the same twice is the wood — `#2e1c0e` (2627) and `#392a20` (2629) — because it is matte and
+nobody lights it. So the numbers do not come from the photographs. The palette stays `MoonvineTheme`'s, which
+was chosen for a dark room and has been proven legible over seven phases; the photographs supply **grain,
+veining, moulding profile and layout**, and the tint they are drawn in is ours.
+
+### What is checked in the code
+
+1. **There is exactly one background in the game.** `SessionScreen.cs:57` — a `ColorRect` at `FullRect` in
+   `Bg`, behind every screen the session draws, combat included. A per-act picture goes *there*, under the same
+   `split`, and no layout moves.
+2. **The act number is already in hand.** `session.Run.ActNumber` (`SessionScreen.cs:1746`). **No engine seam.**
+3. **An encounter already has an `Art` slot, and it is `null` 294 times.** `Presentation.Encounters[<id>].Art`
+   exists, survives export, and is empty for every encounter in the game; the frontend already reads that same
+   dictionary at the current node (`SessionScreen.cs:3988`, for `Extra`). So the background needs no new bucket,
+   no schema change and no new contract — it needs the slot that is already there to be filled. ★ **Filling it
+   per ACT buys per-ENCOUNTER for free:** the assembler writes `backgrounds/<act>.png` into all 294, and the day
+   one boss deserves a room of its own, one value changes and nothing else does. This is D3's finding a third
+   time — *the path of the contract is the path on disk* — and D4's second — *`Frame` was the slot the contract
+   already had*.
+4. **`MoonvineTheme` holds colours and nothing else.** Every token is a `Color` and `Panel()` returns a
+   `StyleBoxFlat`. A material is a `StyleBoxTexture` / `NinePatchRect`, i.e. a second KIND of token: the file
+   gains a section rather than a rewrite, and all 31 `Panel()` callers keep working, because everything that
+   should stay flat stays flat.
+5. **The placeholder machinery exists and has a convention.** `tools/make-card-art.py`, `make-relic-art.py`,
+   `make-enemy-art.py` over `tools/placeholder_art.py`: each writes a plate carrying its own file name and the
+   word PLACEHOLDER, marks it with a `bnb-placeholder` PNG text chunk, and offers `--force` / `--clean`. D8 adds
+   one more script to that family and invents nothing.
+
+### The work
+
+**D8-1 — the material layer in the theme.** Four materials, as shared tiled / nine-patch textures tinted by the
+tokens that already exist:
+
+| material | role | where it is used |
+|---|---|---|
+| **wood**, dark and ornamented | the chrome — the cabinet the game is kept in | sidebar, way-screen panels, the shelf's rail, window edges |
+| **stone**, black with white veining | the frame | plate edges, the map's border, the lintel's surround |
+| **jasper**, oxblood and veined | the field | act plaque, banner ground, section heads |
+| **gold** | the writing | unchanged `Accent` / `AccentLight`, plus one egg-and-dart moulding — a colour, never a surface |
+
+The rules D0–D6 earned still hold and are not reopened here: the default border is the hairline, not the
+accent; red is not a warning; and a material is chosen by the ROLE of a surface, never by taste — the same
+discipline as the six-step ramp.
+
+**D8-2 — the lintel.** One reusable header — stone surround, jasper field, gold roman numeral, one gold
+moulding — used by the act title card (`Banner`), the act line on the way-screen, and the door and boss rooms.
+This is the highest-value object in the phase: it is what turns "Act II: The Endless Archives" from a label
+into a place.
+
+**D8-3 — the act backgrounds.** `assets/art/backgrounds/<act>.png` — five files for `act_1_city` …
+`act_5_divine_ledger` — declared through `Presentation.Encounters[*].Art` (item 3 above), resolved exactly like
+every other picture in the game and imported by `tools/import-art.sh`.
+
+⚠ **A BACKGROUND MAY NOT EAT THE FIGHT.** The card face, the telegraph plate and the chips are legible because
+they are light objects on a near-black ground, and D6 spent a whole pass getting a god's telegraph above the
+fold. So a picture never reaches the screen bare: the slot itself carries a fixed scrim and vignette (the veil
+`Banner` uses at 0.82 is the family), the picture always sits UNDER it, and the arena's own plates keep their
+grounds. A picture dropped in months from now therefore cannot break the legibility of a fight, however bright
+it is — which is the entire point of having a placeholder era.
+
+**D8-4 — the placeholders.** `tools/make-background-art.py`, in the family: five plates, each naming its act and
+carrying `bnb-placeholder`, derived from the jasper and stromatolite photographs (2609 for the pitted red field,
+2606 for the layered slab, 2597 for the white-veined one), cropped away from the glare and tiled seamless.
+Ugly enough to be recognised as a placeholder, quiet enough to play over.
+
+**D8-5 — the map.** D6 left the map out because it was about to be rebuilt. It has been (S1–S15), so the
+material pass covers it now: the map's border is stone, its act header is the lintel, and the paths stay
+exactly as the map rework drew them.
+
+### The probes
+
+- `--smoke-art` — every slot still filled, with five more once it walks the encounter bucket as well (709 → 714).
+- `--smoke-format` — 5/5 PASS. A card face over a textured ground is precisely where a nine-patch's content
+  margin can push a minimum size around, which is the bug D1 measured rather than guessed.
+- `--smoke-tooltips` — 0 named-but-unexplained, unchanged.
+- `--smoke-crowd` / `--smoke-boss 5` — D6's arena numbers (viewport 246, tallest column 323) may not get worse.
+  A background changes no layout; if it does, that is the finding.
+- `--smoke-marathon` — **the cost gate.** D6 measured 434 s against D7's ceiling of 592 s. Materials are a
+  handful of SHARED textures and one background per act, a fixed cost rather than a per-node one; if the
+  marathon moves more than a few seconds, something is being loaded per redraw instead of once.
+- `--smoke-materials` (new) — every material texture resolved, every act background resolved for acts I–V, and
+  the scrim present over each: the same "is it actually there" question `--smoke-art` answers for the 709.
+
+### Cost, and what this phase may not do
+
+No rule, number, pool or fight changes — the same fence as the rest of this plan. The only work outside
+bnb-godot is a single assembler line in **bnb-content** filling `Presentation.Encounters[*].Art`, verified the
+way D3's and D4's were: regenerate, diff old against new, and expect **294 leaf differences, 0 only-old, 0
+only-new**, every one of them `Art` null → a path.
+
+---
+
 ## Phase D7 — the gate, and only then V-7
 
-1. Core + bnb-content suites green (they are today: 1469 / 755 / 581 / 373 and 1467/1467).
-2. bnb-godot builds; every screenshot probe captured and reviewed by the user.
+1. Core + bnb-content suites green (they are today: 1469 / 755 / 824 / 385 and 1501/1501).
+2. bnb-godot builds; every screenshot probe captured and reviewed by the user — the battery now includes
+   D8's `--smoke-materials`, and the map (which D6 deferred and D8-5 picked up).
 3. `--smoke-marathon` still finishes with `Victory acts=5 rooms=111` and its per-act latency **not worse**
    than 592 s — a card face with an art window and a texture per card is more nodes per screen than a
-   label stack, and the marathon is where that shows.
+   label stack, and the marathon is where that shows. (D6 measured 434 s; D8 must not spend that margin.)
 4. Then, unchanged, `ACT_IV_V_BUILD_PLAN.md` **V-7**.
 
 ---
@@ -866,7 +1002,13 @@ card); it has a ground, it fades, and it is centred on its real width.
    works" failure this project keeps finding.
 4. **A palette is not a look.** Dark red plus an accent will not by itself stop the screen reading as a
    harness; what fixes that is the card face, the relic shelf and the pickers — which is why D0 is the
-   shortest phase here and D1/D4/D5 are the long ones.
+   shortest phase here and D1/D4/D5 are the long ones. ★ **Half-confirmed 2026-09-16, and that is why D8
+   exists:** the objects stopped looking like a harness, the ground they stand on did not.
+5. **A material can cost what a colour does not** (D8). A `StyleBoxFlat` is a rectangle; a `StyleBoxTexture` is
+   a texture lookup per panel, and there are 31 panel sites plus a background per act. The mitigation is that
+   every material is ONE shared texture, loaded once — measured at `--smoke-marathon`, against D6's 434 s.
+6. **A picture the user has not painted yet must not be able to break a fight** (D8-3). The scrim lives in the
+   slot, not in the picture, for exactly this reason.
 
 ---
 
