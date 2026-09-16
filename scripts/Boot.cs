@@ -415,10 +415,20 @@ public partial class Boot : Control
             .Where(id => CardVisuals.SlotPath("cards", id) != CardVisuals.SlotPath("cards", id.TrimEnd('+')))
             .ToList();
 
-        GD.Print($"smoke-art: {cards.Count + relics.Count + bodies.Count + heroes.Count} slots asked for "
-            + $"({cards.Count} cards, {relics.Count} relics, {bodies.Count} bodies, {heroes.Count} characters), "
-            + $"{filledCards + filledRelics + filledBodies + filledHeroes} filled, "
+        // The rooms. 294 encounters ask for five pictures, because the converter fills the slot per ACT — so
+        // what is counted is the DISTINCT paths declared, the same way the card census counts a picture once
+        // however many cards draw it.
+        var rooms = blueprint.Presentation.Encounters.Values
+            .Select(e => e.Art).Where(a => !string.IsNullOrEmpty(a)).Distinct().ToList();
+        var filledRooms = rooms.Count(a => ResourceLoader.Exists($"res://assets/art/{a}"));
+
+        GD.Print($"smoke-art: {cards.Count + relics.Count + bodies.Count + heroes.Count + rooms.Count} slots asked for "
+            + $"({cards.Count} cards, {relics.Count} relics, {bodies.Count} bodies, {heroes.Count} characters, "
+            + $"{rooms.Count} rooms), "
+            + $"{filledCards + filledRelics + filledBodies + filledHeroes + filledRooms} filled, "
             + $"{strays.Count} upgrade(s) asking for a picture of their own");
+        foreach (var art in rooms.Where(a => !ResourceLoader.Exists($"res://assets/art/{a}")).Take(2))
+            GD.Print($"  waiting: assets/art/{art}");
         foreach (var id in strays.Take(5))
             GD.Print($"  STRAY {id} asks for {CardVisuals.SlotPath("cards", id)}");
         foreach (var id in cards.Where(id => CardVisuals.CardArt(id) is null).Take(2))

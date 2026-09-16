@@ -49,14 +49,23 @@ public partial class SessionScreen : Control
     private Control? _regionHand;
 
     private static RunPlayback? Play => GameHost.Instance.Play;
+
+    private TextureRect? _actPicture;
+    private ColorRect? _actScrim;
+    private string? _pictureShown;
     private static InteractiveRunSession? Session => Play?.Session;
 
     public override void _Ready()
     {
         Theme = MoonvineTheme.Build();
+        // ── the room this is all happening in (D8-3) ─────────────────────────────
+        // The act's own picture, under everything. `Presentation.Encounters[<id>].Art` names it — the slot the
+        // export contract has always had, filled per act by the converter — and a room with no picture (or a
+        // picture not yet painted) simply leaves the ground showing, which is what every screen did before.
         var background = new ColorRect { Color = MoonvineTheme.Bg };
         background.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(background);
+
 
         var split = new HBoxContainer();
         split.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -77,6 +86,38 @@ public partial class SessionScreen : Control
         _main = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _main.AddThemeConstantOverride("separation", 10);
         _mainScroll.AddChild(_main);
+        // ⚠⚠ THE PICTURE GOES INSIDE THE PANE, NOT BEHIND IT. Hung on the screen's root it was drawn, loaded
+        // and paid for, and invisible: since D8-1 the main pane wears an OPAQUE stylebox, and the only trace
+        // of an entire act's background was one letter showing in the gap beside the sidebar. It belongs in
+        // the pane anyway — the sidebar is furniture, not the room.
+        _actPicture = new TextureRect
+        {
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
+            TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
+            // A picture does not decide how big it is drawn — the fifth doorway into D1's container lesson,
+            // and this one would have handed a 1280-wide minimum to a pane that has to work far narrower.
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            MouseFilter = MouseFilterEnum.Ignore,
+            Visible = false,
+        };
+        _actPicture.SetAnchorsPreset(LayoutPreset.FullRect);
+        mainHolder.AddChild(_actPicture);
+
+        // ⚠⚠ THE SCRIM LIVES IN THE SLOT, NOT IN THE PICTURE. The card face, the telegraph plate and the chips
+        // are legible because they are light objects on a near-black ground, and D6 spent a whole pass getting
+        // a god's telegraph above the fold. A picture therefore never reaches the screen bare: it is always
+        // under this veil, at a fixed strength nothing downstream may soften. That is what makes it safe to
+        // drop a background in months from now without looking at what it does to a fight — the worst a loud
+        // picture can do is look loud UNDER a veil.
+        _actScrim = new ColorRect
+        {
+            Color = new Color(MoonvineTheme.Bg, 0.60f),
+            MouseFilter = MouseFilterEnum.Ignore,
+            Visible = false,
+        };
+        _actScrim.SetAnchorsPreset(LayoutPreset.FullRect);
+        mainHolder.AddChild(_actScrim);
+
         mainHolder.AddChild(_mainScroll);
         // The graphical combat scene lives here (hero left, enemies right, hand bottom) — shown only in combat.
         _combatRoot = new Control { Visible = false };
@@ -1739,6 +1780,38 @@ public partial class SessionScreen : Control
         BugReportPanel.Open(this);
     }
 
+    // The room a fight happens in. Only in a FIGHT: between rooms the player is reading lists and a map, and a
+    // picture behind those is decoration competing with the one thing the screen is for. Nothing is loaded
+    // twice — a rebuild happens on every single answer, and this runs on every rebuild.
+    private void ShowActPicture(InteractiveRunSession? session, bool inCombat)
+    {
+        if (_actPicture is null || _actScrim is null)
+            return;
+
+        var wanted = inCombat && session is not null ? PictureForRoom(session) : null;
+        if (wanted != _pictureShown)
+        {
+            _pictureShown = wanted;
+            _actPicture.Texture = wanted is null ? null
+                : ResourceLoader.Exists($"res://assets/art/{wanted}")
+                    ? GD.Load<Texture2D>($"res://assets/art/{wanted}")
+                    : null;
+        }
+        _actPicture.Visible = _actScrim.Visible = _actPicture.Texture is not null;
+    }
+
+    // What THIS room declares it is a picture of. Per encounter, because that is what the contract carries —
+    // the converter happens to fill it per act today, and the day one boss gets a room of its own this reads
+    // it without changing.
+    private static string? PictureForRoom(InteractiveRunSession session)
+    {
+        var here = session.Run.CurrentNodeId?.Value;
+        var node = here is null ? null : session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == here);
+        return node?.Payload is EncounterRef fight
+            ? GameHost.Instance.Blueprint.Presentation.Encounters.GetValueOrDefault(fight.Id.Value)?.Art
+            : null;
+    }
+
     private void Rebuild()
     {
         var session = Session;
@@ -1746,6 +1819,8 @@ public partial class SessionScreen : Control
         var inCombat = session is not null && Play?.Error is null && session.Error is null
             && !session.IsAwaitingChoice && !session.IsAwaitingEntities && !session.IsAwaitingNodeChoice
             && !session.IsAwaitingInterlude && Play?.CombatDriver?.Current is not null;
+
+        ShowActPicture(session, inCombat);
 
         foreach (var child in _main.GetChildren())
             child.QueueFree();
@@ -2474,7 +2549,13 @@ public partial class SessionScreen : Control
         {
             SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
         };
-        _main.AddChild(map);
+        // D8-5: the act's map hangs in a marble surround, the way the lintel above it is set in one. The rooms
+        // and the paths between them are NOT touched — that is the map rework's drawing (S1–S15) and this pass
+        // repaints what a thing is set in, never what it says.
+        var mount = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
+        mount.AddThemeStyleboxOverride("panel", MoonvineTheme.StoneFrame(padH: 14, padV: 12));
+        mount.AddChild(map);
+        _main.AddChild(mount);
         _main.AddChild(MapLegend());
         // Keep the room the run stands in on screen — an act's map is taller than the window.
         CallDeferred(nameof(ScrollToCurrentRoom), map);
