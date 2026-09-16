@@ -599,9 +599,9 @@ public partial class Boot : Control
         // "Armed with forms, stamps, and a fireproof sense of procedure" comes out six lines tall and pushes the
         // roster off the bottom of the screen.
         var panel = new PanelContainer { CustomMinimumSize = new Vector2(330, 140) };
-        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
-            selected ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
-            selected ? MoonvineTheme.AccentLight : unlocked ? new Color(MoonvineTheme.Accent, 0.3f) : new Color(MoonvineTheme.TextMuted, 0.2f)));
+        panel.AddThemeStyleboxOverride("panel", unlocked
+            ? MoonvineTheme.WoodPanel(rim: selected)
+            : MoonvineTheme.Panel(MoonvineTheme.BgPanelStrong, new Color(MoonvineTheme.TextMuted, 0.2f)));
 
         // WHO YOU ARE ABOUT TO BE, as a body and not only as a name. The roster is the first choice the game
         // asks of anybody, and it was the last one still made entirely out of words.

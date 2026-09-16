@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cpnyi543er0ki"
-path="res://.godot/imported/frame-lintel.png-a8758f3ab08ae44622641e68cf0d4c4e.ctex"
+uid="uid://d2of1d0jf5821"
+path="res://.godot/imported/panel-wood-rim.png-25aa8132e9b28a5b9d77d9460edd3379.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/materials/frame-lintel.png"
-dest_files=["res://.godot/imported/frame-lintel.png-a8758f3ab08ae44622641e68cf0d4c4e.ctex"]
+source_file="res://assets/materials/panel-wood-rim.png"
+dest_files=["res://.godot/imported/panel-wood-rim.png-25aa8132e9b28a5b9d77d9460edd3379.ctex"]
 
 [params]
 

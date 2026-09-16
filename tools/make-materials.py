@@ -199,42 +199,59 @@ def dentils(draw, box, step, depth, light, dark):
     _ = depth
 
 
-def panel_wood(size=128, border=16):
-    """The everyday panel: a wood ground in a carved edge. Nine-patch margins = `border`."""
-    ground = tile("wood", size * 2).resize((size, size), Image.LANCZOS)
-    image = ground.convert("RGBA")
-    draw = ImageDraw.Draw(image)
-    edge = (0x0a, 0x06, 0x04, 255)
-    lift = (0x4a, 0x33, 0x1c, 255)
-    sink = (0x12, 0x0b, 0x06, 255)
-    draw.rectangle([0, 0, size - 1, size - 1], outline=edge, width=2)
-    bevel(draw, (2, 2, size - 3, size - 3), lift, sink, width=2)
-    bevel(draw, (border - 4, border - 4, size - border + 3, size - border + 3), sink, lift, width=1)
-    draw.rectangle([border - 2, border - 2, size - border + 1, size - border + 1],
-                   outline=(*GOLD_DARK, 110), width=1)
+def nine_patch_ground(kind, size, border, sigma=PANEL_SIGMA):
+    """A nine-patch ground whose CENTRE is seamless at centre size.
+
+    ⚠⚠ A SUB-CROP OF A SEAMLESS TILE IS NOT A SEAMLESS TILE. A nine-patch repeats its centre region, and the
+    centre of a 128 px piece with a 16 px border is 96 px — cut out of the middle of a seamless 512, whose
+    edges match each OTHER and not the edges of that crop. Every panel in the game would have carried a grid
+    of hairline discontinuities, visible exactly where a panel is big, which is where panels matter. So the
+    centre is GENERATED at centre size, where `seamless` makes it match itself, and the border ring is drawn
+    over a separate full-size pass of the same material.
+    """
+    image = tile(kind, size, sigma).convert("RGBA")
+    inner = size - 2 * border
+    image.paste(tile(kind, inner, sigma).convert("RGBA"), (border, border))
     return image
 
 
-def frame_lintel(size=256, border=48):
-    """The act header: black marble surround, dentil course, a gold bead, and a jasper field inside it."""
-    image = tile("marble", size * 2).resize((size, size), Image.LANCZOS).convert("RGBA")
-    field = tile("jasper", size, sigma=FIELD_SIGMA).resize((size, size), Image.LANCZOS)
-    inner = (border, border, size - border, size - border)
-    image.paste(field.crop(inner), (border, border))
+def panel_wood(size=96, border=8, rim=False):
+    """The everyday panel: a wood ground in a carved edge. Nine-patch margins = `border`.
+
+    ⚠ THE BORDER IS 8 AND NOT 16 BECAUSE OF THE ARENA. A stylebox's content margin has to clear its texture
+    margin or the text sits on the carving, and today's panels pad 12 across and 8 down (`Panel`). A 16 px
+    carving would have forced 20 px of padding into every PanelContainer in the game — and D6 spent a whole
+    pass winning back 145 px of arena height. A material may not cost layout.
+
+    `rim` adds the gold hairline an overlay wants: a dialog on top of the game says so with one gold line,
+    which is what the accent has meant since D0.
+    """
+    image = nine_patch_ground("wood", size, border)
     draw = ImageDraw.Draw(image)
-    edge = (0x05, 0x04, 0x05, 255)
-    lift = (0x93, 0x88, 0x8c, 200)
-    sink = (0x07, 0x05, 0x07, 255)
-    draw.rectangle([0, 0, size - 1, size - 1], outline=edge, width=2)
-    bevel(draw, (2, 2, size - 3, size - 3), lift, sink, width=2)
-    dentils(draw, (10, 10, size - 11, 22), 10, 12, (*GOLD_LIGHT, 150), (*GOLD_DARK, 190))
-    bevel(draw, (28, 28, size - 29, size - 29), (*GOLD, 220), (*GOLD_DARK, 220), width=2)
-    draw.rectangle([border - 1, border - 1, size - border, size - border], outline=(*GOLD_DARK, 200), width=1)
+    edge = (0x08, 0x05, 0x03, 255)
+    lift = (0x3c, 0x28, 0x14, 255)
+    sink = (0x0e, 0x08, 0x04, 255)
+    draw.rectangle([0, 0, size - 1, size - 1], outline=edge, width=1)
+    bevel(draw, (1, 1, size - 2, size - 2), lift, sink, width=1)
+    bevel(draw, (border - 3, border - 3, size - border + 2, size - border + 2), sink, lift, width=1)
+    draw.rectangle([border - 1, border - 1, size - border, size - border],
+                   outline=(*GOLD_DARK, 90), width=1)
+    if rim:
+        draw.rectangle([0, 0, size - 1, size - 1], outline=(*GOLD, 200), width=1)
     return image
 
 
 def frame_stone(size=128, border=14):
-    """A marble edge around nothing: the centre is transparent, so a plate keeps whatever ground it had."""
+    """A marble edge around nothing: the centre is transparent, so a plate keeps whatever ground it had.
+
+    ⚠ THERE IS NO PICTURE OF A LINTEL HERE, AND THAT IS DELIBERATE. The first pass drew one — surround,
+    tooth course, bead and field, all in a single 256 px nine-patch — and it was the best-looking thing on
+    the contact sheet. It is still wrong: a nine-patch REPEATS its edge strips, so the tooth course only
+    survives at widths that happen to be whole multiples of its step, and it smears at every other width.
+    The portal in the photographs is not one carved slab either; it is a surround, a field and a course laid
+    on top of each other. So the lintel is ASSEMBLED at runtime out of frame-stone, field-jasper and
+    moulding-gold, and no ornament is ever stretched.
+    """
     image = tile("marble", size * 2).resize((size, size), Image.LANCZOS).convert("RGBA")
     draw = ImageDraw.Draw(image)
     draw.rectangle([0, 0, size - 1, size - 1], outline=(0x05, 0x04, 0x05, 255), width=2)
@@ -247,7 +264,7 @@ def frame_stone(size=128, border=14):
 
 def field_jasper(size=128, border=10):
     """A small plaque: jasper with a dark stone lip, for anything a word is written on."""
-    image = tile("jasper", size * 2, sigma=FIELD_SIGMA).resize((size, size), Image.LANCZOS).convert("RGBA")
+    image = nine_patch_ground("jasper", size, border, sigma=FIELD_SIGMA)
     draw = ImageDraw.Draw(image)
     draw.rectangle([0, 0, size - 1, size - 1], outline=(0x10, 0x06, 0x08, 255), width=2)
     bevel(draw, (2, 2, size - 3, size - 3), (0x12, 0x0a, 0x0c, 255), (0x6a, 0x5a, 0x52, 120), width=2)
@@ -295,7 +312,7 @@ PIECES = {
     "marble.png": lambda: tile("marble"),
     "jasper.png": lambda: tile("jasper", sigma=FIELD_SIGMA),
     "panel-wood.png": panel_wood,
-    "frame-lintel.png": frame_lintel,
+    "panel-wood-rim.png": lambda: panel_wood(rim=True),
     "frame-stone.png": frame_stone,
     "field-jasper.png": field_jasper,
     "moulding-gold.png": moulding_gold,

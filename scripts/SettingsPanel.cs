@@ -31,7 +31,7 @@ public partial class SettingsPanel : PanelContainer
     public override void _Ready()
     {
         CustomMinimumSize = new Vector2(460, 0);
-        AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.BgPanelStrong, MoonvineTheme.Accent));
+        AddThemeStyleboxOverride("panel", MoonvineTheme.WoodPanel(rim: true));
 
         var margin = new MarginContainer();
         foreach (var side in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })

@@ -72,7 +72,7 @@ public partial class CreditsPanel : PanelContainer
         // At 460 the list showed three of ten entries and looked like an accident; the point of a credits
         // screen is that the credits are ON it, not one scroll-flick away.
         CustomMinimumSize = new Vector2(620, 600);
-        AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.BgPanelStrong, MoonvineTheme.Accent));
+        AddThemeStyleboxOverride("panel", MoonvineTheme.WoodPanel(rim: true));
 
         var margin = new MarginContainer();
         foreach (var side in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })

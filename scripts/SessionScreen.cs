@@ -640,7 +640,12 @@ public partial class SessionScreen : Control
             && (wanted.Length == 0 || Enemies().Any(e =>
                 e.DefinitionId.value.Contains(wanted, StringComparison.OrdinalIgnoreCase)));
 
-        await WalkUntil(stop: Found, prefer: node => node.HasTag(MapNodeTags.Boss), budget: 9000);
+        // ⚠⚠ A BUDGET IS A MEASUREMENT OF A MAP, AND THE MAP WAS REBUILT UNDER IT. 9000 steps carried this
+        // probe to an Act V god when D6 measured it; after the map rework (S1-S15) the same 9000 stop in Act
+        // IV — the acts are longer now (Act IV alone lays out 36 rows, `--smoke-generators`) — and a walk that
+        // runs out prints `boss=NO ... error=none`, a sentence that reads like nothing is wrong. The eyes-on
+        // probe the whole visual arc is judged by had quietly stopped looking at the thing it is for.
+        await WalkUntil(stop: Found, prefer: node => node.HasTag(MapNodeTags.Boss), budget: 25000);
 
         // A NAMED boss may not be in this run at all: Act V fields THREE OF SIX gods, in an order the seed
         // picks, so asking for one god and walking one run is asking for a one-in-two chance. The crowd probe
@@ -651,7 +656,7 @@ public partial class SessionScreen : Control
             foreach (var seed in new[] { 5, 7, 1, 2, 3, 4, 6, 8, 9, 11 })
             {
                 GameHost.Instance.StartNewRun(seed, health: 9999);
-                await WalkUntil(stop: Found, prefer: node => node.HasTag(MapNodeTags.Boss), budget: 9000);
+                await WalkUntil(stop: Found, prefer: node => node.HasTag(MapNodeTags.Boss), budget: 25000);
                 if (Found())
                 {
                     GD.Print($"  '{wanted}' found on seed {seed}");
@@ -889,6 +894,8 @@ public partial class SessionScreen : Control
         Func<bool> stop, Func<RogueDeck.Run.Node, bool> prefer, int budget)
     {
         _walkEnded = "the budget ran out";
+        var enteredRoomAt = 0;
+        string? lastFight = null;
         var session = Session;
         var play = Play;
         var best = 0;
@@ -919,12 +926,34 @@ public partial class SessionScreen : Control
             if (step % 20 == 19)
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             best = Math.Max(best, Enemies().Count);
+            // Who was on the table last. A run that ends names the fight it ended in — without this, a defeat
+            // reports a room code and leaves the next reader to walk there again to find out who was standing
+            // in it.
+            if (play.CombatDriver?.Current is not null && Facing() is { Length: > 0 } facing && facing != "-")
+                lastFight = facing;
             if (session.Run.CurrentNodeId?.Value is { } here && here != lastRoom)
             {
                 lastRoom = here;
+                enteredRoomAt = step;
                 var node = session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == here);
                 GD.Print($"  [{step,5}] act {session.Run.ActNumber} {here} "
                     + $"{(node is null ? "?" : MapView.Role(node))}");
+            }
+
+            // ⚠⚠ "THE BUDGET RAN OUT" IS NOT A DIAGNOSIS, IT IS A CLOCK. This probe answered twenty-two
+            // thousand questions inside ONE room of Act IV and then reported the budget, which reads like a
+            // walk that was merely too long and is in fact a walk that was going nowhere. A room that will
+            // not end is a different animal from a map that is big, and the only way to tell them apart
+            // afterwards is to name the state the answers were being poured into.
+            if (step % 500 == 499)
+                GD.Print($"  [{step,5}] heartbeat: act {session.Run.ActNumber} node {session.Run.CurrentNodeId?.Value ?? "-"} "
+                    + $"(entered at {enteredRoomAt}, last {lastRoom ?? "-"}) awaiting {Awaiting(session, play)}");
+
+            if (step - enteredRoomAt > StepsNoRoomTakes)
+            {
+                _walkEnded = $"stuck in {lastRoom} for {StepsNoRoomTakes} steps, awaiting {Awaiting(session, play)}";
+                GD.Print($"  [{step,5}] STUCK — {_walkEnded}");
+                break;
             }
 
             if (play.CombatDriver is { Current: not null } driver)
@@ -1017,10 +1046,40 @@ public partial class SessionScreen : Control
                 break;
             }
         }
+        // ⚠⚠ A CLOCK IS NOT A DIAGNOSIS, AND THE LOOP HAS FOUR WAYS OUT. Three of them used to leave the
+        // opening line in place — "the budget ran out" — which is why this probe spent four runs looking like
+        // a walk that was merely too slow. A run that ENDED is the loudest of them and said nothing at all.
+        if (session?.IsComplete == true)
+            _walkEnded = $"the run ended: {session.Run.Result}"
+                + $" (hero at {session.Run.Health.Current}/{session.Run.Health.Max}"
+                + $", in {lastRoom ?? "-"} against {lastFight ?? "nobody"})";
+        else if (session is null || play is null)
+            _walkEnded = "the session went away under the walk";
         if (session?.Error is not null || play?.Error is not null)
             _walkEnded = "an error was raised";
         return best;
     }
+
+    // No room in this game takes a thousand answers. A fight is bounded by the turn ceiling above it, and a
+    // screen between rooms is answered in one.
+    private const int StepsNoRoomTakes = 1000;
+
+    // The name of whatever is holding the walk, in the same words the walk's own branches are written in —
+    // so a stuck report says which branch was firing instead of leaving the next reader to re-derive it.
+    private static string Awaiting(InteractiveRunSession session, RunPlayback play) =>
+        play.CombatDriver switch
+        {
+            { PendingOptionChoice: not null } => "an option choice in a fight",
+            { PendingCardChoice: not null } => "a card choice in a fight",
+            { Current: { IsHeroTurn: true } } => "the hero's turn in a fight",
+            { Current: not null } => "the enemy's turn in a fight",
+            _ => session.IsAwaitingNodeChoice ? "a node choice"
+                : session.IsAwaitingEntities ? $"an entity pick ({session.PendingEntities?.Displays.Count} offered, "
+                    + $"{session.PendingEntities?.Count} to take)"
+                : session.IsAwaitingChoice ? $"a room choice ({session.PendingChoices.Count} options)"
+                : session.IsAwaitingInterlude ? "an interlude"
+                : "nothing at all",
+        };
 
     // Walk toward the nearest room of one KIND and screenshot it as the player would meet it. The rooms that
     // are not fights — shop, campfire, a door — are the ones nothing else in the smoke suite ever looks at.
@@ -2232,9 +2291,7 @@ public partial class SessionScreen : Control
             CustomMinimumSize = new Vector2(0, 0),
             TooltipText = Glossary.Explain(null, $"{name} {description}"),
         };
-        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
-            selected ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
-            selected ? MoonvineTheme.AccentLight : new Color(MoonvineTheme.Accent, 0.3f)));
+        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.WoodPanel(rim: selected));
 
         var column = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         column.AddThemeConstantOverride("separation", 2);
@@ -3998,8 +4055,10 @@ public partial class SessionScreen : Control
         // so the heading is hovered as whatever is beneath it — this panel — and a player who reaches for the
         // title of the area gets the same sentence rather than nothing at all.
         var panel = new PanelContainer { TooltipText = $"{title} — {rule}" };
-        panel.AddThemeStyleboxOverride("panel",
-            MoonvineTheme.Panel(MoonvineTheme.BgPanelStrong, MoonvineTheme.AccentLight, 8));
+        // ★ A DECREE IS READ OFF STONE. This is the one band in a fight that is read ONCE, on entering the
+        // room, and never changes while the fight runs — which is exactly what a plaque is for, and what
+        // separates it from the telegraph under it that changes every turn.
+        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.JasperField(padH: 14, padV: 10));
         var pad = new MarginContainer();
         foreach (var side in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })
             pad.AddThemeConstantOverride(side, 10);

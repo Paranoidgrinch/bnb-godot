@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Godot;
 
 namespace BnbGodot;
@@ -167,6 +168,66 @@ public static class MoonvineTheme
         ContentMarginBottom = 8,
     };
 
+    // ── the materials (D8) ───────────────────────────────────────────────────────
+    // A surface has a MATERIAL now, not a fill. Four of them, chosen by the ROLE of a surface and never by
+    // taste, the same discipline as the six-step ramp: WOOD is the cabinet the game is kept in (every panel
+    // and every dialog), MARBLE is a frame, JASPER is a field with writing on it, and GOLD stays a COLOUR —
+    // if gold ever becomes a surface, nothing on the screen is an accent any more.
+    //
+    // ⚠ A MATERIAL IS FELT, NOT SEEN. The tiles are generated at a fixed contrast (sigma 7 of 255 for a
+    // panel, 14 for a small plaque) by `tools/make-materials.py`, because a surface carrying text may not
+    // compete with it. The file is a placeholder like every picture in this game: save a painted one over it.
+    //
+    // ⚠ A MISSING MATERIAL IS A NORMAL STATE. `Surface` falls back to the flat panel it replaced, so a build
+    // without the files looks like D0 and never like an error.
+    private static readonly Dictionary<string, Texture2D?> Materials = new();
+
+    public static Texture2D? Material(string name)
+    {
+        if (!Materials.TryGetValue(name, out var texture))
+            Materials[name] = texture = ResourceLoader.Exists($"res://assets/materials/{name}.png")
+                ? GD.Load<Texture2D>($"res://assets/materials/{name}.png")
+                : null;
+        return texture;
+    }
+
+    // A nine-patch surface. `texture` is how wide the carved edge is in the FILE; `padH`/`padV` are what the
+    // content inside is held off by, and they must clear the carving or the text sits on it.
+    public static StyleBox Surface(string name, int texture, int padH, int padV, Color? fallback = null)
+    {
+        if (Material(name) is not { } picture)
+            return Panel(fallback);
+        var box = new StyleBoxTexture
+        {
+            Texture = picture,
+            // ⚠ TILE, NOT STRETCH. A stretched grain smears into stripes on a tall panel; the generator makes
+            // the centre of each piece seamless AT CENTRE SIZE so that tiling it has nothing to show.
+            AxisStretchHorizontal = StyleBoxTexture.AxisStretchMode.Tile,
+            AxisStretchVertical = StyleBoxTexture.AxisStretchMode.Tile,
+            TextureMarginLeft = texture,
+            TextureMarginRight = texture,
+            TextureMarginTop = texture,
+            TextureMarginBottom = texture,
+            ContentMarginLeft = padH,
+            ContentMarginRight = padH,
+            ContentMarginTop = padV,
+            ContentMarginBottom = padV,
+        };
+        return box;
+    }
+
+    // The everyday panel, in the padding `Panel` has always used — a material may not cost layout.
+    public static StyleBox WoodPanel(bool rim = false) =>
+        Surface(rim ? "panel-wood-rim" : "panel-wood", 8, 12, 8, rim ? BgPanelStrong : BgPanel);
+
+    // A marble edge around whatever the caller already had: the centre of the picture is transparent.
+    public static StyleBox StoneFrame(int padH = 16, int padV = 12) =>
+        Surface("frame-stone", 14, padH, padV, BgRaised);
+
+    // A plaque with a word on it: oxblood stone with a dark lip.
+    public static StyleBox JasperField(int padH = 12, int padV = 8) =>
+        Surface("field-jasper", 10, padH, padV, CardGround);
+
     private static Theme? _theme;
 
     public static Theme Build()
@@ -178,8 +239,11 @@ public static class MoonvineTheme
         if (Font is { } font)
             theme.DefaultFont = font;
 
-        theme.SetStylebox("panel", "PanelContainer", Panel());
-        theme.SetStylebox("panel", "Panel", Panel(BgPanelStrong));
+        // ★ ONE LINE PUTS THE WHOLE GAME IN A CABINET. Every PanelContainer in every screen reads this, which
+        // is why D0's work of centralising was worth more than D0 itself: the material arrives everywhere at
+        // once, and the places that should NOT wear it are the ones that already override their own stylebox.
+        theme.SetStylebox("panel", "PanelContainer", WoodPanel());
+        theme.SetStylebox("panel", "Panel", WoodPanel());
 
         // A button is the one thing on screen that is unambiguously yours to press, so it is the one thing
         // that wears gold at rest.
