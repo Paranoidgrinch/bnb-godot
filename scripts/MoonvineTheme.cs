@@ -184,10 +184,9 @@ public static class MoonvineTheme
 
     public static Texture2D? Material(string name)
     {
-        if (!Materials.TryGetValue(name, out var texture))
-            Materials[name] = texture = ResourceLoader.Exists($"res://assets/materials/{name}.png")
-                ? GD.Load<Texture2D>($"res://assets/materials/{name}.png")
-                : null;
+        var path = $"res://assets/materials/{name}.png";
+        if (!Materials.TryGetValue(path, out var texture))
+            Materials[path] = texture = ResourceLoader.Exists(path) ? GD.Load<Texture2D>(path) : null;
         return texture;
     }
 
@@ -223,6 +222,16 @@ public static class MoonvineTheme
     // A marble edge around whatever the caller already had: the centre of the picture is transparent.
     public static StyleBox StoneFrame(int padH = 16, int padV = 12) =>
         Surface("frame-stone", 14, padH, padV, BgRaised);
+
+    // The studio's mark and anything else that belongs to the house rather than to the game. Same rule as a
+    // material: absent is a normal state, and the caller draws without it.
+    public static Texture2D? Brand(string name)
+    {
+        var path = $"res://assets/brand/{name}.png";
+        if (!Materials.TryGetValue(path, out var texture))
+            Materials[path] = texture = ResourceLoader.Exists(path) ? GD.Load<Texture2D>(path) : null;
+        return texture;
+    }
 
     // A plaque with a word on it: oxblood stone with a dark lip.
     public static StyleBox JasperField(int padH = 12, int padV = 8) =>

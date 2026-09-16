@@ -112,6 +112,18 @@ public partial class Boot : Control
 
         BuildTitle(host);
 
+        // ★ THE OPENING, AND ONLY FOR A PLAYER. Every probe above has already returned; what is left here is
+        // either a human starting the game or one of the screenshot probes that photograph THIS screen — and
+        // a fade standing over one of those is six reviews of a dimmed veil, which D6 already paid for once.
+        // So the opening runs when nobody passed an argument at all, and never otherwise.
+        var watching = userArgs.Contains("--smoke-splash");
+        if ((userArgs.Count() == 0 || watching) && !DisplayServer.GetName().Contains("headless"))
+        {
+            Splash.Play(this, () => { });
+            if (watching)
+                _ = CaptureOpening();
+        }
+
         if (userArgs.Contains("--smoke-title") && !DisplayServer.GetName().Contains("headless"))
             _ = CaptureTitleThenQuit();
         // The one question "New run ▸" asks, opened the way a player opens it. A picture, because what this
@@ -417,6 +429,29 @@ public partial class Boot : Control
             GD.Print($"  waiting: assets/art/{CardVisuals.SlotPath("enemies", id)}");
         foreach (var id in heroes.Where(id => CardVisuals.CharacterArt(id) is null).Take(2))
             GD.Print($"  waiting: assets/art/{CardVisuals.SlotPath("characters", id)}");
+    }
+
+    // THE OPENING, PHOTOGRAPHED AT ITS THREE BEATS. Nothing else in the battery can see it: the splash runs
+    // only when nobody passed an argument, which is exactly the one case no probe is in. So this probe is the
+    // opening's own, and it waits in WALL-CLOCK time rather than in frames, because what is being checked is
+    // a sequence timed in seconds and a frame count says nothing about how long a fade took.
+    private async System.Threading.Tasks.Task CaptureOpening()
+    {
+        // The beats land at 1.5 s (the studio, fully up), 4.0 s (the game's name) and 7.0 s (the title screen,
+        // the last veil gone). These are WAITS, not timestamps — a timer waits from now — so they are written
+        // as the gaps between the beats and the comment carries the absolute times.
+        foreach (var (wait, file) in new (double Wait, string File)[]
+        {
+            (1.5, "user://smoke-splash-1-studio.png"),
+            (2.5, "user://smoke-splash-2-game.png"),
+            (3.0, "user://smoke-splash-3-title.png"),
+        })
+        {
+            await ToSignal(GetTree().CreateTimer(wait), SceneTreeTimer.SignalName.Timeout);
+            GetViewport().GetTexture().GetImage().SavePng(file);
+            GD.Print($"smoke-splash: {file}");
+        }
+        GetTree().Quit();
     }
 
     private async System.Threading.Tasks.Task CaptureThenQuit(string file)

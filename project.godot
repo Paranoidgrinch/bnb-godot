@@ -13,6 +13,12 @@ config/version="0.1.0"
 run/main_scene="res://scenes/Boot.tscn"
 config/features=PackedStringArray("4.7", "C#")
 
+; ⚠ NO BOOT SPLASH. Godot's default draws ITS logo on a coloured ground, scaled to fill the window, and that
+; is the black frame a player sees before this game has said a word. The window comes up bare instead, in the
+; ground the whole game is printed on, and the first thing drawn is our own opening (scripts/Splash.cs).
+boot_splash/show_image=false
+boot_splash/bg_color=Color(0.031, 0.016, 0.024, 1)
+
 [dotnet]
 
 project/assembly_name="BnbGodot"
