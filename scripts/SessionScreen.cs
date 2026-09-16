@@ -431,10 +431,29 @@ public partial class SessionScreen : Control
                     }
 
                     var hero = combat.State.GetCombatant(combat.HeroId);
-                    var card = combat.Hand.FirstOrDefault(c =>
-                        !c.DefinitionId.value.Contains("red_tape") && !c.DefinitionId.value.Contains("unsigned_form")
-                        && !refused.Contains(c.Id) && !barren.Contains(c.DefinitionId.value)
-                        && CanPay(hero, c.DefinitionId.value));
+                    // How much Energy this turn may still spend: everything, unless a measure is standing.
+                    var measure = Measure(hero);
+                    var room = measure > 0 ? measure - Spent(combat) : int.MaxValue;
+                    if (measure > 0)
+                        MeasureSeen(measure, Energy(hero) + Spent(combat));
+
+                    // ⚠⚠ NOT OVERSHOOTING IS NOT THE SAME AS LANDING. "Spend exactly X" asks for a SUBSET of
+                    // the hand that sums to X, and a walker that simply takes the first card still fitting
+                    // stops at 2 of 3 whenever no 1-cost card comes after it — it missed by one, every time,
+                    // and the act reads the distance. Measured before this line existed: 47 measures stood in
+                    // front of it and it still died to the Reader. So the order of preference is: the card
+                    // that FINISHES the measure exactly, then the cheapest (which leaves the most reachable
+                    // remainder). Subset-sum, at the only scale this game ever asks for it.
+                    var card = combat.Hand
+                        .Where(c =>
+                            !c.DefinitionId.value.Contains("red_tape")
+                            && !c.DefinitionId.value.Contains("unsigned_form")
+                            && !refused.Contains(c.Id) && !barren.Contains(c.DefinitionId.value)
+                            && CanPay(hero, c.DefinitionId.value)
+                            && EffectiveCost(hero, c.DefinitionId.value) <= room)
+                        .OrderBy(c => measure > 0 && EffectiveCost(hero, c.DefinitionId.value) == room ? 0 : 1)
+                        .ThenBy(c => measure > 0 ? EffectiveCost(hero, c.DefinitionId.value) : 0)
+                        .FirstOrDefault();
                     var target = combat.State.Combatants
                         .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive
                             && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
@@ -464,6 +483,8 @@ public partial class SessionScreen : Control
                     }
                     else
                     {
+                        if (measure > 0)
+                            MeasureTaken(measure, Spent(combat));
                         driver.EndTurn();
                         NewTurn();
                         if (++turn >= TurnsAFightShouldNotNeed)
@@ -731,6 +752,7 @@ public partial class SessionScreen : Control
         GD.Print($"smoke-boss {act}: act={Session?.Run.ActNumber} boss={(AtABoss() ? "yes" : "NO")} "
             + $"round={combat?.Round} ended={_walkEnded} error={Session?.Error ?? Play?.Error ?? "none"}");
         GD.Print($"  facing: {Facing()}");
+        GD.Print($"  measures: {MeasureReport()}");
         ReportArena();   // an Act V arena is the shortest in the game — its rule band costs it 104 points
         // The Divine Rule Area, read back out of the tree it was built into: a headless probe cannot take a
         // screenshot, so this is the only way to say that the one UI surface Act V's design REQUIRES is
@@ -990,10 +1012,29 @@ public partial class SessionScreen : Control
                     }
 
                     var hero = combat.State.GetCombatant(combat.HeroId);
-                    var card = combat.Hand.FirstOrDefault(c =>
-                        !c.DefinitionId.value.Contains("red_tape") && !c.DefinitionId.value.Contains("unsigned_form")
-                        && !refused.Contains(c.Id) && !barren.Contains(c.DefinitionId.value)
-                        && CanPay(hero, c.DefinitionId.value));
+                    // How much Energy this turn may still spend: everything, unless a measure is standing.
+                    var measure = Measure(hero);
+                    var room = measure > 0 ? measure - Spent(combat) : int.MaxValue;
+                    if (measure > 0)
+                        MeasureSeen(measure, Energy(hero) + Spent(combat));
+
+                    // ⚠⚠ NOT OVERSHOOTING IS NOT THE SAME AS LANDING. "Spend exactly X" asks for a SUBSET of
+                    // the hand that sums to X, and a walker that simply takes the first card still fitting
+                    // stops at 2 of 3 whenever no 1-cost card comes after it — it missed by one, every time,
+                    // and the act reads the distance. Measured before this line existed: 47 measures stood in
+                    // front of it and it still died to the Reader. So the order of preference is: the card
+                    // that FINISHES the measure exactly, then the cheapest (which leaves the most reachable
+                    // remainder). Subset-sum, at the only scale this game ever asks for it.
+                    var card = combat.Hand
+                        .Where(c =>
+                            !c.DefinitionId.value.Contains("red_tape")
+                            && !c.DefinitionId.value.Contains("unsigned_form")
+                            && !refused.Contains(c.Id) && !barren.Contains(c.DefinitionId.value)
+                            && CanPay(hero, c.DefinitionId.value)
+                            && EffectiveCost(hero, c.DefinitionId.value) <= room)
+                        .OrderBy(c => measure > 0 && EffectiveCost(hero, c.DefinitionId.value) == room ? 0 : 1)
+                        .ThenBy(c => measure > 0 ? EffectiveCost(hero, c.DefinitionId.value) : 0)
+                        .FirstOrDefault();
                     var target = combat.State.Combatants
                         .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive
                             && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
@@ -1024,6 +1065,8 @@ public partial class SessionScreen : Control
                     }
                     else
                     {
+                        if (measure > 0)
+                            MeasureTaken(measure, Spent(combat));
                         driver.EndTurn();
                         NewTurn();
                     }
@@ -3975,6 +4018,70 @@ public partial class SessionScreen : Control
         var costs = FullCosts(definitionId);
         return costs.Count == 0 ? "0" : string.Join("\u00b7", costs.Select(c => c.Amount.ToString()));
     }
+
+    // ── what Act IV asks for ─────────────────────────────────────────────────────
+    // ⚠⚠ ACT IV ASKS FOR A NUMBER, NOT FOR EFFORT. `Weighed X` means "spend EXACTLY X Energy this turn", and
+    // the act's bodies punish by the DISTANCE from it. A greedy walker plays until the energy is gone, so it
+    // misses every measure of every turn — the Flood-Mark Reader answers each miss with 1 Entombed, five of
+    // those cost a whole turn, and the fight therefore could not be won by this probe at ANY health: 9999 HP
+    // only made it die more slowly. That is not a balance fault; it is the act working exactly as designed
+    // against a player who ignores it. So both walkers learn the one rule the act is built on, and no more.
+    //
+    // ★ AND IT IS A FILTER, NOT A BRANCH. Expressed as "end the turn when the measure is met" it would have
+    // needed its own copy of each loop's end-of-turn bookkeeping — the turn counter, the fifty-play stop. As
+    // "a card may only be played if its cost still fits inside the measure" it is one clause, and when
+    // nothing fits any more the loops' own `card is null` path ends the turn exactly as it always did.
+    private const string WeighedStatus = "weighed";
+
+    // A record of every measure a walker stood in front of, so that "the walker learned the rule" is a number
+    // and not a hope: what the turn was asked for, and what was in the pool to pay it with.
+    private static readonly Dictionary<string, int> MeasureLog = new(StringComparer.Ordinal);
+
+    private static void MeasureSeen(int required, int pool) =>
+        MeasureLog[$"need {required} of {pool}"] = MeasureLog.GetValueOrDefault($"need {required} of {pool}") + 1;
+
+    // What the measure actually came to when the turn ended. This is the number that says whether the walker
+    // learned anything: "met" is an exact measure, anything else is the distance the act is about to read.
+    private static void MeasureTaken(int required, int spent)
+    {
+        var key = spent == required ? "MET" : $"missed by {System.Math.Abs(spent - required)}";
+        MeasureLog[key] = MeasureLog.GetValueOrDefault(key) + 1;
+    }
+
+    private static string MeasureReport() => MeasureLog.Count == 0
+        ? "no measure was ever taken"
+        : string.Join(" · ", MeasureLog.OrderByDescending(e => e.Value).Take(6).Select(e => $"{e.Key} x{e.Value}"));
+
+    private static int Energy(CombatantState hero) =>
+        hero.Resources.TryGetValue(StandardCombatIds.EnergyResource, out var pool) ? pool.Current : 0;
+
+    // ⚠⚠ THE ENGINE ALREADY KNOWS WHAT THE TURN HAS SPENT, AND A PROBE THAT RE-DERIVES IT IS A SECOND TRUTH.
+    // The first attempt tracked "energy at the start of the turn, minus energy now" in the walker itself, and
+    // it was wrong whenever a turn ended without the walker ending it — a card that ends your turn, a stun
+    // from Entombed — because then the mark was never refreshed and the distance was measured from a turn
+    // that was already over. Measured: 8 turns "missed by 2" against a filter that CANNOT overshoot, which is
+    // how a bookkeeping error announces itself. `Weighed` reads this same counter, so the walker reads it too.
+    private static int Spent(InteractiveCombat combat) =>
+        combat.State.GetCardPlayTurnStats(combat.HeroId).ResourceSpentThisTurn;
+
+    private static int Measure(CombatantState hero) =>
+        hero.Statuses.Where(s => s.DefinitionId.value == WeighedStatus).Sum(s => s.Stacks);
+
+    // ⚠ THE TAX IS PART OF THE MEASURE, AND THE ACT SAYS SO IN SO MANY WORDS. `Burdened X` makes every card
+    // cost 1 more Energy, and the canon's own note reads: "the tax changes what the turn actually cost, so
+    // paying it and hitting the measure are one decision, not two." A walker budgeting by the PRINTED cost
+    // therefore overshoots by exactly one per card played — which is how a filter that cannot overshoot came
+    // to report turns that missed by three.
+    private const string BurdenedStatus = "burdened";
+
+    private int EffectiveCost(CombatantState hero, string definitionId) =>
+        EnergyCost(definitionId)
+        + (hero.Statuses.Any(st => st.DefinitionId.value == BurdenedStatus) ? 1 : 0);
+
+    private int EnergyCost(string definitionId) =>
+        FullCosts(definitionId)
+            .Where(cost => cost.ResourceId == StandardCombatIds.EnergyResource)
+            .Sum(cost => cost.Amount);
 
     private bool CanPay(CombatantState payer, string definitionId) =>
         FullCosts(definitionId).All(cost =>
