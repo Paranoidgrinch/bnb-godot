@@ -175,6 +175,8 @@ public partial class SessionScreen : Control
             _ = SmokeDeck();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-window"))
             _ = SmokeWindow();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-archive-run"))
+            _ = SmokeArchiveRun();
     }
 
     // Walk the screen the way a mouse would and report what is EXPLAINED and what is not: every piece of text
@@ -1279,11 +1281,70 @@ public partial class SessionScreen : Control
         return null;
     }
 
+    // WHAT A RUN ACTUALLY TEACHES THE ARCHIVE. The other half of `--smoke-archive`: that one asks the
+    // document what there is to find and the disk whether a find survives being written down, and neither of
+    // those touches the one thing between them — the recorder that sits in the run screen's redraw.
+    //
+    // ⚠ THE STOP CONDITION IS THE ARCHIVE'S OWN STATE, on purpose. A walk that ends because the archive has
+    // met an enemy, an elite and a relic can only end if the recording happened DURING the walk; a walk that
+    // ended on a step count and then counted the archive afterwards would pass just as well with the
+    // recorder wired to the wrong event.
+    private async System.Threading.Tasks.Task SmokeArchiveRun()
+    {
+        Archive.Build(GameHost.Instance.Blueprint);
+        // A machine that has played before must not answer for this walk (and _Ready has already redrawn
+        // once by the time this runs, so there is something to clear).
+        Archive.StartClean();
+        var before = Godot.FileAccess.FileExists("user://archive.json")
+            ? Godot.FileAccess.GetFileAsString("user://archive.json")
+            : null;
+
+        await WalkUntil(
+            stop: () => Archive.FoundIn(ArchiveKind.Enemies).Count > 0
+                && Archive.FoundIn(ArchiveKind.Elites).Count > 0
+                && Archive.FoundIn(ArchiveKind.Relics).Count > 0
+                && Archive.FoundIn(ArchiveKind.Cards).Count > 0,
+            prefer: node => MapView.Role(node) == MapNodeTags.Elite,
+            budget: 900);
+        GD.Print($"smoke-archive-run: the walk ended because {_walkEnded}");
+
+        var total = 0;
+        foreach (var kind in Archive.Kinds)
+        {
+            var found = Archive.FoundIn(kind);
+            total += found.Count;
+            GD.Print($"smoke-archive-run: {Archive.Title(kind),-8} {found.Count,3} met"
+                + (found.Count == 0
+                    ? ""
+                    : $" · {string.Join(", ", found.Take(6).Select(e => e.Name))}"
+                        + (found.Count > 6 ? $" … +{found.Count - 6}" : "")));
+        }
+
+        // AND THE CLAIM THE OTHER PROBES DEPEND ON: a robot does not fill the player's archive. Every probe
+        // in this battery walks through the same recorder, and `tools/simulate.sh` runs a hundred of them —
+        // if that wrote the file, a player would open the archive to find it already finished.
+        var after = Godot.FileAccess.FileExists("user://archive.json")
+            ? Godot.FileAccess.GetFileAsString("user://archive.json")
+            : null;
+        GD.Print("smoke-archive-run: the fund book on disk was "
+            + (before == after ? "LEFT ALONE, as a probe's must be" : "WRITTEN TO — a probe must not"));
+
+        // AND THEN THE WRITE ITSELF, on a file of its own — see Archive.ProveWrite for why this is here and
+        // not left to the other probe.
+        var (wrote, read) = Archive.ProveWrite("user://archive-probe.json");
+        GD.Print($"smoke-archive-run: wrote the walk's {wrote} finds and read {read} back off the disk"
+            + $" — {(wrote == read ? "what a run records is what a save holds" : "THE SAVE LOST SOME")}");
+        GetTree().Quit(total > 0 && before == after && wrote == read ? 0 : 1);
+    }
+
     private async System.Threading.Tasks.Task MapShot()
     {
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         ReportTooltips("map");
-        await HoverTheBoss();
+        await HoverRoom("ends the act", "boss", "user://smoke-map-boss.png");
+        // ★ AND THE ELITE. The one room on an ordinary path worth planning around, and until now the only
+        // named fight on the map that would not say its name.
+        await HoverRoom("A hard fight", "elite", "user://smoke-map-elite.png");
         await CaptureThenQuit("smoke-map.png");
     }
 
@@ -1353,24 +1414,28 @@ public partial class SessionScreen : Control
     // "the tooltip text was set" is not the same claim as "a player hovering it reads the name". So
     // `smoke-map-boss.png` is taken with the pointer still on the room: the popup is IN the picture or it is
     // not, and the line printed below says which control the GUI thinks is under the mouse.
-    private async System.Threading.Tasks.Task HoverTheBoss()
+    // WHO STANDS IN A ROOM, MEASURED FROM WHERE THE PLAYER STANDS. `marker` is a phrase out of the room's own
+    // kind-tooltip, so the probe finds the room the same way the map labels it; what is being read is the part
+    // the CONTENT put in front of it — the name. Two rooms are asked, because two rooms carry a name: the boss
+    // has since the map rework, and the elite since the player asked for it.
+    private async System.Threading.Tasks.Task HoverRoom(string marker, string what, string file)
     {
         if (DisplayServer.GetName().Contains("headless"))
             return;
         Button? boss = null;
         void Walk(Godot.Node n)
         {
-            if (n is Button b && b.TooltipText.Contains("ends the act", StringComparison.Ordinal))
+            if (n is Button b && b.TooltipText.Contains(marker, StringComparison.Ordinal))
                 boss ??= b;
             foreach (var c in n.GetChildren()) Walk(c);
         }
         Walk(this);
         if (boss is null)
         {
-            GD.Print("smoke-map: no boss room on this map");
+            GD.Print($"smoke-map: no {what} room on this map");
             return;
         }
-        // The boss room is at the FOOT of an act that is taller than the window, so it has to be scrolled to
+        // The room may be at the FOOT of an act that is taller than the window, so it has to be scrolled to
         // before a pointer can be put on it.
         _mainScroll.ScrollVertical = Math.Max(0, (int)(boss.GlobalPosition.Y - _mainScroll.GlobalPosition.Y
             + _mainScroll.ScrollVertical - _mainScroll.Size.Y / 2));
@@ -1378,7 +1443,7 @@ public partial class SessionScreen : Control
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         await PointAt(boss.GetGlobalRect().GetCenter());
         var onBoss = GetViewport().GuiGetHoveredControl() == boss;
-        GetViewport().GetTexture().GetImage().SavePng("user://smoke-map-boss.png");
+        GetViewport().GetTexture().GetImage().SavePng(file);
 
         // The control test: an ENABLED room, hovered the same way. If this one registers and the boss does
         // not, the pointer is fine and being disabled is what costs the room its tooltip.
@@ -1398,7 +1463,7 @@ public partial class SessionScreen : Control
             await PointAt(open.GetGlobalRect().GetCenter());
             onOpen = GetViewport().GuiGetHoveredControl() == open;
         }
-        GD.Print($"smoke-map: boss hover = \"{boss.TooltipText}\" disabled={boss.Disabled} "
+        GD.Print($"smoke-map: {what} hover = \"{boss.TooltipText}\" disabled={boss.Disabled} "
             + $"hovered={(onBoss ? "yes" : "no")} · control(enabled room) hovered={(onOpen ? "yes" : "no")}");
     }
 
@@ -1976,6 +2041,12 @@ public partial class SessionScreen : Control
         _log.Text = string.Join("\n", session.Run.Log.TakeLast(60).Select(entry => entry.Message));
         AnnounceAct(session);
         SetMusic(session);
+        // WHAT THIS RUN HAS SHOWN THE PLAYER, written down where it outlives the run. Asked on every redraw
+        // for the same reason the music is: a transition is a thing somebody has to remember to report and a
+        // redraw is not — every fight, every shelf, every reward passes through here, including the ones
+        // added next year. It walks a deck and a shelf and adds to a set; the FILE is only touched when the
+        // set actually grew (Archive.Observe), which over a whole run is a few dozen times.
+        Archive.Observe(session, Play);
     }
 
     // WHERE THE PLAYER IS, told to the music. Asked on every redraw and not on transitions, because a

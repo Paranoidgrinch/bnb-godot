@@ -17,7 +17,32 @@ presentation manifest.
 - `scripts/MapView.cs` — the ACT's map as a navigable graph: entry at the top, boss at the bottom, each room
   drawn as the role it was generated for. It draws `RunState.Map` (the map generated for the act being
   walked) — the blueprint's own `Map` is empty in a generated game.
-- `scripts/Boot.cs` — the title screen (game identity + unlock-gated character select + New/Continue).
+  A room says who is IN it one hover away: the boss's name and the elite's, read off the encounter's own
+  presentation entry. Names are only WRITTEN ACROSS a room in a gauntlet act (several boss rooms, where the
+  order is the act's whole shape) — an elite never widens its room, because there are several per act.
+- `scripts/Boot.cs` — the title screen (game identity + unlock-gated character select + New/Continue/Archive).
+- `scripts/Archive.cs` + `scripts/ArchivePanel.cs` — **the archive**: the first layer of meta progression, and
+  the only part of the game that survives a run. Six shelves — enemies, elites, cards, relics, bosses, gods —
+  each entry a thing the player has MET, with what it is: a body's HP (a range when it varies by encounter),
+  the act it stands in, what it opens with, and every move it has in the enemy's own telegraph words; a card's
+  face, cost and rules, and what the same card says once improved; a relic on its pool frame; a god's Divine
+  Rule. Two halves, deliberately apart:
+  - **The catalogue** is built from the document and is the same for everybody. Nobody maintains a list: the
+    bodies come out of the ACTS' OWN ENCOUNTER POOLS, so a slot exists exactly when a run can draw it (61 of
+    the document's 294 encounters are in no pool — old drafts, and a slot no player can fill is a lie about
+    how much there is to find). An improved card is filed under the card it improves: 134 of the 363 card
+    definitions are the `+` form of one already there, so the shelf holds 229.
+  - **The fund book** is the player's, in `user://archive.json`. ⚠⚠ NOT in `metastate.json`, and it must not
+    be: `RunPlayback` loads the meta profile when a run STARTS and writes that whole loaded object back when
+    the run ENDS, so anything written into that file during a run — which is when every discovery happens —
+    would be overwritten by a snapshot taken before it.
+  Recording happens in `SessionScreen.Rebuild`, for the same reason the music is asked there: a transition is
+  something somebody has to remember to report and a redraw is not. "Met" means SEEN, not owned — the rare
+  relic you could not afford is exactly the one worth looking up later. ⚠ A probe or a simulated run records
+  in memory but never writes the file (`Archive.Robot`), or `tools/simulate.sh` would hand the player a
+  finished archive they never earned. The gods' shelf reads `???` and does not open until the first one is
+  met; "Reset progress" at the foot of the screen throws away the fund book AND `metastate.json`, and asks
+  twice before it does.
 - `scripts/Glossary.cs` — what every named thing MEANS, built once from the document: ask it about an id, or
   hand it any text and it names the terms that text uses. Every hover in the game goes through it.
 - `scripts/DisplaySettings.cs` — **the window**: the project declares one design canvas (1280 × 720) and a
@@ -116,6 +141,16 @@ godot --headless -- --smoke-timing  # per-action latency at the FIRST fight (~15
                                      # model, so this is a floor that GROWS with the run — the "~17 ms"
                                      # that stood here was measured in July, when the game was act I
 godot --headless -- --smoke-statuses # carried state reads as its authored name, not its id
+godot --headless -- --smoke-archive # the ARCHIVE, both halves: what the document offers to be found (per
+                                     # shelf, and how many of them are painted) and whether a discovery
+                                     # survives being written down — asked THROUGH the file, not in memory.
+                                     # ⚠ the one probe that rewrites user://archive.json; windowed, it also
+                                     # photographs the shelf and one plate of each kind
+godot --headless -- --smoke-archive-run # what a RUN teaches the archive: walks a seed to an elite and names
+                                     # every enemy, card and relic the recorder picked up on the way. Its
+                                     # stop condition IS the archive's state, so it can only end if the
+                                     # recording happened during the walk — and it checks that a probe left
+                                     # the player's own fund book alone
 godot --headless -- --smoke-marathon # play the WHOLE game (all five acts) and report rooms + latency
 godot --headless -- --smoke-tooltips # audit a combat screen: is anything NAMED but not explained?
 godot --headless -- --smoke-format   # every card in the hand is exactly the size it was handed,
@@ -146,7 +181,8 @@ Every screenshot check below also prints its own tooltip audit, so "a name with 
 quietly reappear on any screen.
 Windowed screenshot checks (each walks to the room it names, then captures it to `user://`):
 ```
-godot -- --smoke-map      # the act map at the entry fork
+godot -- --smoke-map      # the act map at the entry fork — and hovers the boss room AND the elite room,
+                          # reporting the name each one answers with
 godot -- --smoke-shop     # the shelf, with prices, including what is unaffordable
 godot -- --smoke-event    # a door
 godot -- --smoke-ambush   # a multi-enemy fight

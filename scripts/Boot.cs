@@ -96,6 +96,23 @@ public partial class Boot : Control
             ReportMaterials(blueprint);
             return;
         }
+        // THE ARCHIVE, BOTH HALVES. The catalogue is a question about the DOCUMENT (what is there to find, and
+        // does every slot have a picture), so it is answered before a screen exists; the fund book is a
+        // question about the DISK, and it is asked THROUGH THE FILE — an in-memory round trip proves nothing
+        // about a save (see the ValueTuple that ate a combat snapshot). The picture comes last, and it is
+        // taken with the gods still unmet on purpose: "???" is the state the player starts in.
+        if (userArgs.Contains("--smoke-archive"))
+        {
+            ReportArchive(blueprint);
+            if (DisplayServer.GetName().Contains("headless"))
+            {
+                GetTree().Quit();
+                return;
+            }
+            BuildTitle(host);
+            _ = SmokeArchiveShots();
+            return;
+        }
         // BOTH GENERATORS, SIDE BY SIDE, on the same seed (map rework S15). A question about the DOCUMENT and
         // the engine rather than about a screen, so it is answered before one is built — and the point of it is
         // that the two columns differ: same acts, same lengths, different maps.
@@ -129,7 +146,7 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run"))
         {
             host.StartNewRun(seed: 7,
                 // ⚠ A PROBE THAT HAS TO WALK SOMEWHERE MUST SURVIVE THE WALK. The greedy walker plays badly on
@@ -139,7 +156,8 @@ public partial class Boot : Control
                 // the marathon and the bosses have always had; the probes that stay where the run starts do not.
                 health: userArgs.Any(a => a is "--smoke-marathon" or "--smoke-crowd" or "--smoke-boss"
                     or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade"
-                    or "--smoke-ambush" or "--smoke-elite" or "--smoke-reward") ? 9999 : null,
+                    or "--smoke-ambush" or "--smoke-elite" or "--smoke-reward"
+                    or "--smoke-archive-run") ? 9999 : null,
                 // Every session probe walks the DESIGN, which since the map rework is v0.0.1 — and `--legacy`
                 // walks the same probe over the old maps instead. A probe that cannot name its generator is a
                 // probe that cannot say whether what it found is about the map or about the game.
@@ -218,6 +236,61 @@ public partial class Boot : Control
     {
         MapNodeTags.Combat, MapNodeTags.MultiCombat, MapNodeTags.Elite, MapNodeTags.Boss, MapNodeTags.Mimic,
         MapNodeTags.Shop, MapNodeTags.Rest, MapNodeTags.Event, MapNodeTags.Treasure, MapNodeTags.Workbench,
+    };
+
+    // ⚠ THIS PROBE REWRITES `user://archive.json`. It is the only one that does — every other probe records
+    // in memory and leaves the file alone (Archive.Robot) — and it has to, because what it is checking is
+    // whether a discovery survives the process that made it.
+    private static void ReportArchive(RunBlueprint blueprint)
+    {
+        Archive.Build(blueprint);
+        GD.Print("smoke-archive: ⚠ this probe rewrites user://archive.json");
+        Archive.Reset();
+
+        foreach (var kind in Archive.Kinds)
+        {
+            var all = Archive.Entries(kind);
+            // "Wie sehen sie aus" is half of what an archive is for, so the census counts the PICTURES too:
+            // a shelf of entries with no art is a shelf of names.
+            var painted = all.Count(e => Pictured(e));
+            GD.Print($"smoke-archive: {Archive.Title(kind),-8} {all.Count,4} entries · {painted,4} painted"
+                + $" · e.g. {string.Join(", ", all.Take(3).Select(e => e.Name))}");
+        }
+
+        // THE GODS' SHELF IS THE ONE RULE THE PLAYER NAMED, so it is measured in both states rather than
+        // described in one. Found, then thrown away again — the picture below wants the starting state.
+        var god = Archive.Entries(ArchiveKind.Gods).FirstOrDefault();
+        GD.Print($"smoke-archive: gods shelf unmet ⇒ \"???\" = {Archive.SeenCount(ArchiveKind.Gods) == 0}");
+        if (god is not null)
+        {
+            Archive.Discover(god);
+            GD.Print($"smoke-archive: met {god.Name} ⇒ shelf opens = {Archive.SeenCount(ArchiveKind.Gods) == 1}");
+        }
+        Archive.Reset();
+
+        // AND THEN THROUGH THE FILE. Written, forgotten, read back off the disk — which is the only reading
+        // that says anything about a save. Eight per shelf so the picture shows a shelf part-filled, which is
+        // what an archive actually looks like.
+        var marked = Archive.Kinds
+            .Where(k => k != ArchiveKind.Gods)
+            .SelectMany(k => Archive.Entries(k).Take(8))
+            .ToList();
+        foreach (var entry in marked)
+            Archive.Discover(entry);
+        Archive.Forget();
+        var back = marked.Count(Archive.Seen);
+        GD.Print($"smoke-archive: wrote {marked.Count} finds, read {back} back OUT OF THE FILE"
+            + $" — {(back == marked.Count ? "the fund book survives the process" : "IT DID NOT")}");
+        foreach (var kind in Archive.Kinds)
+            GD.Print($"smoke-archive: {Archive.Title(kind),-8} found {Archive.SeenCount(kind)}"
+                + $"/{Archive.Entries(kind).Count}");
+    }
+
+    private static bool Pictured(ArchiveEntry entry) => entry.Kind switch
+    {
+        ArchiveKind.Cards => CardVisuals.CardArt(entry.Id) is not null,
+        ArchiveKind.Relics => CardVisuals.RelicArt(entry.Id) is not null,
+        _ => CardVisuals.EnemyArt(entry.Id) is not null,
     };
 
     private void ReportGenerators(RunBlueprint blueprint)
@@ -697,6 +770,13 @@ public partial class Boot : Control
             actions.AddChild(resume);
         }
 
+        // THE ARCHIVE IS A MAIN-MENU ITEM, not a thing inside Settings. It is not a preference — it is the
+        // one part of the game that survives a run, and the only reason to open the game without playing it.
+        var archive = new Button { Text = "Archive", CustomMinimumSize = new Vector2(140, 44) };
+        archive.TooltipText = "Everything you have met, kept between runs.";
+        archive.Pressed += () => OpenArchive();
+        actions.AddChild(archive);
+
         var settings = new Button { Text = "Settings", CustomMinimumSize = new Vector2(140, 44) };
         settings.Pressed += OpenSettings;
         actions.AddChild(settings);
@@ -829,6 +909,65 @@ public partial class Boot : Control
             OpenBugReport);
         overlay.Name = "SettingsOverlay";
         AddChild(overlay);
+    }
+
+    private ArchivePanel? OpenArchive()
+    {
+        if (GetNodeOrNull("ArchiveOverlay") is { } already)
+            return already.FindChild(nameof(ArchivePanel), recursive: true, owned: false) as ArchivePanel;
+        var overlay = ArchivePanel.Overlay(() => GetNodeOrNull("ArchiveOverlay")?.QueueFree());
+        overlay.Name = "ArchiveOverlay";
+        AddChild(overlay);
+        return overlay.FindChild(nameof(ArchivePanel), recursive: true, owned: false) as ArchivePanel;
+    }
+
+    // FOUR PICTURES, because this screen has four faces and only the first of them is the shelf. The plate is
+    // where the player reads how much HP a thing has and what it does — the whole request — and each of the
+    // three kinds draws it with a different widget (a body, a card face, a framed object), so each of the
+    // three is looked at.
+    private async System.Threading.Tasks.Task SmokeArchiveShots()
+    {
+        // The god is DISCOVERED here and not by ReportArchive, so the shelf picture keeps its "???" and the
+        // plate picture can still show a decree.
+        var god = Archive.Entries(ArchiveKind.Gods).FirstOrDefault();
+        var shots = new (string File, ArchiveKind? Kind, string? Id)[]
+        {
+            ("user://smoke-archive.png", null, null),
+            ("user://smoke-archive-elite.png", ArchiveKind.Elites, Archive.Entries(ArchiveKind.Elites).FirstOrDefault()?.Id),
+            ("user://smoke-archive-card.png", ArchiveKind.Cards, Archive.Entries(ArchiveKind.Cards).FirstOrDefault()?.Id),
+            ("user://smoke-archive-relic.png", ArchiveKind.Relics, Archive.Entries(ArchiveKind.Relics).FirstOrDefault()?.Id),
+            ("user://smoke-archive-god.png", ArchiveKind.Gods, god?.Id),
+        };
+
+        // ⚠⚠ ONE PANEL, SHOWN FIVE THINGS — not five panels. Tearing the overlay down between shots and
+        // building it again produced FIVE BYTE-IDENTICAL FILES: `QueueFree` is deferred, so the freed overlay
+        // was still in the tree when the next `OpenArchive` looked for one, found it, and handed back the
+        // dying panel. Every line the probe printed was true and every picture was of the same screen. It is
+        // the same trap D7 found in `--smoke-shop`, arriving from the other side, and the same two cures:
+        // do not rebuild what you can simply ask again, and make the screen SAY what it is showing.
+        var panel = OpenArchive();
+        if (panel is null)
+        {
+            GD.Print("smoke-archive: the archive did not open at all");
+            GetTree().Quit(1);
+            return;
+        }
+
+        var wrong = 0;
+        foreach (var (file, kind, id) in shots)
+        {
+            if (kind == ArchiveKind.Gods && god is not null)
+                Archive.Discover(god);
+            if (kind is { } which && id is { } what)
+                panel.Show(which, what);
+            for (var frame = 0; frame < 4; frame++)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            GetViewport().GetTexture().GetImage().SavePng(file);
+            GD.Print($"smoke-archive: screenshot {file} — {panel.Photographed}");
+            if (id is not null && !panel.Photographed.Contains(id, StringComparison.Ordinal))
+                wrong++;
+        }
+        GetTree().Quit(wrong == 0 ? 0 : 1);
     }
 
     private void OpenCredits()
