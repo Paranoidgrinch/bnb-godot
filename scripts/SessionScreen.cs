@@ -177,6 +177,8 @@ public partial class SessionScreen : Control
             _ = SmokeWindow();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-archive-run"))
             _ = SmokeArchiveRun();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-hover"))
+            _ = SmokeHover();
     }
 
     // Walk the screen the way a mouse would and report what is EXPLAINED and what is not: every piece of text
@@ -1402,6 +1404,73 @@ public partial class SessionScreen : Control
             GD.Print("smoke-archive-run: screenshot user://smoke-archive-inrun.png");
         }
         return panel is not null && !reset;
+    }
+
+    // ★ THE CARD UNDER THE POINTER, MEASURED. The hand closes up as it grows and a card in a big hand shows
+    // less than two thirds of itself; the cure is that pointing at one pulls it out square and half again as
+    // large. Three numbers say whether that happened — the scale, the tilt, and whether it is in front — and
+    // a picture says whether it reads.
+    //
+    // ⚠ IT HOVERS THROUGH THE REAL POINTER, not by calling the handler. What broke the first version of this
+    // gesture was exactly the thing a direct call cannot see: the face's own `MouseEntered` never fires,
+    // because the click overlay on top of the card is what the pointer actually lands on.
+    private async System.Threading.Tasks.Task SmokeHover()
+    {
+        var fight = WalkToFirstFight();
+        // ⚠ AND THEN LET THE SCREEN CATCH UP. `_handFaces` is filled by BuildHand, which runs on a REDRAW —
+        // walking the session forward without yielding a frame leaves the list empty, which reads exactly
+        // like a fight that was never reached. (It is how this probe first reported `faces=0`.)
+        for (var frame = 0; frame < 4; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        if (fight is null || _handFaces.Count == 0)
+        {
+            GD.Print($"smoke-hover: no hand reached (fight={fight is not null} faces={_handFaces.Count})");
+            GetTree().Quit(1);
+            return;
+        }
+        if (DisplayServer.GetName().Contains("headless"))
+        {
+            GD.Print($"smoke-hover: {_handFaces.Count} cards in hand; a pointer needs a window");
+            GetTree().Quit();
+            return;
+        }
+
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        // ⚠ THE MOST TILTED CARD, not the middle one. The fan only leans past five cards, and the middle card
+        // is the one card that is never tilted at all — so measuring it would make "it straightened" pass on
+        // a hand where nothing had to straighten. Whether the fan leaned AT ALL is reported below, so a
+        // trivially-true pass cannot be mistaken for a measurement.
+        var card = _handFaces.OrderByDescending(f => Math.Abs(f.RotationDegrees)).First();
+        var resting = (Scale: card.Scale.X, Tilt: card.RotationDegrees, Z: card.ZIndex);
+
+        await PointAt(card.GetGlobalRect().GetCenter());
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        var lifted = (Scale: card.Scale.X, Tilt: card.RotationDegrees, Z: card.ZIndex);
+        GetViewport().GetTexture().GetImage().SavePng("user://smoke-hover.png");
+
+        // …and off again, because a lift that does not put the card back is a hand that slowly falls apart.
+        await PointAt(new Vector2(20, 20));
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        var back = (Scale: card.Scale.X, Tilt: card.RotationDegrees, Z: card.ZIndex);
+
+        GD.Print($"smoke-hover: {_handFaces.Count} cards · resting scale={resting.Scale:0.00}"
+            + $" tilt={resting.Tilt:0.0} z={resting.Z}"
+            + $" → hovered scale={lifted.Scale:0.00} tilt={lifted.Tilt:0.0} z={lifted.Z}"
+            + $" → released scale={back.Scale:0.00} tilt={back.Tilt:0.0} z={back.Z}");
+        GD.Print("smoke-hover: screenshot user://smoke-hover.png");
+
+        var grew = lifted.Scale > resting.Scale + 0.2f;
+        var leaned = Math.Abs(resting.Tilt) > 0.01f;
+        var straightened = Math.Abs(lifted.Tilt) < 0.01f;
+        var inFront = lifted.Z > resting.Z;
+        var restored = Math.Abs(back.Scale - resting.Scale) < 0.01f
+            && Math.Abs(back.Tilt - resting.Tilt) < 0.01f && back.Z == resting.Z;
+        GD.Print($"smoke-hover: grew={grew} inFront={inFront} restored={restored}"
+            + $" · straightened={straightened}"
+            + (leaned
+                ? " (from a real lean)"
+                : $" — ⚠ NOT EXERCISED: the fan is flat at {_handFaces.Count} cards, it leans past five"));
+        GetTree().Quit(grew && straightened && inFront && restored ? 0 : 1);
     }
 
     private async System.Threading.Tasks.Task MapShot()
@@ -3255,6 +3324,7 @@ public partial class SessionScreen : Control
             face.PivotOffset = new Vector2(CardVisuals.CardW / 2f, CardVisuals.CardH / 2f);
             face.RotationDegrees = fromMiddle * tilt;
             inner.AddChild(face);
+            LiftOnHover(face, face.Position, face.RotationDegrees);
             _handFaces.Add(face);
             if (!_shownHandIds.Contains(cardId.value))
                 _cardsToAnimate.Add(face); // newly drawn → fly it in
@@ -3271,6 +3341,57 @@ public partial class SessionScreen : Control
             CallDeferred(nameof(AnimateDraws));
         else
             _cardsToAnimate.Clear();
+    }
+
+    // ★ THE CARD UNDER THE POINTER IS THE CARD YOU ARE READING. The hand closes up as it grows — that is
+    // what makes a big hand read as a hand of cards rather than as a row that ran out of room — but at seven
+    // cards a face shows 76 of its 134 px and the names clip. Overlapping is fine; not being able to READ the
+    // one you are pointing at is not. So the pointer does what a thumb does: it pulls that card out of the
+    // fan, square and half again as large, and lets it cover whatever is behind it.
+    //
+    // Three things in one gesture, and each is needed:
+    //   · SCALE — a card that only lifted would still be the size the fan squeezed it to.
+    //   · STRAIGHTEN — the fan's tilt is what makes a row of cards a hand, and it is also what makes one card
+    //     hard to read. It goes to 0 for as long as the pointer is on it.
+    //   · FRONT — `ZIndex`, not a reordering of children. Moving the node to the end of its parent would
+    //     leave the fan's left-under-right order permanently changed unless the old index were restored, and
+    //     a hand that quietly reshuffles itself as the pointer crosses it is worse than one that clips.
+    //
+    // ⚠ THE PIVOT IS LEFT ALONE. It is the card's centre because that is the point AnimateDraws flips a
+    // freshly-dealt card around, and two rules fighting over one pivot is a flip that lands crooked. Centre
+    // scaling grows the card in both directions, so the card is ALSO moved up by half the growth — which
+    // keeps its bottom edge exactly where the fan put it and sends all the extra size upward, over the arena.
+    // (Nothing in this band clips, which is what makes covering the arena possible at all.)
+    // ⚠⚠ AND THE SIGNAL IS TAKEN FROM THE BUTTON, NOT FROM THE FACE. A card face carries a full-rect Button
+    // over the whole of itself (CardVisuals.Face's click overlay), and that Button is the topmost control
+    // under the pointer — so the FACE's own `MouseEntered` never fires and wiring it there is a gesture that
+    // silently does nothing. The transform is still applied to the face; only the listening happens on the
+    // thing the pointer actually lands on. A card with no overlay (nothing to click) listens for itself.
+    private void LiftOnHover(Control face, Vector2 home, float homeRotation)
+    {
+        const float grown = 1.5f;
+        var rise = CardVisuals.CardH * (grown - 1f) / 2f;
+
+        var listener = face.GetChildren().OfType<Button>().LastOrDefault() as Control ?? face;
+
+        listener.MouseEntered += () =>
+        {
+            if (!IsInstanceValid(face))
+                return;
+            face.ZIndex = 20;
+            face.Scale = new Vector2(grown, grown);
+            face.RotationDegrees = 0f;
+            face.Position = home - new Vector2(0, rise);
+        };
+        listener.MouseExited += () =>
+        {
+            if (!IsInstanceValid(face))
+                return;
+            face.ZIndex = 0;
+            face.Scale = Vector2.One;
+            face.RotationDegrees = homeRotation;
+            face.Position = home;
+        };
     }
 
     // Fly each freshly-drawn card from the deck to its hand slot with a mid-flight flip (back → face).

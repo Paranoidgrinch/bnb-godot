@@ -87,6 +87,13 @@ presentation manifest.
   card and a thumbnail. ⚠ Nothing on a card may report a minimum size — the root is a plain `Control` and each
   field sits in a fixed clipped window, because Godot clamps a Control's size *up* to its children's combined
   minimum and that is what used to change a card's shape when it was clicked (`--smoke-format` measures it).
+  The hand CLOSES UP as it grows — an overlap is what makes a row of cards read as a hand — so the card under
+  the pointer is pulled out of the fan: scaled 1.5×, straightened, and put in front with `ZIndex`, free to
+  cover the arena above it. ⚠ The pivot is left alone (it is the centre, which is where `AnimateDraws` flips a
+  freshly-dealt card), so the card is also moved UP by half its growth — that keeps its bottom edge where the
+  fan put it and sends all the extra size upward. ⚠⚠ And the hover is listened for on the card's CLICK
+  OVERLAY, not on the face: the overlay covers the whole card and is what the pointer actually lands on, so
+  wiring the face is a gesture that silently does nothing (`--smoke-hover`).
   A card's picture is `assets/art/cards/<id>.png` — the path the document itself declares in
   `Presentation.Art`, so the contract's path IS the path on disk and there is nothing to register.
   An upgraded card has no picture of its own (`levy_stamp+` draws `levy_stamp.png`), so 413 cards ask
@@ -197,6 +204,9 @@ godot -- --smoke-elite    # an elite
 godot -- --smoke-crowd    # the widest fight it can reach: does the enemy row still fit on the screen?
 godot -- --smoke-boss 2   # walk to that act's BOSS and capture it (the phase banner, the dial, the chips)
 godot -- --smoke-reward   # the card reward
+godot -- --smoke-hover    # the card under the POINTER: pulled out of the fan, square and half again as
+                          # large, in front of everything — measured through the real pointer, because the
+                          # face's own MouseEntered never fires (the click overlay is what the pointer hits)
 godot -- --smoke-bug      # the bug-report window on the title screen: fills it in, SENDS it, and says what
                           # landed in the folder — four files or it is not a report
 godot -- --smoke-bug-run  # the same as a player makes one: mid-fight, Esc, the button in the menu
