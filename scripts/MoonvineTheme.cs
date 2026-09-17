@@ -180,6 +180,20 @@ public static class MoonvineTheme
     //
     // ⚠ A MISSING MATERIAL IS A NORMAL STATE. `Surface` falls back to the flat panel it replaced, so a build
     // without the files looks like D0 and never like an error.
+    // WHAT THE GAME REACHES FOR, by name. `--smoke-materials` reads this list rather than the folder: a
+    // folder can only say what is there, and the question a census answers is what the game asks for. The
+    // three raw tiles beside these (wood/marble/jasper) are `tools/make-materials.py`'s own sources and no
+    // screen names them, which is why the probe reports a file nothing asks for separately from a missing one.
+    public static readonly IReadOnlyList<string> MaterialNames = new[]
+    {
+        "panel-wood",     // the everyday panel: the cabinet the game is kept in
+        "panel-wood-rim", // the same, raised
+        "frame-stone",    // a marble edge around whatever the caller already had
+        "field-jasper",   // a field with writing on it
+        "moulding-gold",  // the lintel's profile
+        "rosette-gold",   // the stud a GRAND lintel wears
+    };
+
     private static readonly Dictionary<string, Texture2D?> Materials = new();
 
     public static Texture2D? Material(string name)

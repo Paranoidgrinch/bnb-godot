@@ -65,6 +65,15 @@ public partial class Boot : Control
             GetTree().Quit();
             return;
         }
+        // THE MATERIAL CENSUS (D8). The same "is it actually there" question the art census answers for the
+        // 714 pictures, asked of the surfaces: the tiles the theme reaches for by name, the room each ACT
+        // declares, and the one rule that keeps a background safe — it is never shown bare. About the
+        // document, the folder and the theme, so again: no screen is built to answer it.
+        if (userArgs.Contains("--smoke-materials"))
+        {
+            ReportMaterials(blueprint);
+            return;
+        }
         // BOTH GENERATORS, SIDE BY SIDE, on the same seed (map rework S15). A question about the DOCUMENT and
         // the engine rather than about a screen, so it is answered before one is built — and the point of it is
         // that the two columns differ: same acts, same lengths, different maps.
@@ -101,7 +110,14 @@ public partial class Boot : Control
         if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit"))
         {
             host.StartNewRun(seed: 7,
-                health: userArgs.Any(a => a is "--smoke-marathon" or "--smoke-crowd" or "--smoke-boss") ? 9999 : null,
+                // ⚠ A PROBE THAT HAS TO WALK SOMEWHERE MUST SURVIVE THE WALK. The greedy walker plays badly on
+                // purpose, and on the game's own health it dies in act I — which is how `--smoke-shop`,
+                // `--smoke-event` and `--smoke-elite` all came to photograph the same DEFEAT SCREEN and call it
+                // a shop, a door and an elite. Every probe that names a room it must reach gets the same 9999
+                // the marathon and the bosses have always had; the probes that stay where the run starts do not.
+                health: userArgs.Any(a => a is "--smoke-marathon" or "--smoke-crowd" or "--smoke-boss"
+                    or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade"
+                    or "--smoke-ambush" or "--smoke-elite" or "--smoke-reward") ? 9999 : null,
                 // Every session probe walks the DESIGN, which since the map rework is v0.0.1 — and `--legacy`
                 // walks the same probe over the old maps instead. A probe that cannot name its generator is a
                 // probe that cannot say whether what it found is about the map or about the game.
@@ -439,6 +455,76 @@ public partial class Boot : Control
             GD.Print($"  waiting: assets/art/{CardVisuals.SlotPath("enemies", id)}");
         foreach (var id in heroes.Where(id => CardVisuals.CharacterArt(id) is null).Take(2))
             GD.Print($"  waiting: assets/art/{CardVisuals.SlotPath("characters", id)}");
+    }
+
+    // Three questions, and only the first two can fail on a count.
+    //
+    // ⚠ A MISSING MATERIAL IS NOT AN ERROR AT RUNTIME — `MoonvineTheme.Surface` falls back to the flat panel
+    // it replaced, so a build without the files looks like D0 and never like a crash. That is exactly why it
+    // needs a probe: the failure mode of this whole phase is a game that quietly looks like the phase before.
+    private void ReportMaterials(RunBlueprint blueprint)
+    {
+        var problems = 0;
+
+        // 1. The surfaces the theme asks for by name.
+        var missing = MoonvineTheme.MaterialNames.Where(n => MoonvineTheme.Material(n) is null).ToList();
+        problems += missing.Count;
+        // …and the other direction: a file in the folder nothing reaches for. Not a failure — the three raw
+        // tiles are the generator's own sources — but a count that drifts is how a renamed material hides.
+        var onDisk = Godot.DirAccess.GetFilesAt("res://assets/materials")
+            .Where(f => f.EndsWith(".png", StringComparison.Ordinal))
+            .Select(f => f[..^4]).OrderBy(f => f, StringComparer.Ordinal).ToList();
+        var unasked = onDisk.Except(MoonvineTheme.MaterialNames, StringComparer.Ordinal).ToList();
+
+        GD.Print($"smoke-materials: {MoonvineTheme.MaterialNames.Count - missing.Count}"
+            + $"/{MoonvineTheme.MaterialNames.Count} materials resolved"
+            + $" · {onDisk.Count} file(s) in the folder, {unasked.Count} nothing asks for"
+            + (unasked.Count > 0 ? $" ({string.Join(", ", unasked)})" : ""));
+        foreach (var name in missing)
+            GD.Print($"  MISSING assets/materials/{name}.png");
+
+        // 2. The room each ACT is fought in — derived from the act's own rooms rather than from a list of
+        // paths, because the failure worth catching is act III's fights declaring act II's picture. An act
+        // must name exactly ONE background and that file must exist.
+        var plan = blueprint.BuildActPlan(seed: 20260916, startingLoadout: 0, MapGenerators.Strategic);
+        for (var act = 0; act < plan.Count; act++)
+        {
+            var declared = plan[act].Map.Nodes
+                .Select(node => node.Payload)
+                .OfType<EncounterRef>()
+                .Select(fight => blueprint.Presentation.Encounters.GetValueOrDefault(fight.Id.Value)?.Art)
+                .Where(art => !string.IsNullOrEmpty(art))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            var fights = plan[act].Map.Nodes.Count(node => node.Payload is EncounterRef);
+            var resolved = declared.Count(art => ResourceLoader.Exists($"res://assets/art/{art}"));
+            var ok = declared.Count == 1 && resolved == 1;
+            if (!ok)
+                problems++;
+            GD.Print($"    act {act + 1}: {fights} fight(s) declare {declared.Count} room(s), {resolved} on disk"
+                + $" — {(declared.Count == 0 ? "NONE DECLARED" : string.Join(", ", declared))}"
+                + (ok ? "" : declared.Count > 1 ? "  ← MORE THAN ONE ROOM FOR ONE ACT" : "  ← MISSING"));
+        }
+
+        // 3. Never bare. Built through the fight's own constructor, so what is checked is the code that shows
+        // a background and not a restatement of it: the veil exists, it is opaque enough to be a veil, and it
+        // is added AFTER the picture — a veil behind its picture passes every visibility check and veils
+        // nothing.
+        var holder = new Control();
+        AddChild(holder);
+        var (picture, scrim) = SessionScreen.BuildActBackdrop(holder);
+        var over = scrim.GetIndex() > picture.GetIndex();
+        var veiled = scrim.Color.A >= 0.5f;
+        if (!over || !veiled)
+            problems++;
+        GD.Print($"    the veil: alpha {scrim.Color.A:0.00}, {(over ? "over" : "UNDER")} the picture"
+            + $" — {(over && veiled ? "a picture is never shown bare" : "A PICTURE CAN REACH THE SCREEN BARE")}");
+        holder.QueueFree();
+
+        GD.Print(problems == 0
+            ? "smoke-materials: every surface the game asks for is there, every act has its room, and the veil is over it"
+            : $"smoke-materials: FAILED — {problems} problem(s)");
+        GetTree().Quit(problems == 0 ? 0 : 1);
     }
 
     // THE OPENING, PHOTOGRAPHED AT ITS THREE BEATS. Nothing else in the battery can see it: the splash runs

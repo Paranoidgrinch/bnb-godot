@@ -90,33 +90,7 @@ public partial class SessionScreen : Control
         // and paid for, and invisible: since D8-1 the main pane wears an OPAQUE stylebox, and the only trace
         // of an entire act's background was one letter showing in the gap beside the sidebar. It belongs in
         // the pane anyway — the sidebar is furniture, not the room.
-        _actPicture = new TextureRect
-        {
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
-            TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
-            // A picture does not decide how big it is drawn — the fifth doorway into D1's container lesson,
-            // and this one would have handed a 1280-wide minimum to a pane that has to work far narrower.
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            MouseFilter = MouseFilterEnum.Ignore,
-            Visible = false,
-        };
-        _actPicture.SetAnchorsPreset(LayoutPreset.FullRect);
-        mainHolder.AddChild(_actPicture);
-
-        // ⚠⚠ THE SCRIM LIVES IN THE SLOT, NOT IN THE PICTURE. The card face, the telegraph plate and the chips
-        // are legible because they are light objects on a near-black ground, and D6 spent a whole pass getting
-        // a god's telegraph above the fold. A picture therefore never reaches the screen bare: it is always
-        // under this veil, at a fixed strength nothing downstream may soften. That is what makes it safe to
-        // drop a background in months from now without looking at what it does to a fight — the worst a loud
-        // picture can do is look loud UNDER a veil.
-        _actScrim = new ColorRect
-        {
-            Color = new Color(MoonvineTheme.Bg, 0.60f),
-            MouseFilter = MouseFilterEnum.Ignore,
-            Visible = false,
-        };
-        _actScrim.SetAnchorsPreset(LayoutPreset.FullRect);
-        mainHolder.AddChild(_actScrim);
+        (_actPicture, _actScrim) = BuildActBackdrop(mainHolder);
 
         mainHolder.AddChild(_mainScroll);
         // The graphical combat scene lives here (hero left, enemies right, hand bottom) — shown only in combat.
@@ -1193,8 +1167,27 @@ public partial class SessionScreen : Control
                 && (session.IsAwaitingChoice || session.IsAwaitingEntities || play.CombatDriver?.Current is not null))
                 break;
 
-            if (play.CombatDriver?.Current is { } combat)
+            if (play.CombatDriver is { Current: not null } driver)
             {
+                // ⚠⚠ A CARD THAT ASKS A QUESTION PARKS THE WALK. The marathon and the simulator both answer
+                // these two before anything else; this loop did not, so the first card that asked something
+                // stopped the walker mid-resolution — with `IsHeroTurn` false — and it broke out and
+                // photographed whatever room it was in. It was invisible for as long as the walker DIED
+                // first: on the game's own health the run ended in act I, the screen said so, and the picture
+                // was of a defeat rather than of a shop. Give it enough hitpoints to walk and the real block
+                // steps forward. Answer the question, then play.
+                if (driver.PendingOptionChoice is { } options)
+                {
+                    driver.SupplyOptionChoice(
+                        [.. Enumerable.Range(0, Math.Min(driver.PendingOptionChoiceCount, options.Count))]);
+                    continue;
+                }
+                if (driver.PendingCardChoice is { } cards)
+                {
+                    driver.SupplyCardChoice([.. cards.Take(driver.PendingCardChoiceCount).Select(c => c.Id)]);
+                    continue;
+                }
+                var combat = driver.Current!;
                 if (!combat.IsHeroTurn)
                     break;
                 var hero = combat.State.GetCombatant(combat.HeroId);
@@ -1203,14 +1196,23 @@ public partial class SessionScreen : Control
                 var target = combat.State.Combatants
                     .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
                 if (card is not null)
-                    play.CombatDriver.PlayCard(card.Id, target);
+                    driver.PlayCard(card.Id, target);
                 else
-                    play.CombatDriver.EndTurn();
+                    driver.EndTurn();
             }
             else if (session.IsAwaitingNodeChoice)
             {
-                // Steer toward the wanted kind; otherwise take the shortest way on.
-                var wanted = session.PendingNodeChoices.FirstOrDefault(n => n.HasTag(role))
+                // ⚠⚠ STEERING ONE STEP AHEAD IS NOT STEERING. This used to take a room of the wanted kind
+                // only when one happened to be the very next field, and otherwise `PendingNodeChoices[0]` —
+                // so `--smoke-shop` walked past both of act I's shops to the BOSS and photographed that. A
+                // map is a graph; ask it which way the room lies. Nearest first, and only when no branch
+                // leads to one at all does the old tie-break stand.
+                var wanted = session.PendingNodeChoices
+                    .Select(n => (Node: n, Away: StepsToRole(session.Run.Map, n, role)))
+                    .Where(x => x.Away is not null)
+                    .OrderBy(x => x.Away!.Value)
+                    .Select(x => x.Node)
+                    .FirstOrDefault()
                     ?? session.PendingNodeChoices[0];
                 session.PickNode(wanted.Id.Value);
             }
@@ -1235,12 +1237,44 @@ public partial class SessionScreen : Control
         }
 
         Rebuild();
-        GD.Print($"smoke-room {role}: choice={session?.IsAwaitingChoice} entities={session?.IsAwaitingEntities} "
+        // ⚠⚠ A SCREENSHOT PROBE MUST SAY WHICH ROOM IT PHOTOGRAPHED. This line used to report `choice` and
+        // `entities` and an error — three things that are all perfectly true on the screen that says the run
+        // is over. So when the greedy walker died on the way (which it did, on the game's own health, for
+        // shop, event and elite alike), the probe took a picture of the DEFEAT SCREEN, printed a calm line,
+        // exited 0, and three of the gate's screenshots were the same wrong picture. Measure the outcome, not
+        // the intent: name the room reached, and fail when it is not the room asked for.
+        var landed = session?.Run.CurrentNodeId is { } at
+            ? session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == at.Value)
+            : null;
+        var arrived = landed is not null && landed.HasTag(role) && session?.Run.Result == RunResult.Ongoing;
+        GD.Print($"smoke-room {role}: {(arrived ? "STANDING IN IT" : "NEVER GOT THERE")}"
+            + $" — room {landed?.Id.Value ?? "—"} [{string.Join(" ", landed?.Tags ?? [])}]"
+            + $" run={session?.Run.Result} choice={session?.IsAwaitingChoice} entities={session?.IsAwaitingEntities} "
             + $"error={session?.Error ?? Play?.Error ?? "none"}");
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         ReportPictures(role);
         ReportTooltips(role);
-        await CaptureThenQuit(file);
+        await CaptureThenQuit(file, arrived ? 0 : 1);
+    }
+
+    // How many rooms from `from` — itself included — until one tagged `role`, or null if this branch never
+    // reaches one. A breadth-first walk of the act's own edges, which is the only thing that knows where a
+    // shop is: the map is a DAG per act, so this terminates and the first hit is the nearest.
+    private static int? StepsToRole(RunMap map, RogueDeck.Run.Node from, string role)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal) { from.Id.Value };
+        var frontier = new List<RogueDeck.Run.Node> { from };
+        for (var away = 0; frontier.Count > 0; away++)
+        {
+            if (frontier.Any(n => n.HasTag(role)))
+                return away;
+            frontier = [.. frontier
+                .SelectMany(n => map.Edges.Where(e => e.From.Value == n.Id.Value))
+                .Select(e => map.Nodes.FirstOrDefault(n => n.Id.Value == e.To.Value))
+                .OfType<RogueDeck.Run.Node>()
+                .Where(n => seen.Add(n.Id.Value))];
+        }
+        return null;
     }
 
     private async System.Threading.Tasks.Task MapShot()
@@ -1419,7 +1453,8 @@ public partial class SessionScreen : Control
     }
 
     // Measure per-action latency (a card play under the replay model re-executes the whole run — is that
-    // fast enough for a human clicking cards?). Reach the first fight, then time up to 12 actions.
+    // fast enough for a human clicking cards?). Reach the first fight, then time 2 actions — the number
+    // is the FLOOR, because the replay grows with the run and this is the shortest run there is.
     private void SmokeTiming()
     {
         var session = Session;
@@ -1702,11 +1737,11 @@ public partial class SessionScreen : Control
         _ = CaptureThenQuit("smoke-combat.png");
     }
 
-    private async System.Threading.Tasks.Task CaptureThenQuit(string file)
+    private async System.Threading.Tasks.Task CaptureThenQuit(string file, int code = 0)
     {
         if (DisplayServer.GetName().Contains("headless"))
         {
-            GetTree().Quit();
+            GetTree().Quit(code);
             return;
         }
         // Let animations (draw fly-in, the deck's video) settle before the still capture.
@@ -1714,7 +1749,10 @@ public partial class SessionScreen : Control
         var image = GetViewport().GetTexture().GetImage();
         image.SavePng($"user://{file}");
         GD.Print($"smoke: screenshot user://{file} ({image.GetWidth()}x{image.GetHeight()})");
-        GetTree().Quit();
+        // ⚠ THE PICTURE IS STILL TAKEN when the probe did not arrive — it is the evidence of where it ended
+        // up instead, and a batch that deletes that picture is a batch that cannot be read afterwards. What
+        // carries the verdict is the EXIT CODE, which is the one thing a runner cannot mistake for a room.
+        GetTree().Quit(code);
     }
 
     public override void _ExitTree() => GameHost.Instance.StateChanged -= Rebuild;
@@ -1778,6 +1816,49 @@ public partial class SessionScreen : Control
     {
         GetNodeOrNull("SettingsOverlay")?.QueueFree();
         BugReportPanel.Open(this);
+    }
+
+    // THE BACKDROP OF A ROOM: a picture and the veil over it, built as ONE THING because they are one
+    // thing. `--smoke-materials` builds this same pair away from a run, so the question "is a background
+    // ever shown bare" is answered by the code that shows it and not by a copy of it.
+    //
+    // ⚠⚠ THE SCRIM LIVES IN THE SLOT, NOT IN THE PICTURE. The card face, the telegraph plate and the chips
+    // are legible because they are light objects on a near-black ground, and D6 spent a whole pass getting
+    // a god's telegraph above the fold. A picture therefore never reaches the screen bare: it is always
+    // under this veil, at a fixed strength nothing downstream may soften. That is what makes it safe to
+    // drop a background in months from now without looking at what it does to a fight — the worst a loud
+    // picture can do is look loud UNDER a veil.
+    //
+    // ⚠ ORDER IS THE WHOLE POINT. The picture is added first and the veil second: in Godot a later sibling
+    // draws on top, so the two AddChild calls below are the sentence "never bare", and swapping them would
+    // hang the veil behind the picture while every visibility check still passed.
+    internal const float ActScrimAlpha = 0.60f;
+
+    internal static (TextureRect Picture, ColorRect Scrim) BuildActBackdrop(Control holder)
+    {
+        var picture = new TextureRect
+        {
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
+            TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
+            // A picture does not decide how big it is drawn — the fifth doorway into D1's container lesson,
+            // and this one would have handed a 1280-wide minimum to a pane that has to work far narrower.
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            MouseFilter = MouseFilterEnum.Ignore,
+            Visible = false,
+        };
+        picture.SetAnchorsPreset(LayoutPreset.FullRect);
+        holder.AddChild(picture);
+
+        var scrim = new ColorRect
+        {
+            Color = new Color(MoonvineTheme.Bg, ActScrimAlpha),
+            MouseFilter = MouseFilterEnum.Ignore,
+            Visible = false,
+        };
+        scrim.SetAnchorsPreset(LayoutPreset.FullRect);
+        holder.AddChild(scrim);
+
+        return (picture, scrim);
     }
 
     // The room a fight happens in. Only in a FIGHT: between rooms the player is reading lists and a map, and a
@@ -2765,6 +2846,11 @@ public partial class SessionScreen : Control
                         ? $"{order + 1}. {optionChoice[index]}"
                         : optionChoice[index],
                     CustomMinimumSize = new Vector2(180, 48),
+                    // ⚠ AN OPTION IS A NAME LIKE ANY OTHER. These three buttons are the only place in a fight
+                    // where the game asks a question in words of its own, and they were the one place that did
+                    // not go through the glossary — so Utu's oaths arrived named and unexplained while every
+                    // label around them explained itself. The event choice a screen away has always done this.
+                    TooltipText = Glossary.Explain(null, optionChoice[index]),
                 };
                 button.AddThemeColorOverride("font_color",
                     order >= 0 ? MoonvineTheme.Accent : MoonvineTheme.Text);

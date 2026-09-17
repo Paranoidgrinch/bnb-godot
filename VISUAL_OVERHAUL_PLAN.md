@@ -1049,7 +1049,7 @@ numbers has been wrong for a long time.
 
 ---
 
-## Phase D7 — the gate, and only then V-7
+## Phase D7 — the gate, and only then V-7  ✔ PASSED 2026-09-17
 
 1. Core + bnb-content suites green (they are today: 1469 / 755 / 824 / 385 and 1501/1501).
 2. bnb-godot builds; every screenshot probe captured and reviewed by the user — the battery now includes
@@ -1058,6 +1058,87 @@ numbers has been wrong for a long time.
    than 592 s — a card face with an art window and a texture per card is more nodes per screen than a
    label stack, and the marathon is where that shows. (D6 measured 434 s; D8 must not spend that margin.)
 4. Then, unchanged, `ACT_IV_V_BUILD_PLAN.md` **V-7**.
+
+### What the gate actually found (2026-09-17)
+
+It passed, and it was not a formality: **five defects**, four of them in the battery itself. A gate whose
+only job is to be walked through is a gate nobody checked.
+
+**1. The battery's own numbers.** Core **1469 / 755 / 824 / 386** (the gate above says 385 — Sandbox has one
+more test than it did) and bnb-content **1501 / 1501**, all green. `dotnet format` reports 36 whitespace
+findings in `SessionScreen.cs` — **the same 36 it reports on HEAD**, untouched by this phase, all of them in
+code no line of D7 went near. bnb-godot has no format hook, so they are old and they stay old.
+
+**2. `--smoke-materials` DID NOT EXIST.** D8 specified it in "The probes" and never built it, and D7's own
+point 2 lists it as part of the battery. Built now, and it does the thing the name promises rather than a
+restatement of it: the six surfaces `MoonvineTheme` asks for BY NAME (plus the three raw tiles nothing asks
+for — `make-materials.py`'s own sources, reported separately so a renamed material cannot hide), then, per
+act, the picture that act's OWN rooms declare (so act III's fights declaring act II's room is a failure and
+not a footnote), and finally the veil — built through `SessionScreen.BuildActBackdrop`, the very constructor
+a fight uses, because ⚠⚠ **A VEIL BEHIND ITS PICTURE PASSES EVERY VISIBILITY CHECK AND VEILS NOTHING.** The
+picture/scrim pair was extracted into that one method so the probe and the fight cannot drift apart.
+
+    smoke-materials: 6/6 · 9 files, 3 nothing asks for · act 1-5 each declare exactly 1 room, 5/5 on disk
+                     the veil: alpha 0.60, over the picture — a picture is never shown bare
+
+**3. ⚠⚠ THREE OF THE SCREENSHOTS WERE THE SAME WRONG PICTURE.** `--smoke-shop`, `--smoke-event` and
+`--smoke-elite` all photographed the **defeat screen** and all exited 0. Their report line said
+`choice=False entities=False error=none` — three statements that are perfectly true on the screen that says
+the run is over. The gate has been asking a human to review a shop, a door and an elite, and handing them the
+same picture of a dead run three times. This is D8's own lesson one level up: *measure the outcome, not the
+intent.* `SmokeRoom` now names the room it is ACTUALLY standing in, and exits 1 when that is not the room
+asked for — while still taking the picture, because the picture is the evidence of where it ended up instead.
+
+**4. And underneath it, the thing the dying hid.** Given enough hitpoints to survive the walk (the same 9999
+the marathon and the bosses have always had, now extended to every probe that must REACH a named room), the
+walker stopped anyway — parked mid-fight at `r9c0`, every time. ⚠⚠ **`SmokeRoom` COULD NOT ANSWER A CARD'S
+QUESTION.** The marathon and the simulator both supply `PendingOptionChoice` / `PendingCardChoice` before
+anything else; this loop never did, so the first card that asked something parked it forever with
+`IsHeroTurn` false, and it broke out and photographed the room it was in. Invisible for as long as the run
+died first. **A crash that is reached only after a bug you already have is a bug you do not have yet.**
+
+**5. And one level under THAT: steering one step ahead is not steering.** With the walk unblocked,
+`--smoke-shop` walked past both of act I's shops to the BOSS. It took a room of the wanted kind only when one
+happened to be the very next field, and otherwise `PendingNodeChoices[0]`. A map is a graph; `StepsToRole`
+now asks it which way the room lies (breadth-first over the act's own edges, nearest branch first). Every
+probe then arrives, and arrives EARLY: shop `r6c1`, event `r3c1`, rest `r4c1`, elite `r8c1`.
+
+**6. Utu's three oaths stood on screen NAMED AND UNEXPLAINED.** `--smoke-tooltips [boss5]`: 3 unexplained.
+The combat option buttons were the one place in the whole frontend that did not go through the glossary —
+the event choice one screen away always has. One line, same idiom. **112 controls, 100 with a hover, 0
+unexplained** (was 97 / 3).
+
+**7. The README's "~17 ms/action" was wrong, not the measurement.** `git log -S` dates the claim to
+2026-07-17 and 111 commits ago, when this game was act I. Measured today: **150 ms/action** at the FIRST
+fight, and the code's own comment says why — an action re-executes the whole run under the replay model, so
+that number is a FLOOR that grows with the run. README corrected, and the probe's comment with it (it says
+it times 12 actions; it times 2).
+
+**What was measured, and against what.**
+
+    suites:          Core 1469/755/824/386 · bnb-content 1501/1501 — green
+    smoke-marathon:  Victory acts=5 rooms=110 seconds=400.0   (gate <= 592; D6 434, D8 540.8)
+                     act 1 30.4s · act 2 63.3s · act 3 106.7s · act 4 157.0s · act 5 30.4s
+                     — rooms=110 not 111: the gate's 111 is v0.0.0's count, from before the map rework
+    smoke-art:       714/714
+    smoke-materials: 6/6, 5/5 rooms, veil over the picture
+    smoke-format:    5 slots, 134x190, 0 off over 10 clicks — PASS
+    smoke-deck:      players=1 same-clip=yes advanced=yes 0.17 -> 1.38 — PASS
+    smoke-window:    1280/1600/1920 — arena 880-967 x 334, hand clear at all three
+    smoke-crowd:     enemies=3 offscreen=no, arena 334 / column 332 — all visible
+    smoke-boss 2:    arena 334 / column 366 — 32 below the fold, and what is below it is the CHIP LIST D6
+                     put there on purpose; the enemy's intent is above the fold, which is the rule
+    smoke-boss 5:    Utu, round 9 — arena 806 / column 457, all visible, 0 unexplained
+    smoke-shelf:     worn=69 tiles=69 rows=14 outside=no scrolls=no (content 994 < viewport 1054)
+    smoke-tooltips:  0 unexplained on combat, shelf, map, event, shop, elite, rest, multi-combat, reward, boss5
+    smoke-music:     10/10 looping, 13/13 states
+    smoke-generators both generators lay out every act; a resumed run keeps its map
+    smoke-quit:      save on disk, offered, same room
+    22 screenshots + 6 re-taken after the fixes: ~/Desktop/bnb-d7/shots
+
+**Left for the user's eye, not defects.** The hand fans tighter as it grows — at 7 cards a card shows 76 of
+its 134 px and the names clip; at 5 they read. The title screen's top 300 px are empty. The rest room's
+heading runs its name and its line together as one sentence.
 
 ---
 

@@ -105,10 +105,16 @@ Headless checks (no window):
 godot --headless -- --smoke        # boot: prints "loaded: …" and quits
 godot --headless -- --smoke-art     # the art census: how many of the 709 slots have a file
 godot --headless -- --smoke-generators # both map generators, same seed, side by side: rows and rooms per act
+godot --headless -- --smoke-materials # the material census: the six surfaces the theme asks for by name,
+                                     # the ONE room each act's own fights declare, and the rule that keeps
+                                     # a background safe — the veil is over the picture, never under it
 godot --headless -- --smoke-music   # the ten tracks: present, LOOPING, and the right one for each state
                                      # — what "New run ▸" is actually asking the player to choose between
 godot --headless -- --smoke-full    # auto-plays the first rooms and reports the state
-godot --headless -- --smoke-timing  # per-action latency (~17 ms/action)
+godot --headless -- --smoke-timing  # per-action latency at the FIRST fight (~150 ms/action, measured
+                                     # 2026-09-17). An action re-executes the whole run under the replay
+                                     # model, so this is a floor that GROWS with the run — the "~17 ms"
+                                     # that stood here was measured in July, when the game was act I
 godot --headless -- --smoke-statuses # carried state reads as its authored name, not its id
 godot --headless -- --smoke-marathon # play the WHOLE game (all five acts) and report rooms + latency
 godot --headless -- --smoke-tooltips # audit a combat screen: is anything NAMED but not explained?
