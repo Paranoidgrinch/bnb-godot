@@ -462,20 +462,35 @@ public partial class ArchivePanel : PanelContainer
             return row;
         }
 
-        var reset = new Button
+        // ⚠⚠ NOT WHILE A RUN IS LIVE, and this is not squeamishness — it would half-work. `RunPlayback`
+        // holds the meta profile it loaded when the run started and writes that object back when the run
+        // ends, so a profile deleted mid-run is RECREATED at the finish line with every unlock the reset was
+        // meant to throw away. Half a reset is worse than none: the player would be told it happened. The
+        // archive is readable from inside a run either way; only the button waits for the title screen.
+        if (GameHost.Instance.Play is not null)
         {
-            Text = "Reset progress",
-            Flat = true,
-            CustomMinimumSize = new Vector2(0, 40),
-            TooltipText = "Throw away every discovery and start the archive empty.",
-        };
-        reset.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
-        reset.Pressed += () =>
+            var later = Muted("Finish or leave the run to reset your progress.");
+            later.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            later.VerticalAlignment = VerticalAlignment.Center;
+            row.AddChild(later);
+        }
+        else
         {
-            _confirmingReset = true;
-            Draw();
-        };
-        row.AddChild(reset);
+            var reset = new Button
+            {
+                Text = "Reset progress",
+                Flat = true,
+                CustomMinimumSize = new Vector2(0, 40),
+                TooltipText = "Throw away every discovery and start the archive empty.",
+            };
+            reset.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+            reset.Pressed += () =>
+            {
+                _confirmingReset = true;
+                Draw();
+            };
+            row.AddChild(reset);
+        }
 
         row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
 
@@ -516,6 +531,23 @@ public partial class ArchivePanel : PanelContainer
     internal string Photographed => _picked is null
         ? $"{Archive.Title(_kind)} shelf, nothing picked"
         : $"{Archive.Title(_kind)}/{_picked.Id}{(Archive.Seen(_picked) ? "" : " — UNMET, so the plate says ???")}";
+
+    public const string OverlayName = "ArchiveOverlay";
+
+    // ONE ROUTE IN, used by both callers: the title screen's Archive button and the Esc menu's inside a run.
+    // Returns the panel so a probe can ask it what it is showing.
+    public static ArchivePanel? Open(Control screen)
+    {
+        ArgumentNullException.ThrowIfNull(screen);
+        if (screen.GetNodeOrNull(OverlayName) is not { } already)
+        {
+            var fresh = Overlay(() => screen.GetNodeOrNull(OverlayName)?.QueueFree());
+            fresh.Name = OverlayName;
+            screen.AddChild(fresh);
+            already = fresh;
+        }
+        return already.FindChild(nameof(ArchivePanel), recursive: true, owned: false) as ArchivePanel;
+    }
 
     public static Control Overlay(Action onClose)
     {

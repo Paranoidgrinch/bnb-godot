@@ -41,8 +41,13 @@ presentation manifest.
   relic you could not afford is exactly the one worth looking up later. ⚠ A probe or a simulated run records
   in memory but never writes the file (`Archive.Robot`), or `tools/simulate.sh` would hand the player a
   finished archive they never earned. The gods' shelf reads `???` and does not open until the first one is
-  met; "Reset progress" at the foot of the screen throws away the fund book AND `metastate.json`, and asks
-  twice before it does.
+  met. Reachable from the title screen and from **Esc inside a run** (SettingsPanel's `onArchive`, supplied by
+  the run screen the way "Save and quit" is — the title screen has its own button and passes nothing): the
+  question "how much HP did that thing have" is asked during a fight far more often than on a menu.
+  "Reset progress" at the foot of the screen throws away the fund book AND `metastate.json`, and asks twice
+  before it does — ⚠ but it is NOT offered while a run is live, because `RunPlayback` rewrites the meta
+  profile at the finish line from the copy it loaded at the start, so a reset there would be undone at the end
+  of the run after the player had been told it happened.
 - `scripts/Glossary.cs` — what every named thing MEANS, built once from the document: ask it about an id, or
   hand it any text and it names the terms that text uses. Every hover in the game goes through it.
 - `scripts/DisplaySettings.cs` — **the window**: the project declares one design canvas (1280 × 720) and a
@@ -150,7 +155,9 @@ godot --headless -- --smoke-archive-run # what a RUN teaches the archive: walks 
                                      # every enemy, card and relic the recorder picked up on the way. Its
                                      # stop condition IS the archive's state, so it can only end if the
                                      # recording happened during the walk — and it checks that a probe left
-                                     # the player's own fund book alone
+                                     # the player's own fund book alone — and then walks in from the ESC MENU
+                                     # the way a player does (press Esc, find the button by its words, press
+                                     # it) and reports what came up
 godot --headless -- --smoke-marathon # play the WHOLE game (all five acts) and report rooms + latency
 godot --headless -- --smoke-tooltips # audit a combat screen: is anything NAMED but not explained?
 godot --headless -- --smoke-format   # every card in the hand is exactly the size it was handed,

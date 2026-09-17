@@ -1334,7 +1334,74 @@ public partial class SessionScreen : Control
         var (wrote, read) = Archive.ProveWrite("user://archive-probe.json");
         GD.Print($"smoke-archive-run: wrote the walk's {wrote} finds and read {read} back off the disk"
             + $" — {(wrote == read ? "what a run records is what a save holds" : "THE SAVE LOST SOME")}");
-        GetTree().Quit(total > 0 && before == after && wrote == read ? 0 : 1);
+
+        var reachable = await ArchiveFromEscMenu();
+        GetTree().Quit(total > 0 && before == after && wrote == read && reachable ? 0 : 1);
+    }
+
+    // ★ THE ROUTE IN FROM INSIDE A RUN, walked the way the player walks it: press Esc, find the button by its
+    // WORDS, press that. Nothing here calls `OpenArchive` — a probe that opens a window itself has checked
+    // that the window opens and not that anybody can get to it, which is the whole question about a menu item.
+    //
+    // It also checks the one thing that must NOT be on this screen in a run: "Reset progress". `RunPlayback`
+    // rewrites the meta profile at the finish line from the copy it loaded at the start, so a reset here
+    // would be undone at the end of the run and the player would have been told it happened.
+    private async System.Threading.Tasks.Task<bool> ArchiveFromEscMenu()
+    {
+        try
+        {
+            return await PressEscThenArchive();
+        }
+        catch (System.Exception ex)
+        {
+            // ⚠ AN UNOBSERVED TASK DIES IN SILENCE. Godot discards the exception of a `_ = SomeAsync()` call,
+            // and the first draft of this probe simply printed nothing at all — which reads exactly like a
+            // probe that was never reached.
+            GD.Print($"smoke-archive-run: the Esc route threw {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+            return false;
+        }
+    }
+
+    private async System.Threading.Tasks.Task<bool> PressEscThenArchive()
+    {
+        _UnhandledInput(new InputEventKey { Keycode = Key.Escape, Pressed = true });
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        if (GetNodeOrNull("SettingsOverlay") is not { } menu)
+        {
+            GD.Print("smoke-archive-run: Esc did not open the menu at all");
+            return false;
+        }
+        // ⚠ THE BUTTON IS LOOKED FOR INSIDE THE MENU, not on the screen. Two reasons, and the second one
+        // cost a run: it is the Esc MENU that is supposed to offer this, so finding a button of that name
+        // anywhere else would answer the wrong question — and a walk over the whole screen touches the
+        // fight's own nodes, which `Rebuild` has queued for deletion, and reading `.Text` off one of those
+        // throws ObjectDisposedException. That is what this probe did on its first run.
+        if (FindButton(menu, "Archive") is not { } item)
+        {
+            GD.Print("smoke-archive-run: the Esc menu opened with NO \"Archive\" BUTTON IN IT");
+            return false;
+        }
+        // ⚠ THE LABEL IS READ BEFORE THE PRESS. Pressing it makes the settings window step aside, which frees
+        // the button — and reading `.Text` off it afterwards throws ObjectDisposedException. The probe was
+        // quoting a label its own click had destroyed.
+        var label = item.Text;
+        item.EmitSignal(BaseButton.SignalName.Pressed);
+        for (var frame = 0; frame < 3; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        var overlay = GetNodeOrNull(ArchivePanel.OverlayName);
+        var panel = overlay?.FindChild(nameof(ArchivePanel), recursive: true, owned: false) as ArchivePanel;
+        var reset = FindButton(overlay, "Reset progress") is not null;
+        GD.Print($"smoke-archive-run: Esc → \"{label}\" → "
+            + $"{(panel is null ? "NOTHING OPENED" : $"the archive, showing {panel.Photographed}")}"
+            + $" · settings stepped aside={GetNodeOrNull("SettingsOverlay") is null}"
+            + $" · \"Reset progress\" offered={reset} (must be False in a run)");
+        if (!DisplayServer.GetName().Contains("headless"))
+        {
+            GetViewport().GetTexture().GetImage().SavePng("user://smoke-archive-inrun.png");
+            GD.Print("smoke-archive-run: screenshot user://smoke-archive-inrun.png");
+        }
+        return panel is not null && !reset;
     }
 
     private async System.Threading.Tasks.Task MapShot()
@@ -1839,6 +1906,10 @@ public partial class SessionScreen : Control
         {
             reporting.QueueFree();
         }
+        else if (GetNodeOrNull(ArchivePanel.OverlayName) is { } archive)
+        {
+            archive.QueueFree();
+        }
         else if (GetNodeOrNull("SettingsOverlay") is { } open)
         {
             open.QueueFree();
@@ -1852,7 +1923,8 @@ public partial class SessionScreen : Control
             var overlay = SettingsPanel.Overlay(
                 () => GetNodeOrNull("SettingsOverlay")?.QueueFree(),
                 OpenBugReport,
-                SaveAndQuitToTitle);
+                SaveAndQuitToTitle,
+                () => OpenArchive());
             overlay.Name = "SettingsOverlay";
             AddChild(overlay);
         }
@@ -1883,6 +1955,15 @@ public partial class SessionScreen : Control
     {
         GetNodeOrNull("SettingsOverlay")?.QueueFree();
         BugReportPanel.Open(this);
+    }
+
+    // …and for the archive, for the same reason. ⚠ The overlay is a child of the SCREEN, not of anything
+    // Rebuild() clears, so the enemy taking its turn behind the archive redraws the game and leaves the
+    // window standing — the same arrangement the settings window relies on.
+    private ArchivePanel? OpenArchive()
+    {
+        GetNodeOrNull("SettingsOverlay")?.QueueFree();
+        return ArchivePanel.Open(this);
     }
 
     // THE BACKDROP OF A ROOM: a picture and the veil over it, built as ONE THING because they are one

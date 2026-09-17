@@ -911,15 +911,7 @@ public partial class Boot : Control
         AddChild(overlay);
     }
 
-    private ArchivePanel? OpenArchive()
-    {
-        if (GetNodeOrNull("ArchiveOverlay") is { } already)
-            return already.FindChild(nameof(ArchivePanel), recursive: true, owned: false) as ArchivePanel;
-        var overlay = ArchivePanel.Overlay(() => GetNodeOrNull("ArchiveOverlay")?.QueueFree());
-        overlay.Name = "ArchiveOverlay";
-        AddChild(overlay);
-        return overlay.FindChild(nameof(ArchivePanel), recursive: true, owned: false) as ArchivePanel;
-    }
+    private ArchivePanel? OpenArchive() => ArchivePanel.Open(this);
 
     // FOUR PICTURES, because this screen has four faces and only the first of them is the shelf. The plate is
     // where the player reads how much HP a thing has and what it does — the whole request — and each of the

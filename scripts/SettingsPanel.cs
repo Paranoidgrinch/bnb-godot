@@ -14,6 +14,7 @@ public partial class SettingsPanel : PanelContainer
     private readonly Action? _onClose;
     private readonly Action? _onReportBug;
     private readonly Action? _onSaveAndQuit;
+    private readonly Action? _onArchive;
     private OptionButton _mode = null!;
     private OptionButton _size = null!;
     private OptionButton _scale = null!;
@@ -21,11 +22,14 @@ public partial class SettingsPanel : PanelContainer
     private HSlider _music = null!;
     private Label _musicValue = null!;
 
-    public SettingsPanel(Action? onClose = null, Action? onReportBug = null, Action? onSaveAndQuit = null)
+    public SettingsPanel(
+        Action? onClose = null, Action? onReportBug = null, Action? onSaveAndQuit = null,
+        Action? onArchive = null)
     {
         _onClose = onClose;
         _onReportBug = onReportBug;
         _onSaveAndQuit = onSaveAndQuit;
+        _onArchive = onArchive;
     }
 
     public override void _Ready()
@@ -147,6 +151,24 @@ public partial class SettingsPanel : PanelContainer
             column.AddChild(bug);
         }
 
+        // THE ARCHIVE, FROM INSIDE THE RUN THAT IS FILLING IT. The question it answers — how much HP did that
+        // thing have, what did that relic do — is asked DURING a fight far more often than on the title
+        // screen, and until now the only way to look was to stop playing. Like the way out below, it belongs
+        // to the run rather than to the window, so the caller supplies it and the title screen (which has its
+        // own Archive button two feet away) passes nothing.
+        if (_onArchive is { } archive)
+        {
+            var open = new Button
+            {
+                Text = "📖  Archive",
+                CustomMinimumSize = new Vector2(0, 40),
+                TooltipText = "Everything you have met, kept between runs.",
+            };
+            open.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
+            open.Pressed += () => archive();
+            column.AddChild(open);
+        }
+
         // …AND SO DOES THE WAY OUT. Esc is also what somebody presses when they have to stop playing, and
         // until now this window could only be closed: leaving a run meant quitting the program and trusting
         // that the autosave had caught the last thing they did. Saying it out loud — save, then put me back on
@@ -207,7 +229,8 @@ public partial class SettingsPanel : PanelContainer
         _size.Disabled = (DisplaySettings.WindowKind)_mode.GetSelectedId() != DisplaySettings.WindowKind.Windowed;
 
     // The dialog as a full-screen overlay: a dimmed sheet with the panel centred on it. `onClose` frees it.
-    public static Control Overlay(Action onClose, Action? onReportBug = null, Action? onSaveAndQuit = null)
+    public static Control Overlay(
+        Action onClose, Action? onReportBug = null, Action? onSaveAndQuit = null, Action? onArchive = null)
     {
         var veil = new Control { MouseFilter = MouseFilterEnum.Stop };
         veil.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -217,7 +240,7 @@ public partial class SettingsPanel : PanelContainer
 
         var center = new CenterContainer();
         center.SetAnchorsPreset(LayoutPreset.FullRect);
-        center.AddChild(new SettingsPanel(onClose, onReportBug, onSaveAndQuit));
+        center.AddChild(new SettingsPanel(onClose, onReportBug, onSaveAndQuit, onArchive));
         veil.AddChild(center);
         return veil;
     }
