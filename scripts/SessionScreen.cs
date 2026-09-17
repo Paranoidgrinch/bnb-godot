@@ -165,6 +165,8 @@ public partial class SessionScreen : Control
             _ = SmokeFormat();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-bug-run"))
             _ = SmokeBugInRun();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-quit") && SmokeQuitLeftAt is not null)
+            _ = SmokeResumeLanding();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-quit"))
             _ = SmokeSaveAndQuit();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-shelf"))
@@ -3693,6 +3695,7 @@ public partial class SessionScreen : Control
     // change has already freed.
     public static string? SmokeQuitLeftAt { get; private set; }
     public static int SmokeQuitVisited { get; private set; }
+    public static bool SmokeQuitLeftMidFight { get; private set; }
 
     private async System.Threading.Tasks.Task SmokeSaveAndQuit()
     {
@@ -3741,10 +3744,54 @@ public partial class SessionScreen : Control
         SmokeQuitLeftAt = Session?.Run.CurrentNodeId?.Value ?? "—";
         SmokeQuitVisited = Session?.Run.VisitedNodes.Count ?? 0;
         var fighting = Play?.CombatDriver?.Current;
+        SmokeQuitLeftMidFight = fighting is not null;
         GD.Print($"smoke-quit: leaving act {Session?.Run.ActNumber} at {SmokeQuitLeftAt} after "
             + $"{SmokeQuitVisited} room(s), "
             + (fighting is null ? "between rooms" : $"mid-fight on round {fighting.Round}"));
         button.EmitSignal(BaseButton.SignalName.Pressed);
+    }
+
+    // ★ THE THIRD HALF, and the one the player is standing in. Save-and-quit was proved by a save on disk, a
+    // button offered and a room id that matched — three facts about the LEAVING, none about the coming back.
+    // What the player does next is press Continue and look at the screen, so that is what this does: it reads
+    // the room out of the RESUMED session and says which of `Rebuild`'s branches drew it, because "no error"
+    // and "a screen worth looking at" are not the same sentence. The dead end is `Title("…")`: no error, no
+    // question, no fight, not complete — a run that came back as nothing at all.
+    private async System.Threading.Tasks.Task SmokeResumeLanding()
+    {
+        for (var i = 0; i < 6; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        var session = Session;
+        var play = Play;
+        var here = session?.Run.CurrentNodeId?.Value;
+        var node = here is null ? null : session!.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == here);
+        var drew =
+            play is null || session is null ? "no run active"
+            : play.Error is { } hostError ? $"ERROR: {hostError}"
+            : session.Error is { } runError ? $"RUN ERROR: {runError}"
+            : session.IsAwaitingChoice ? "a question"
+            : session.IsAwaitingEntities ? "an entity pick"
+            : session.IsAwaitingNodeChoice ? "the room fork"
+            : session.IsAwaitingInterlude ? "an interlude"
+            : play.CombatDriver?.Current is not null ? "the fight"
+            : session.IsComplete ? "the end of the run"
+            : "NOTHING — the bare \u201c\u2026\u201d screen";
+
+        GD.Print($"smoke-quit: the resumed screen drew {drew}"
+            + $" · room {here ?? "\u2014"} [{string.Join(" ", node?.Tags ?? [])}]"
+            + $" · left mid-fight={SmokeQuitLeftMidFight}");
+        if (!DisplayServer.GetName().Contains("headless"))
+            GetViewport().GetTexture()?.GetImage()?.SavePng("user://smoke-quit-resumed.png");
+
+        var landed = play?.Error is null && session?.Error is null
+            && (session?.IsAwaitingChoice == true || session?.IsAwaitingEntities == true
+                || session?.IsAwaitingNodeChoice == true || play?.CombatDriver?.Current is not null
+                || session?.IsComplete == true);
+        GD.Print(landed && Boot.ResumeVerdict
+            ? "smoke-quit: save, quit, and carry on — the run came back to a screen that can be played"
+            : "smoke-quit: FAILED — the run did not come back to a screen that can be played");
+        GetTree().Quit(landed && Boot.ResumeVerdict ? 0 : 1);
     }
 
     private async System.Threading.Tasks.Task SmokeShelf()

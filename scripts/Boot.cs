@@ -12,6 +12,8 @@ namespace BnbGodot;
 public partial class Boot : Control
 {
     private string? _selectedCharacter;
+    private static bool _resumeVerdict;
+    public static bool ResumeVerdict => _resumeVerdict;
 
     public override void _Ready()
     {
@@ -48,7 +50,27 @@ public partial class Boot : Control
                 + $" · \"Continue run\" offered={offered}"
                 + $" · saved room={save?.CurrentNodeId ?? "—"}"
                 + $" {(sameRoom ? "(the room it was left in)" : $"— LEFT AT {leftAt}")}");
-            GetTree().Quit(host.HasSave && offered && sameRoom ? 0 : 1);
+
+            // ⚠⚠ AND THEN PRESS IT. This probe used to stop at the sentence above — the save is on disk, the
+            // button is offered, the room is right — and call that "save and quit works". None of those three
+            // is the thing the player does next. The player presses Continue, and what THAT does was never
+            // measured by anything: `ResumeRun` returning false makes the button do nothing at all, silently.
+            // So the probe does what the player does.
+            var resumed = host.ResumeRun();
+            var play = host.Play;
+            GD.Print($"smoke-quit: pressed \"Continue run\" → {(resumed ? "the run came back" : "IT DID NOT COME BACK")}"
+                + $" · error={play?.Error ?? "none"}"
+                + $" · room={play?.Session?.Run.CurrentNodeId?.Value ?? "—"}"
+                + $" · result={play?.Session?.Run.Result.ToString() ?? "—"}"
+                + $" · in a fight={play?.CombatDriver?.Current is not null}");
+            GD.Print($"smoke-quit: what the resumed session is waiting for — "
+                + $"choice={play?.Session?.IsAwaitingChoice} entities={play?.Session?.IsAwaitingEntities} "
+                + $"node={play?.Session?.IsAwaitingNodeChoice} interlude={play?.Session?.IsAwaitingInterlude} "
+                + $"sessionError={play?.Session?.Error ?? "none"}");
+            // AND THEN THE SCREEN. The error the player reports is on the RUN SCREEN, not on the title — so
+            // the probe goes there, exactly as pressing the button does, and says what that screen found.
+            _resumeVerdict = host.HasSave && offered && sameRoom && resumed && play?.Error is null;
+            CallDeferred(nameof(GoToSession));
             return;
         }
         if (userArgs.Contains("--smoke"))
