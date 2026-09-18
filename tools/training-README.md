@@ -32,13 +32,23 @@ seinen Wert aus `actBossDamage[--target-act]` und wertet ein fehlendes Feld als 
 Damit ist die Zahl gleichzeitig die Balance-Antwort: *was kostet dieses Spiel einen Spieler, der es gut spielt?*
 
 ## Ein Runner ist eine Policy
-17 Gewichte (`SimPolicy` in `scripts/RunSimulator.cs`) entscheiden alles, was ein Spieler entscheidet:
+17 Gewichte (`BotPolicy` in `RogueDeck.Bot`; bis R3 hieß das `SimPolicy` und saß in `scripts/RunSimulator.cs`)
+entscheiden alles, was ein Spieler entscheidet:
 - **WDamage / WBlock / WStatus / WDraw / WResource / WCost** — was eine Karte wert ist, nach dem, was ihr
-  Programm tut (Schaden, Block, Status, Ziehen, Ressourcen) und was sie kostet.
+  Programm tut (Schaden, Block, Status, Ziehen, Ressourcen) und was sie kostet. **Seit B1 wiegen dieselben
+  sechs Gewichte auch, was der Runner ANNIMMT** — Belohnungskarte, Relikt, Regal im Laden —, nicht mehr nur,
+  was er aus der Hand spielt. Ein Relikt wird ohne den Kostenterm gewogen (es wird nicht aus einem Zug bezahlt).
 - **EndTurnBelow** — ab welchem Kartenwert der Zug lieber beendet wird.
 - **TargetLowestHp** — 1 = den Schwächsten erledigen, 0 = auf den Stärksten dreschen.
 - **PathCombat / PathElite / PathShop / PathRest / PathEvent / PathTreasure** — welchen Raum er wählt.
-- **RewardSkip / ShopBuy / EventLate** — Belohnung ablehnen, Gold ausgeben, welche Tür.
+- **RewardSkip** — wie wählerisch er ist. ⚠ **Die Bedeutung hat sich mit B1 geändert:** vorher hieß > 0,5
+  „lehne alles Ablehnbare ab", jetzt ist es eine Schwelle auf den DECK-RANG — 0 nimmt alles, 1 nimmt nur, was
+  besser ist als jede Karte im Deck. Gewichte, die vor B1 gezüchtet wurden, meinen mit dieser Zahl also etwas
+  anderes als der Runner heute; sie müssen neu gezüchtet werden. **Nur Karten werden je abgelehnt** — ein
+  Relikt und ein Angebot ohne Identität (Gold, Heilung) werden immer genommen.
+- **ShopBuy / EventLate** — wie eifrig Gold ausgegeben wird (**was** gekauft wird, entscheidet seit B1 derselbe
+  Bewerter, bei Gleichstand das Billigere), und welche Tür — Türen weiterhin nach ihrer POSITION, nicht nach
+  ihrer Wirkung; das ist B2.
 
 ## Training starten
 ```bash
@@ -53,9 +63,20 @@ Jede Generation: die besten `--survivors` (Standard 3) überleben unverändert, 
 (`--sigma` = Mutationsgröße). Alle Runner einer Generation spielen **dieselben Content-Seeds**, damit der
 Vergleich fair ist.
 
-**Dauer:** ein unsterblicher Run geht durch alle vier Akte, und Akt IV ist der längste — rechne mit
-10–20 min pro Run. 8 Runner × 2 Seeds
-= 16 Runs pro Generation; bei `--jobs 8` also ~15 min je Generation. Fang klein an.
+**Dauer:** seit R1–R5 und der Umstellung des Trainers auf den Konsolen-Läufer (2026-09-18) kostet ein
+unsterblicher Lauf durch alle fünf Akte **rund 20–40 s** statt 10–20 min. Gemessen: 4 Generationen × 8 Runner
+× 2 Seeds = 64 Läufe in **~5 min** bei `--jobs 6`.
+
+**Wie gezüchtet wird:** ein `roguedeck-bot`-Prozess spielt ALLE Seeds eines Runners; mehrere Runner laufen
+nebeneinander. `--jobs` zählt weiterhin gleichzeitige LÄUFE, nicht Prozesse. **`--godot`** züchtet wie früher
+durch das Spiel — ein Godot je Lauf, durch das Replay-Modell. Das ist der Rückweg, falls je bezweifelt wird,
+dass beide Wirte denselben Lauf gehen; `tools/golden.sh` ist das, was es behauptet.
+
+⚠⚠ **Die Fitness misst nicht, was du glaubst.** Sie zählt *genommenen Schaden auf dem Weg zum Boss, bei
+9999 HP* — und seit der Bewerter (B3) Größen sehen kann, findet die Suche den Ausweg sofort: der beste Runner
+der letzten Zucht hat **`WDamage = −1,84`** gelernt, also „greif lieber nicht an". Wer nichts tötet, wird
+nicht zurückgeschlagen; er braucht nur länger. Bis **B6** die Frage austauscht (echtes Leben, echter Tod,
+gewertet wird *hat er Akt IV geschafft*), züchtet man gegen diesen Ausweg an.
 
 ## Wo alles rauskommt
 ```

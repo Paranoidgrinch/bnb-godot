@@ -55,17 +55,12 @@ def mutate(rng, parent, name, sigma):
     return child
 
 
-def play(policy_file, seed, log_file, timeout, health, target_act, maps, draw=False):
-    with open(log_file, "w") as log:
-        try:
-            subprocess.run(
-                ["godot", "--headless", "--", "--sim", "--sim-seed", str(seed),
-                 *health, *maps, "--sim-policy", str(policy_file),
-                 *(["--sim-ui"] if draw else [])],
-                cwd=REPO, stdout=log, stderr=subprocess.STDOUT, timeout=timeout, check=False)
-        except subprocess.TimeoutExpired:
-            log.write("\n!! the run was cut off by the trainer's timeout\n")
-    text = Path(log_file).read_text(errors="replace")
+BOT = REPO.parent / "RogueDeck-Core" / "src" / "RogueDeck.Bot.Cli"
+BOT_BIN = BOT / "bin" / "Release" / "net10.0" / "roguedeck-bot"
+
+
+def reading(text, target_act):
+    """Was aus dem Lauf-Log herausgelesen wird — dieselbe `sim-fitness:`-Zeile, egal welcher Wirt sie schrieb."""
     line = next((l for l in text.splitlines() if l.startswith("sim-fitness:")), None)
     if not line:
         return {"reached": False, "damage": UNREACHED, "rooms": 0, "note": "no fitness line — the run died"}
@@ -83,14 +78,72 @@ def play(policy_file, seed, log_file, timeout, health, target_act, maps, draw=Fa
             "note": "" if reached else f"never reached the act-{target_act} boss"}
 
 
-def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, ui=0):
+# ── EIN RUNNER, ALLE SEEDS, EIN PROZESS (der schnelle Weg) ───────────────────────────────────────────────
+# ⚠⚠ DER TRAINER HAT R4/R5 JAHRELANG NICHT MITBEKOMMEN. Er startete fuer JEDEN Lauf ein eigenes Godot — mit
+# Bootzeit, 11-MB-Dokument und kaltem JIT pro Lauf, und dazu dem Replay-Modell, das den Lauf hinter jeder
+# Antwort neu ausfuehrt. Der Konsolen-Laeufer spielt einen ganzen Block Seeds in EINEM Prozess und antwortet
+# der Engine direkt: gemessen 2026-09-18 rund 20 s statt 40 s je Lauf, und die festen Kosten fallen einmal
+# statt einmal pro Lauf. Gezuechtet wird damit dasselbe Spiel — das Golden-Set beweist, dass beide Wirte
+# denselben Lauf gehen; `--godot` bleibt als Rueckweg, wenn genau das einmal bezweifelt wird.
+def play_block(policy_file, seeds, out_dir, timeout, health, target_act, maps):
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with open(out_dir / "bot.log", "w") as log:
+        try:
+            subprocess.run(
+                [str(BOT_BIN), "--game", "content/game.roguedeck.json",
+                 "--runs", str(len(seeds)), "--seed-from", str(seeds[0]),
+                 *health, *maps, "--policy", str(policy_file),
+                 "--jobs", str(len(seeds)), "--out", str(out_dir)],
+                cwd=REPO, stdout=log, stderr=subprocess.STDOUT,
+                timeout=timeout * len(seeds), check=False)
+        except subprocess.TimeoutExpired:
+            log.write("\n!! the block was cut off by the trainer's timeout\n")
+    results = []
+    for seed in seeds:
+        run_log = out_dir / f"run-{seed:04d}.log"
+        results.append(reading(run_log.read_text(errors="replace") if run_log.exists() else "", target_act))
+    return results
+
+
+# ── DERSELBE LAUF DURCH DEN BILDSCHIRM (--godot) ─────────────────────────────────────────────────────────
+def play(policy_file, seed, log_file, timeout, health, target_act, maps, draw=False):
+    with open(log_file, "w") as log:
+        try:
+            subprocess.run(
+                ["godot", "--headless", "--", "--sim", "--sim-seed", str(seed),
+                 *health, *maps, "--sim-policy", str(policy_file),
+                 *(["--sim-ui"] if draw else [])],
+                cwd=REPO, stdout=log, stderr=subprocess.STDOUT, timeout=timeout, check=False)
+        except subprocess.TimeoutExpired:
+            log.write("\n!! the run was cut off by the trainer's timeout\n")
+    return reading(Path(log_file).read_text(errors="replace"), target_act)
+
+
+def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, ui=0, godot=False):
     """Every policy over every seed, in parallel; a policy's score is its mean hp lost."""
+    paths = {}
+    for policy in policies:
+        paths[policy["Name"]] = gen_dir / f"{policy['Name']}.json"
+        paths[policy["Name"]].write_text(json.dumps(policy, indent=2))
+
+    scored = {}
+    if not godot:
+        # Ein Aufruf je Runner, der alle seine Seeds in EINEM Prozess spielt; mehrere Runner nebeneinander,
+        # bis die Auftraege alle sind. `jobs` bleibt die Zahl gleichzeitiger LAEUFE, nicht Prozesse.
+        at_once = max(1, jobs // max(1, len(seeds)))
+        with ThreadPoolExecutor(max_workers=at_once) as pool:
+            blocks = list(pool.map(
+                lambda policy: play_block(paths[policy["Name"]], seeds,
+                                          gen_dir / policy["Name"], timeout, health, target_act, maps),
+                policies))
+        for policy, runs in zip(policies, blocks):
+            scored[policy["Name"]] = runs
+        return _rank(policies, scored)
+
     work = []
     for policy in policies:
-        path = gen_dir / f"{policy['Name']}.json"
-        path.write_text(json.dumps(policy, indent=2))
         for seed in seeds:
-            work.append((policy, path, seed, gen_dir / f"{policy['Name']}-seed{seed}.log"))
+            work.append((policy, paths[policy["Name"]], seed, gen_dir / f"{policy['Name']}-seed{seed}.log"))
     # The screen costs about six times the run it draws and teaches the SEARCH nothing — the fitness line
     # comes from the session, not from the nodes. So the trainer draws nothing unless asked (--ui N draws
     # the first N runs of each generation); the daily frontend check is tools/simulate.sh, which draws 5.
@@ -99,9 +152,12 @@ def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, 
             lambda iw: play(iw[1][1], iw[1][2], iw[1][3], timeout, health, target_act, maps,
                             draw=iw[0] < ui),
             enumerate(work)))
-    scored = {}
     for (policy, _, seed, _), result in zip(work, results):
         scored.setdefault(policy["Name"], []).append(result)
+    return _rank(policies, scored)
+
+
+def _rank(policies, scored):
     table = []
     for policy in policies:
         runs = scored[policy["Name"]]
@@ -135,6 +191,11 @@ def main():
     ap.add_argument("--legacy", action="store_true",
                     help="breed against the OLD maps (v0.0.0) instead of the design's v0.0.1")
     ap.add_argument("--resume", default=None, help="a previous training folder to keep breeding from")
+    ap.add_argument("--godot", action="store_true",
+                    help="breed through the GAME instead of the console runner: one Godot process per run, "
+                         "driven through the replay model. About twice the wall clock per run plus a boot "
+                         "each time -- the way back if the two hosts are ever doubted (tools/golden.sh is "
+                         "what says they agree)")
     args = ap.parse_args()
 
     desktop = Path.home() / ("Schreibtisch" if (Path.home() / "Schreibtisch").is_dir() else "Desktop")
@@ -142,11 +203,20 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     shutil.copy(REPO / "tools" / "training-README.md", out.parent / "ANLEITUNG.md")
 
-    build = subprocess.run(["dotnet", "build", "-v", "q", "--nologo"], cwd=REPO, capture_output=True, text=True)
+    if args.godot:
+        build = subprocess.run(["dotnet", "build", "-v", "q", "--nologo"],
+                               cwd=REPO, capture_output=True, text=True)
+    else:
+        build = subprocess.run(["dotnet", "build", str(BOT), "-c", "Release", "-v", "q", "--nologo"],
+                               cwd=REPO, capture_output=True, text=True)
     if build.returncode != 0:
         print(build.stdout[-2000:]); sys.exit("build failed")
 
-    health = ["--sim-health", str(args.health)] if args.health else ["--sim-immortal"]
+    # Dieselbe Frage, zwei Wirte, zwei Schreibweisen: das Spiel nimmt `--sim-*`, der Konsolen-Laeufer nicht.
+    if args.godot:
+        health = ["--sim-health", str(args.health)] if args.health else ["--sim-immortal"]
+    else:
+        health = ["--health", str(args.health)] if args.health else ["--immortal"]
     # WHICH MAPS THE RUNNERS ARE BRED AGAINST. Passed to the game, never read from the player's settings:
     # a policy bred on one generator is not a policy for the other, and a leaderboard that cannot say which
     # one it walked is a leaderboard about an unknown act.
@@ -168,7 +238,8 @@ def main():
                                 "arrivals", "mean rooms", "note"])
 
     print(f"training in {out}  (measured to the act-{args.target_act} boss, "
-          f"maps {'v0.0.0' if args.legacy else 'v0.0.1'})")
+          f"maps {'v0.0.0' if args.legacy else 'v0.0.1'}, "
+          f"{'through the game' if args.godot else 'through the console runner'})")
     print(f"  {args.generations} generations × {args.population} runners × {len(seeds)} seeds "
           f"= {args.generations * args.population * len(seeds)} runs, {args.jobs} at a time")
     for generation in range(args.generations):
@@ -176,7 +247,7 @@ def main():
         gen_dir.mkdir(exist_ok=True)
         started = time.time()
         table = evaluate(population, seeds, gen_dir, args.jobs, args.timeout, health, args.target_act,
-                         maps, ui=args.ui)
+                         maps, ui=args.ui, godot=args.godot)
         with board.open("a", newline="") as f:
             writer = csv.writer(f)
             for row in table:
@@ -200,6 +271,8 @@ def main():
     print(f"\nbest runner: {json.dumps(best, indent=2)}")
     print(f"\nreplay it:  godot --headless -- --sim --sim-seed {seeds[0]} --sim-immortal "
           f"{' '.join(maps)}{' ' if maps else ''}--sim-policy {out / 'best-policy.json'}")
+    print(f"or faster:  {BOT_BIN} --game content/game.roguedeck.json --runs 1 "
+          f"--seed-from {seeds[0]} --immortal --policy {out / 'best-policy.json'}")
 
 
 if __name__ == "__main__":
