@@ -60,10 +60,24 @@ BOT_BIN = BOT / "bin" / "Release" / "net10.0" / "roguedeck-bot"
 
 
 def reading(text, target_act):
-    """Was aus dem Lauf-Log herausgelesen wird — dieselbe `sim-fitness:`-Zeile, egal welcher Wirt sie schrieb."""
-    line = next((l for l in text.splitlines() if l.startswith("sim-fitness:")), None)
+    """Was aus dem Lauf-Log herausgelesen wird — dieselben Zeilen, egal welcher Wirt sie schrieb.
+
+    `sim-fitness:` traegt die alte Frage (was hat der Weg zum Boss an Schaden gekostet, bei 9999 HP),
+    `sim-clearance:` die echte (ist ein WIRKLICHER Koerper durchgekommen, und wenn nicht, wo blieb er).
+    """
+    lines = text.splitlines()
+    clear = next((l for l in lines if l.startswith("sim-clearance:")), None)
+    cleared, died, hp = 0, "", 0
+    if clear:
+        c = dict(re.findall(r"(\w+)=(\S+)", clear))
+        cleared = int(c.get("cleared", 0))
+        hp = int(c.get("hp", "0/0").split("/")[0])
+        # `at=` ist das letzte Feld und traegt Leerzeichen ("act 4 r12c0 (…)"), also bis Zeilenende lesen.
+        died = clear.split(" at=", 1)[1].strip() if " at=" in clear else ""
+    line = next((l for l in lines if l.startswith("sim-fitness:")), None)
     if not line:
-        return {"reached": False, "damage": UNREACHED, "rooms": 0, "note": "no fitness line — the run died"}
+        return {"reached": False, "damage": UNREACHED, "rooms": 0, "cleared": cleared, "hp": hp,
+                "died": died, "note": "no fitness line — the run died"}
     f = dict(re.findall(r"(\w+)=(\S+)", line))
     # actBossDamage="1:120,2:310,3:604" — what the run had lost, added up, when it entered each act's boss
     # room. The target act's entry is the measurement; its absence is the miss.
@@ -75,6 +89,7 @@ def reading(text, target_act):
             # Damage ADDED UP, not health remaining: the content heals, and one act-II door heals to full.
             "damage": table[target_act] if reached else UNREACHED,
             "rooms": int(f.get("rooms", 0)),
+            "cleared": cleared, "hp": hp, "died": died,
             "note": "" if reached else f"never reached the act-{target_act} boss"}
 
 
@@ -119,7 +134,8 @@ def play(policy_file, seed, log_file, timeout, health, target_act, maps, draw=Fa
     return reading(Path(log_file).read_text(errors="replace"), target_act)
 
 
-def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, ui=0, godot=False):
+def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, ui=0, godot=False,
+             question="clearance"):
     """Every policy over every seed, in parallel; a policy's score is its mean hp lost."""
     paths = {}
     for policy in policies:
@@ -138,7 +154,7 @@ def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, 
                 policies))
         for policy, runs in zip(policies, blocks):
             scored[policy["Name"]] = runs
-        return _rank(policies, scored)
+        return _rank(policies, scored, question, target_act)
 
     work = []
     for policy in policies:
@@ -154,13 +170,34 @@ def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, 
             enumerate(work)))
     for (policy, _, seed, _), result in zip(work, results):
         scored.setdefault(policy["Name"], []).append(result)
-    return _rank(policies, scored)
+    return _rank(policies, scored, question, target_act)
 
 
-def _rank(policies, scored):
+# ⚠⚠ ZWEI FRAGEN, UND NUR EINE DAVON IST DIE ECHTE (B6).
+#
+#   "damage"    — die alte: 9999 HP, gewertet wird der aufsummierte Schaden bis zum Boss eines Akts. Sie ist
+#                 ein STELLVERTRETER, und ein schlechter: ein unsterblicher Laeufer muss nie ueberleben, nie
+#                 blocken, nie gewinnen. Seit der Bewerter Groessen sieht (B3), findet die Suche den Ausweg
+#                 sofort — die beste Zucht gegen diese Frage lernte `WDamage = -1.84`, also "greif nicht an":
+#                 wer nichts toetet, wird nicht zurueckgeschlagen, er braucht nur laenger.
+#   "clearance" — die echte, und die Frage, die V-7 beantworten soll: ECHTES Leben, echter Tod, gewertet wird
+#                 pro Seed, ob der Akt geschafft wurde. Ein Runner, der nicht angreift, raeumt keinen Akt.
+#
+# Gleichstand wird nach Strecke und Restleben gebrochen, nie nach genommenem Schaden: wie teuer ein Sieg war,
+# ist eine Frage an den BALANCE-Bericht, nicht an die Auslese.
+def _rank(policies, scored, question, target_act):
     table = []
     for policy in policies:
         runs = scored[policy["Name"]]
+        if question == "clearance":
+            through = sum(1 for r in runs if r["cleared"] >= target_act)
+            rooms = sum(r["rooms"] for r in runs) / len(runs)
+            health = sum(r["hp"] for r in runs) / len(runs)
+            score = (len(runs) - through) * 10_000 - rooms * 10 - health
+            note = "; ".join(sorted({r["died"] for r in runs if r["cleared"] < target_act and r["died"]}))
+            table.append({"policy": policy, "score": round(score, 1),
+                          "arrivals": f"{through}/{len(runs)}", "rooms": round(rooms, 1), "note": note})
+            continue
         arrivals = sum(1 for r in runs if r["reached"])
         # A miss is penalised by how far it got, so a runner that walks further ranks above one that stalls.
         score = sum(r["damage"] if r["reached"] else UNREACHED - r["rooms"] * 100 for r in runs) / len(runs)
@@ -186,8 +223,14 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--health", type=int, default=0,
                     help="a body of this size instead of the immortal 9999 — only for shaking the trainer out")
-    ap.add_argument("--target-act", type=int, default=LAST_ACT,
-                    help="which act's boss the runners are measured to (default: the game's last act)")
+    ap.add_argument("--question", choices=("clearance", "damage"), default="clearance",
+                    help="clearance (default, B6): a REAL body, and the score is whether it got through the "
+                         "target act -- the question V-7 asks. damage: the old proxy, 9999 hp and the damage "
+                         "added up on the way to that act's boss, which a runner that never attacks wins")
+    ap.add_argument("--target-act", type=int, default=None,
+                    help="the act that has to be cleared (clearance) or measured to (damage). Default: 4 for "
+                         "clearance -- the design's promise is that every seed is beatable through act IV, "
+                         f"act V is the cherry -- and {LAST_ACT} for damage")
     ap.add_argument("--legacy", action="store_true",
                     help="breed against the OLD maps (v0.0.0) instead of the design's v0.0.1")
     ap.add_argument("--resume", default=None, help="a previous training folder to keep breeding from")
@@ -197,6 +240,8 @@ def main():
                          "each time -- the way back if the two hosts are ever doubted (tools/golden.sh is "
                          "what says they agree)")
     args = ap.parse_args()
+    if args.target_act is None:
+        args.target_act = 4 if args.question == "clearance" else LAST_ACT
 
     desktop = Path.home() / ("Schreibtisch" if (Path.home() / "Schreibtisch").is_dir() else "Desktop")
     out = Path(args.out) if args.out else desktop / "bnb-balance-training" / time.strftime("%Y%m%d-%H%M%S")
@@ -212,11 +257,16 @@ def main():
     if build.returncode != 0:
         print(build.stdout[-2000:]); sys.exit("build failed")
 
+    # ⚠⚠ DIE ECHTE FRAGE BRAUCHT EINEN ECHTEN KOERPER. Auf die Schaden-Frage wird unsterblich gezuechtet
+    # (nur so kommt jeder Runner ueberhaupt bis zum Boss und ist vergleichbar); auf die Raeum-Frage mit dem
+    # Leben, das das Spiel AUTORIERT hat — sonst wird Sterben kostenlos und die Auslese misst nichts.
     # Dieselbe Frage, zwei Wirte, zwei Schreibweisen: das Spiel nimmt `--sim-*`, der Konsolen-Laeufer nicht.
+    body = ["--sim-health", str(args.health)] if args.health else []
     if args.godot:
-        health = ["--sim-health", str(args.health)] if args.health else ["--sim-immortal"]
+        health = body or (["--sim-immortal"] if args.question == "damage" else [])
     else:
-        health = ["--health", str(args.health)] if args.health else ["--immortal"]
+        health = (["--health", str(args.health)] if args.health else []) \
+            or (["--immortal"] if args.question == "damage" else [])
     # WHICH MAPS THE RUNNERS ARE BRED AGAINST. Passed to the game, never read from the player's settings:
     # a policy bred on one generator is not a policy for the other, and a leaderboard that cannot say which
     # one it walked is a leaderboard about an unknown act.
@@ -234,10 +284,15 @@ def main():
     board = out / "leaderboard.csv"
     with board.open("w", newline="") as f:
         csv.writer(f).writerow(["generation", "policy",
-                                f"score (mean damage taken to the act-{args.target_act} boss)",
-                                "arrivals", "mean rooms", "note"])
+                                f"score (seeds cleared through act {args.target_act}, then distance)"
+                                if args.question == "clearance"
+                                else f"score (mean damage taken to the act-{args.target_act} boss)",
+                                "cleared" if args.question == "clearance" else "arrivals",
+                                "mean rooms", "died in" if args.question == "clearance" else "note"])
 
-    print(f"training in {out}  (measured to the act-{args.target_act} boss, "
+    asked = (f"can a real body clear act {args.target_act}?" if args.question == "clearance"
+             else f"what does the act-{args.target_act} boss cost to reach at 9999 hp?")
+    print(f"training in {out}  ({asked} "
           f"maps {'v0.0.0' if args.legacy else 'v0.0.1'}, "
           f"{'through the game' if args.godot else 'through the console runner'})")
     print(f"  {args.generations} generations × {args.population} runners × {len(seeds)} seeds "
@@ -247,7 +302,7 @@ def main():
         gen_dir.mkdir(exist_ok=True)
         started = time.time()
         table = evaluate(population, seeds, gen_dir, args.jobs, args.timeout, health, args.target_act,
-                         maps, ui=args.ui, godot=args.godot)
+                         maps, ui=args.ui, godot=args.godot, question=args.question)
         with board.open("a", newline="") as f:
             writer = csv.writer(f)
             for row in table:
@@ -255,7 +310,8 @@ def main():
                                  row["rooms"], row["note"]])
         print(f"\ngeneration {generation} ({time.time() - started:.0f}s)")
         for row in table:
-            print(f"  {row['policy']['Name']:<10} score {row['score']:>10}  arrived {row['arrivals']}"
+            print(f"  {row['policy']['Name']:<10} score {row['score']:>10}  "
+                  f"{'cleared' if args.question == 'clearance' else 'arrived'} {row['arrivals']}"
                   f"  rooms {row['rooms']:>5}  {row['note']}")
         (out / "best-policy.json").write_text(json.dumps(table[0]["policy"], indent=2))
         (gen_dir / "ranking.json").write_text(json.dumps(

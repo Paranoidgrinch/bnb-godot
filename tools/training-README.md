@@ -1,6 +1,37 @@
 # Balance-Training — Runner züchten und lesen
 
-## Die Frage, auf die trainiert wird
+## ⚠⚠ ZWEI FRAGEN — und seit B6 ist die ECHTE die Voreinstellung
+
+```bash
+tools/train.py                      # clearance: ECHTES Leben, gewertet wird "hat er Akt IV geräumt?"
+tools/train.py --question damage    # die alte Frage: 9999 HP, gewertet wird genommener Schaden
+```
+
+**`--question clearance` (Standard).** Der Runner läuft mit dem Leben, das das Spiel autoriert hat, und stirbt
+auch daran. Gewertet wird pro Seed, ob er durch den Ziel-Akt gekommen ist — Standard **Akt IV**, weil das
+Versprechen des Entwurfs lautet: *jeder Seed ist bis zum Ende von Akt IV schaffbar*. Akt V ist die Kirsche.
+Gleichstand bricht nach gelaufener Strecke und Restleben, nie nach genommenem Schaden.
+
+**Warum die alte Frage nicht reicht:** sie belohnt einen Läufer, der nie angreift. Seit der Bewerter Größen
+sieht (B3), findet die Zucht diesen Ausweg sofort — der beste Runner der Schaden-Zucht lernte
+**`WDamage = −1,84`**. Wer nichts tötet, wird nicht zurückgeschlagen; er braucht nur länger. Auf die
+Räum-Frage gezüchtet, räumt so einer gar nichts.
+
+**⚠ Stand 2026-09-18: kein gezüchteter Läufer räumt Akt I auf einem echten Körper.** Zehn Generationen, bester
+Lauf 13,7 von ~22 Räumen. Das ist eine Aussage über den RUNNER, nicht über das Spiel: er kann nicht sehen, was
+auf ihn zukommt, also kann er nicht richtig blocken (B4), und er kann nicht einen Zug vorausrechnen (B5).
+
+## Welche Seeds keiner schafft
+
+```bash
+tools/unbeaten.py --runs 50 --target-act 4 --policies ~/Desktop/bnb-balance-training/*/best-policy.json
+```
+Spielt jede Politik über jeden Seed, echtes Leben, und berichtet, **welche Seeds kein Läufer durch den
+Ziel-Akt bringt — mit dem Raum, in dem der weiteste Versuch gestorben ist.** Das ist der Bericht, den V-7
+haben wollte. Solange der beste Runner Akt I nicht räumt, listet er alles und sagt damit nur, dass der
+Läufer noch kein Spieler ist.
+
+## Die alte Frage im Detail (`--question damage`)
 Jeder Runner startet mit **9999 HP** (nichts kann ihn töten) und läuft durch das ganze Spiel. Gewertet wird
 **wie viel Schaden er bis zur Ankunft am Boss eines bestimmten Akts insgesamt genommen hat** — wenig = guter
 Runner. Wer dort nie ankommt, ist schlechter als jeder, der ankommt, egal wie wenig er unterwegs eingesteckt

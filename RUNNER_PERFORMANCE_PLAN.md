@@ -637,9 +637,10 @@ reaches the end of Act IV.** Today's runner cannot answer that, and not because 
   only `Label` + `Kind` — **no number**. Blocking the right amount, the single most important skill in the
   genre, is not computable from what the engine exposes.
 - **Shop buying is a coin flip** (`ShopBuy` picks a random `buy-` choice).
-- **The fitness is a proxy for the wrong question.** It breeds on *damage taken at 9999 HP to an act's boss*.
-  An immortal runner never has to survive, never has to block, never faces a death spiral, and its deck never
-  has to carry it — so its damage total is a weak predictor of whether a real-health player lives.
+- ~~**The fitness is a proxy for the wrong question.**~~ **✔ B6, 2026-09-18.** It bred on *damage taken at
+  9999 HP to an act's boss* — an immortal runner never has to survive, never has to block, never faces a
+  death spiral. `tools/train.py` now breeds on the real question by default, and asking it produced the
+  finding that reorders the rest of this plan (see B6).
 
 ### 5.2 What to do about it, in order
 
@@ -712,7 +713,8 @@ reaches the end of Act IV.** Today's runner cannot answer that, and not because 
   4 generations × 8 runners × 2 seeds in **~5 minutes**, where the README still warned of 10–20 minutes per
   RUN. This is not decoration: an evaluator can only be judged by breeding against it, and before this the
   judgement cost a day.
-- **B4 — Engine seam: an intent carries its number.** Let `ActionIntent` state the damage/block it is about
+- **B4 — Engine seam: an intent carries its number. ⬅ DO THIS NEXT (with B5) — B6 measured them into first
+  place.** Let `ActionIntent` state the damage/block it is about
   to apply. Additive, no rule changes — **and the player's screen wants it as much as the bot does**
   (today the UI shows a word where every game in the genre shows a number).
 - **B5 — Champion mode: one-ply lookahead.** A full combat clone was measured at **~0.2 ms** (snapshot 0.04 ms
@@ -721,13 +723,42 @@ reaches the end of Act IV.** Today's runner cannot answer that, and not because 
   Two runners for two questions:
   - **coverage runner** — fast, dumb, hundreds of seeds: finds crashes, walls, unreachable content;
   - **champion runner** — slow, careful, few seeds: answers whether a seed is beatable.
-- **B6 — Breed on the real question. ⬅ DO THIS NEXT — B3 measured it into first place.** Real health, real
-  death, fitness = *did it clear Act IV*, scored per seed. The report the player wants is not a damage number: it is **"these 7 of 500 seeds no runner we have
-  can beat, and here is the room each one died in."**
+- **B6 — Breed on the real question. ✔ DONE 2026-09-18 — and the answer is about the RUNNER.** Real health,
+  real death, fitness = *did it clear act IV*, scored per seed. Three pieces:
+  - the runner reports it: a third line, `sim-clearance: … cleared=3 reached=4 hp=0/70 stopped=elite
+    at=act 4 r12c0 (…)`. ⚠ It is its own line **because `golden.sh` diffs the other two field for field** —
+    adding a field to either would have moved fifteen recorded runs for a change that alters no behaviour.
+  - `tools/train.py --question clearance` is now the DEFAULT, on the body the game authors rather than on
+    9999 hp, targeting **act IV** (the design's promise; act V is the cherry). `--question damage` keeps the
+    old proxy. Ties break on distance walked and health left — never on damage taken, which is a question for
+    the balance report and not for the selection.
+  - `tools/unbeaten.py` is the report itself: N runners × M seeds on a real body, and out comes *which seeds
+    nobody got through, and the room each one died in*.
+
+  **What came out, and it is the most important measurement in this document:**
+
+  | asked | answer |
+  |---|---|
+  | 10 generations × 8 runners × 3 seeds, bred on clearance | best runner: **0 of 3 seeds**, 13.7 of act I's ~22 rooms |
+  | 20 seeds × the 2 best runners we have, act **I** only | **20 of 20 unbeaten** — one seed reached the act-I boss and died there |
+
+  ⚠⚠ **NOT ONE RUNNER WE HAVE CLEARS ACT I ON A REAL BODY.** So this list is, today, a statement about the
+  RUNNER and not about the content, and it must not be read as a balance verdict. The runner plays cards by
+  what they are worth in isolation: it cannot see what is coming at it, so it cannot block the right amount —
+  *the single most important skill in the genre* (§5.1) — and it cannot look one move ahead.
+
+  ➜ **B4 and B5 stop being refinements and become the prerequisites for any answer at all.** V-7's question
+  cannot be answered by an instrument that dies in act I; the honest state is *"we do not know yet"*, and
+  that is worth more than a number bred against immortality.
 
 ### 5.3 The sweep that closes V-7
 With a run at ~15 s and a champion at ~5×: **500 seeds × 3 candidate champions ≈ 30 min on 12 cores.** That is
 the instrument the goal actually needs, and it is out of reach today by a factor of about 60.
+
+**✔ The sweep itself exists since B6 — `tools/unbeaten.py` — and the speed is there** (a mortal run dies in
+act I in seconds; a whole 20-seed sweep with two runners takes under two minutes). What is missing is not the
+instrument but the PLAYER: run it today and it reports every seed as unbeaten, because the runner cannot
+survive act I. The sweep becomes evidence about the content the day B4+B5 make the runner a player.
 
 ---
 

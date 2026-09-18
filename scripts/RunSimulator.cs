@@ -85,6 +85,7 @@ public partial class SessionScreen : Control
         foreach (var line in BotReport.ActLines(result))
             GD.Print(line);
         GD.Print(BotReport.Fitness(result));
+        GD.Print(BotReport.Clearance(result));
         GD.Print(BotReport.Result(result));
 
         // A lost run is a NORMAL outcome and exits clean; only something the run could not answer for —
