@@ -174,12 +174,10 @@ public partial class MapView : Control
 
     // The role the room was generated for. A mimic reads as a treasure: the player is meant to find out by
     // opening it. Anything untagged (an authored map) falls back to its node type.
-    public static string Role(RunNode node)
-    {
-        ArgumentNullException.ThrowIfNull(node);
-        var tag = node.Tags.Count > 0 ? node.Tags[0] : node.Type.Value;
-        return tag == MapNodeTags.Mimic ? MapNodeTags.Treasure : tag;
-    }
+    // What KIND of room a node is, in one word. ⚠ One definition, in the engine-side bot (R4): the drawing,
+    // three walkers and two reports all say this word, and a mimic that answered "mimic" in one of them would
+    // spoil the one room in the game whose point is the surprise.
+    public static string Role(RunNode node) => RogueDeck.Bot.MapRole.Of(node);
 
     public static string Icon(string role) => role switch
     {

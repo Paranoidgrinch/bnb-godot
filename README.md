@@ -166,6 +166,13 @@ godot --headless -- --smoke-archive-run # what a RUN teaches the archive: walks 
                                      # the way a player does (press Esc, find the button by its words, press
                                      # it) and reports what came up
 godot --headless -- --smoke-marathon # play the WHOLE game (all five acts) and report rooms + latency
+godot --headless -- --smoke-screens  # EVERY KIND OF SCREEN, act by act: two walks (an unlosable body to the
+                                     # last god, a mortal one to the defeat screen), and at each distinct
+                                     # state x act the screen is BUILT and the result written into a table.
+                                     # Four words, and only one is good news: ok · FAILED · unreached (the
+                                     # walk never got there, so nothing is claimed) · no room / n/a (this act
+                                     # has no such room). Non-zero exit on any FAILED.
+                                     #   --seed N / --mortal-seed N pick the two walks
 godot --headless -- --smoke-tooltips # audit a combat screen: is anything NAMED but not explained?
 godot --headless -- --smoke-format   # every card in the hand is exactly the size it was handed,
                                      # ten clicks apart (windowed: it also takes the shot)
@@ -250,6 +257,20 @@ tools/simulate.sh                  # 20 runs, 400 hp, 4 processes at a time
 tools/simulate.sh 100 --jobs 8     # a hundred of them
 tools/simulate.sh 50 --immortal    # nothing can kill them: the deepest reach into the later acts
 tools/simulate.sh 50 --real        # the game's own health (most runs die in act I)
+tools/simulate.sh 100 --ui 0       # draw no screen at all (a drawn run costs about SIX times an undrawn
+                                   #   one, and the walk is identical — the screen reads the session, it
+                                   #   never answers for it). The default is --ui 5: the first five seeds
+                                   #   draw, so the frontend is still walked every day, and a redraw that
+                                   #   throws now fails that run.
+tools/simulate.sh 100 --godot      # every run through Godot, one process each, the way it was before R4.
+                                   #   By default only the --ui runs go that way and the rest are played by
+                                   #   `roguedeck-bot` (RogueDeck-Core/src/RogueDeck.Bot.Cli) — the SAME
+                                   #   answer loop, in one process on M threads. Two hosts, one brain: a
+                                   #   seed walked by either produces the same log, line for line.
+tools/simulate.sh 100 --release    # play out of an EXPORTED binary. ⚠ It is the only build of this game
+                                   #   whose ENGINE assemblies are optimized: a dev build leaves them in
+                                   #   Debug, and so did every export before RogueDeck-Core gained its
+                                   #   Directory.Build.props. 40.4 s of loop against 30.4 s, same result.
 ```
 Logs land in `~/Desktop/bnb-run-logs/<timestamp>/run-<seed>.log`, one process per run so a crash costs that
 run and not the batch — the log IS the reproduction (seed + character at the top, then every room, choice

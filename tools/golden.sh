@@ -5,6 +5,14 @@
 #   tools/golden.sh --record     # play the set and write tools/golden-runs.txt (do this deliberately)
 #   tools/golden.sh              # play it again and diff against that file; non-zero on any difference
 #   tools/golden.sh --jobs 4     # fewer at a time (each immortal run holds ~900 MB)
+#   tools/golden.sh --ui 0       # no run draws the screen (fastest); --ui 15 makes every run draw
+#   tools/golden.sh --release    # play the set out of an EXPORTED binary, whose engine is optimized
+#   tools/golden.sh --console    # play the set through the Godot-free console runner, one process (R4)
+#
+# ⚠ ONE RUN OF THE SET DRAWS. Since R2a the runner only builds the screen when asked (`--sim-ui`), and the
+# first immortal seed is asked. That is not decoration: the outcome lines below are recorded from a run
+# that drew, so a drawn run and an undrawn one producing the SAME line is itself part of what the set
+# proves. The systematic frontend check is `--smoke-screens`, not this file.
 #
 # ⚠ WHAT IS COMPARED IS THE OUTCOME, NOT THE CLOCK. `seconds=` is stripped before the diff and reported
 # separately: the whole point of the arc this guards is to change that number, and a gate that failed when
@@ -17,11 +25,19 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 GOLDEN=tools/golden-runs.txt
-mode=check; jobs=6
+RELEASE_BIN=build/linux/bureaucrats-and-broomsticks.x86_64
+mode=check; jobs=6; ui=1; release=no; console=no
+BOT=../RogueDeck-Core/src/RogueDeck.Bot.Cli
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --record) mode=record; shift ;;
     --jobs)   jobs=$2; shift 2 ;;
+    --ui)     ui=$2; shift 2 ;;
+    --release) release=yes; shift ;;
+    # ⚠⚠ THE SECOND HALF OF THE GATE, AND THE POINT OF R4. The same fifteen runs, walked by the same brain
+    # out of a process that has never heard of Godot. If both hosts reproduce this file, then the runner's
+    # behaviour is in `RogueDeck.Bot` and not in either host — which is the whole claim R4 makes.
+    --console) console=yes; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -37,18 +53,56 @@ desktop="$HOME/Desktop"; [[ -d "$HOME/Schreibtisch" ]] && desktop="$HOME/Schreib
 out="$desktop/bnb-golden/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$out" || exit 1
 
-dotnet build -v q --nologo >"$out/build.log" 2>&1 || { echo "build failed — see $out/build.log"; exit 1; }
 
-echo "golden set: ${#IMMORTAL_SEEDS[@]} immortal + ${#MORTAL_SEEDS[@]} mortal runs, $jobs at a time"
+# ⚠⚠ THE ENGINE IS NOT OPTIMIZED IN A DEV BUILD, AND `-c Release` DOES NOT REACH IT EITHER. Godot runs a
+# project from `.godot/mono/temp/bin/Debug`, and the only build of this game whose engine assemblies are
+# optimized is the EXPORTED one. `--release` exports first and plays every run out of that binary: measured
+# 2026-09-18 on immortal seed 1, 40.4 s of loop against 30.4 s, same result line and same fitness line.
+# The export costs about 12 s once per batch. Without export templates installed it fails LOUDLY rather than
+# quietly handing back the slow build.
+build_release() {
+  echo "exporting a release binary (its engine is the optimized one) ..."
+  if ! godot --headless --export-release "Linux" "$RELEASE_BIN" >"$1/export.log" 2>&1; then
+    echo "export failed -- see $1/export.log" >&2
+    echo "(--release needs the Godot export templates: editor -> Editor -> Manage Export Templates)" >&2
+    exit 1
+  fi
+  [[ -x $RELEASE_BIN ]] || { echo "export produced no binary at $RELEASE_BIN" >&2; exit 1; }
+}
+
+if [[ $console == yes ]]; then
+  dotnet build "$BOT" -c Release -v q --nologo >"$out/build.log" 2>&1 \
+    || { echo "build failed — see $out/build.log"; exit 1; }
+elif [[ $release == yes ]]; then
+  build_release "$out"
+  GAME=(./"$RELEASE_BIN" --headless)
+else
+  dotnet build -v q --nologo >"$out/build.log" 2>&1 || { echo "build failed — see $out/build.log"; exit 1; }
+  GAME=(godot --headless)
+fi
+
+which_build="dev build"; [[ $release == yes ]] && which_build="exported release build"
+drawn="$ui drawing the screen"
+if [[ $console == yes ]]; then
+  which_build="console runner, one process"
+  drawn="none drawing the screen (the console runner has no screen)"
+fi
+echo "golden set: ${#IMMORTAL_SEEDS[@]} immortal + ${#MORTAL_SEEDS[@]} mortal runs, $jobs at a time, \
+$drawn, $which_build"
 echo "  logs -> $out"
 
-export GOLDEN_OUT="$out"
+# The seeds that draw: the first $ui of the set as it is played below (immortal first, then mortal).
+DRAWN=$(printf '%s\n' "${IMMORTAL_SEEDS[@]}" "${MORTAL_SEEDS[@]}" | head -n "$ui" | tr '\n' ' ')
+
+export GOLDEN_OUT="$out" GOLDEN_DRAWN=" $DRAWN " GOLDEN_GAME="${GAME[*]}"
 play_one() {
   local seed=$1 body=$2 log="$GOLDEN_OUT/run-$2-$(printf %04d "$1").log"
   local health; [[ $body == immortal ]] && health="--sim-immortal" || health="--sim-health 400"
+  local ui=""
+  [[ $GOLDEN_DRAWN == *" $seed "* ]] && ui="--sim-ui"
   local started; started=$(date +%s.%N)
   # shellcheck disable=SC2086
-  timeout 3600 godot --headless -- --sim --sim-seed "$seed" $health >"$log" 2>&1
+  timeout 3600 $GOLDEN_GAME -- --sim --sim-seed "$seed" $health $ui >"$log" 2>&1
   local elapsed; elapsed=$(awk "BEGIN{printf \"%.1f\", $(date +%s.%N) - $started}")
   # Strip the clock from what is compared; keep it beside the line as a comment for the timing report.
   local fitness result
@@ -62,10 +116,42 @@ play_one() {
 }
 export -f play_one
 
+if [[ $console == yes ]]; then
+  # One process per BODY, not per run: the console runner plays a contiguous block of seeds itself.
+  bot="$BOT/bin/Release/net10.0/roguedeck-bot"
+  : > "$out/played.raw"
+  play_block() {  # <body> <first seed> <how many> <health flag>
+    local body=$1 from=$2 many=$3 health=$4 started elapsed
+    started=$(date +%s.%N)
+    # shellcheck disable=SC2086
+    "$bot" --game content/game.roguedeck.json --runs "$many" --seed-from "$from" $health \
+      --jobs "$jobs" --out "$out" >"$out/bot-$body.log" 2>&1
+    elapsed=$(awk "BEGIN{printf \"%.1f\", $(date +%s.%N) - $started}")
+    for ((i = 0; i < many; i++)); do
+      local seed=$((from + i)) log fitness result
+      log="$out/run-$(printf %04d "$seed").log"
+      fitness=$(grep -m1 '^sim-fitness:' "$log" 2>/dev/null | sed 's/ seconds=[0-9.]*//')
+      result=$(grep -m1 '^sim-result:'  "$log" 2>/dev/null | sed 's/ seconds=[0-9.]*//')
+      [[ -z $fitness ]] && fitness="sim-fitness: THE RUN PRODUCED NO FITNESS LINE"
+      [[ -z $result  ]] && result="sim-result: THE RUN PRODUCED NO RESULT LINE"
+      printf '%s %-9s %s\n' "$body" "seed$seed" "$fitness" >>"$out/played.raw"
+      printf '%s %-9s %s\n' "$body" "seed$seed" "$result"  >>"$out/played.raw"
+    done
+    # The console runner plays the block in parallel, so a per-run clock would be a share of the block's.
+    # What is reported is the block's own wall time, spread evenly — informational, never compared.
+    for ((i = 0; i < many; i++)); do
+      printf '#time %s %-9s %s s\n' "$body" "seed$((from + i))" \
+        "$(awk "BEGIN{printf \"%.1f\", $elapsed / $many}")" >>"$out/played.raw"
+    done
+  }
+  play_block immortal "${IMMORTAL_SEEDS[0]}" "${#IMMORTAL_SEEDS[@]}" "--immortal"
+  play_block mortal   "${MORTAL_SEEDS[0]}"   "${#MORTAL_SEEDS[@]}"   "--health 400"
+else
 {
   for seed in "${IMMORTAL_SEEDS[@]}"; do echo "$seed immortal"; done
   for seed in "${MORTAL_SEEDS[@]}";   do echo "$seed mortal";   done
 } | xargs -P "$jobs" -L1 bash -c 'play_one "$@"' _ > "$out/played.raw"
+fi
 
 # The recorded lines are sorted so the order the jobs happened to finish in is not part of the contract.
 grep -v '^#time ' "$out/played.raw" | sort > "$out/played.txt"
@@ -102,8 +188,15 @@ grep -v '^#' "$GOLDEN" | grep -v '^[[:space:]]*$' > "$out/expected.txt"
 if diff -u "$out/expected.txt" "$out/played.txt" > "$out/diff.txt"; then
   echo
   echo "GOLDEN OK — all $(grep -c 'sim-result:' "$out/played.txt") runs match what was recorded."
-  echo "total run-seconds $total; slowest: $slowest"
-  echo "  (recorded total was: $(grep '^# total run-seconds' "$GOLDEN" | awk '{print $4}'))"
+  if [[ $console == yes ]]; then
+    # ⚠ NOT THE SAME QUANTITY. The console runner plays a whole block of seeds at once, so what is divided
+    # up here is the BLOCK's wall time, not each run's own. It is printed because a reader wants to know how
+    # long this took; it is deliberately NOT set beside the recorded total, which counts something else.
+    echo "block wall time, spread over the runs: $total s (not comparable with the recorded total)"
+  else
+    echo "total run-seconds $total; slowest: $slowest"
+    echo "  (recorded total was: $(grep '^# total run-seconds' "$GOLDEN" | awk '{print $4}'))"
+  fi
   exit 0
 fi
 

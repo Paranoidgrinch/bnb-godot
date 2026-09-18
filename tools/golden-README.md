@@ -10,6 +10,12 @@ cd ~/bnb-godot
 tools/golden.sh              # nachspielen und gegen die Aufzeichnung vergleichen
 tools/golden.sh --jobs 4     # weniger gleichzeitig (jeder unsterbliche Lauf hält ~900 MB)
 tools/golden.sh --record     # NEU aufzeichnen — nur mit Absicht, siehe unten
+tools/golden.sh --ui 0       # kein Lauf zeichnet den Schirm (Vorgabe: 1, der erste unsterbliche Seed)
+tools/golden.sh --console    # durch den Godot-freien Konsolen-Runner spielen, EIN Prozess (R4).
+                             #   Dasselbe Hirn (RogueDeck.Bot), ein anderer Wirt — wenn beide diese Datei
+                             #   reproduzieren, liegt das Verhalten in der Bibliothek und in keinem Wirt.
+tools/golden.sh --release    # aus einer EXPORTIERTEN Binärdatei spielen, deren Engine optimiert ist
+                             #   (~12 s Export, dafür der ganze Satz rund ein Viertel schneller)
 ```
 Exit 0 = alles wie aufgezeichnet. Exit 1 = irgendein Lauf findet etwas anderes, mit Diff darunter.
 

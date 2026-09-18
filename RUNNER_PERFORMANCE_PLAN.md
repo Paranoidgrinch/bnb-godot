@@ -71,6 +71,9 @@ exit code is **0**.
 **So the ÷3.3 the runner pays for drawing buys no detection whatsoever.** Separating the frontend check is
 therefore not a trade — it is the first time the runner would test the frontend at all.
 
+⚠ *Re-measured at R2a: the true price of drawing is **÷5.9**, not ÷3.3 — the smaller figure came from a
+prototype measured before R1, with 60 s of compiling sitting in both columns.*
+
 ### 1.2 Where the engine time goes
 
 Instrumented counters over one immortal run (~4818 answers), `--sim-noui`, total loop 110.0 s:
@@ -151,8 +154,8 @@ The two fast paths look like they drop coverage. Measurement says only one of th
      line, and a non-zero exit, so the batch summary names it like any other finding;
    - **a new `--smoke-screens` probe** that builds every *kind* of screen state once, systematically, and
      reports which one does not build (§4, R2b).
-   - the balance runner never draws; a named share of the batch (`--ui N`, default 5) still does, and now
-     actually fails when the screen does.
+   - the balance runner never draws; a named share of the batch (`--ui N`, default 5 in `simulate.sh`, 1 in
+     `golden.sh`, 0 in `train.py`) still does, and now actually fails when the screen does.
 2. **The replay path. This one is real.** The replay restores the run from a snapshot ~950 times per run, and
    that is exactly where the save-and-quit bug (`2dee963`) lived. → **Replacement:** a `--sim-resume` runner
    that checkpoints *every answer* through the replay path, over a handful of seeds per batch — more
@@ -282,48 +285,248 @@ the 228 s anchor before it is believed.**
 whole library on every click too.
 
 
-### R2a — The runner stops drawing, and a screen fault becomes a finding *(bnb-godot)* — **÷3.3, measured**
-- `SessionScreen._Ready` subscribes `Rebuild` only when a human (or `--sim-ui`, or a smoke probe) is watching.
-- ⚠ **First, the part that is a bug fix and not a speed-up:** wrap `Rebuild()` so a throw becomes
-  `problems++` + `!! PROBLEM screen at <where>: <exception>` + a non-zero exit. Without this, R2a would be
-  removing something that was never working; with it, the drawing runs start earning their cost.
-- `simulate.sh` / `train.py` gain `--ui N` (default 5) and run that many of the batch with the screen on.
-- **Gate:** golden set identical; the deliberate-fault experiment of §1.1b now **fails** the run; `--smoke-*`
-  battery unchanged; the 5 UI runs of a 100-run batch clean.
+### R2a — The runner stops drawing, and a screen fault becomes a finding ✔ **DONE** *(bnb-godot)* — **÷5.9**
+- `SessionScreen._Ready` subscribes `Rebuild` only when someone is watching: a human always, every `--smoke*`
+  probe always (that is what those probes are *for*), and a `--sim` run only with `--sim-ui`.
+- ⚠ **First, the part that is a bug fix and not a speed-up:** `Rebuild()` is now a wrapper. It catches, counts
+  the fault in `_screenFaults`, prints `!! PROBLEM screen at <where>: <exception>`, and folds the count into
+  the run's `problems` — which is what makes the process exit non-zero. For a human it also toasts, because a
+  half-drawn screen that says so beats the game vanishing. The body moved to `RebuildScreen()` untouched.
+- `simulate.sh` gains `--ui N` (**default 5** — the first five seeds of the batch draw).
+- `golden.sh` gains `--ui N` (**default 1**): the first immortal seed draws, so the recorded lines are proved
+  to be the same whether the screen is built or not. That equality is part of what the set now states.
+- `train.py` gains `--ui N` but **defaults to 0**, deliberately against the first draft of this plan: the
+  trainer is a search, its fitness line comes from the session and never from the nodes, and its runs are the
+  expensive immortal kind. `simulate.sh` is where the frontend gets walked daily.
 
-### R2b — `--smoke-screens`: every kind of screen, built once, on purpose *(bnb-godot)*
+**Measured, one run at a time, immortal seed 1** (the §0 anchor run, on `4b66a3e`/R1):
+
+| | wall | loop | RSS |
+|---|---|---|---|
+| drawing (`--sim-ui`) | 232.8 s | **228.0 s** | 956 MB |
+| not drawing (the new default) | 43.0 s | **38.7 s** | 732 MB |
+
+**÷5.9 on the loop, ÷5.4 wall, −224 MB** — and the result line is identical field for field
+(`Victory acts=5 rooms=110 fights=67 hp=7323/9996 problems=0`).
+
+⚠ **The ÷3.3 this section promised was too small**, and for the same reason R1's ÷2.2 was too large: it came
+from a prototype measured against the pre-R1 runner, where 60 s of compiling sat in *both* columns and flattened
+the ratio. With that 60 s gone, what drawing costs stands out at its true size. **This is the second of the
+three ratios corrected; only R3's ÷1.38 is still unmeasured against the 228 s anchor.**
+
+**The deliberate-fault experiment of §1.1b, re-run** — `RebuildScreen()` made to throw on every redraw, then
+reverted:
+
+```
+before R2a:  sim-result: … problems=0   error=none … EXIT=0     (426 throws, all silent)
+after  R2a:  sim-result: … problems=423 error=none … EXIT=1
+             !! PROBLEM screen at act 1 r0c0 (city_normal_enforcement_05): InvalidOperationException: …
+```
+
+Same walk either way — `Defeat acts=1 rooms=14 fights=9` — which is the point: the screen reads the session,
+it never answers for it. (423 counted against 426 printed: three redraws fire between the count and the quit.
+The count is a floor; every one of them still prints the line `simulate.sh` greps for.)
+
+**Gate passed:** `GOLDEN OK`, all 15 runs identical field for field — total run-seconds **5032 → 4015 (R1) →
+1318.9**, with seed 1 still drawing. `--smoke` / `--smoke-run` / `--smoke-full` / `--smoke-tooltips` /
+`--smoke-statuses` unchanged and green; `--smoke-marathon` still Victory, 5 acts, 110 rooms (334.9 s — it
+draws, by design, so R2a does not touch it).
+
+### R2b — `--smoke-screens`: every kind of screen, built once, on purpose ✔ **DONE** *(bnb-godot)*
 The systematic half of the frontend check, separated from the balance question entirely — it does not walk a
-run for its content, it walks it for its *screen states*.
-- Drive a seeded run (immortal, v0.0.1) and, at each distinct state, build the screen and assert it builds:
-  combat · node fork · event/door · shop · rest · reward pick · entity pick · in-combat card choice ·
-  in-combat option choice · interlude · defeat · victory — **in each of the five acts**, plus the boss and
-  elite variants and an Act-V god.
-- It reports a **table of state × act with what built and what did not**, so a gap in coverage is visible as a
-  gap rather than as silence. A state the walk never reached is reported as *not reached*, never as *ok*.
-  (That is the D7 lesson: three screenshots that were the same defeat screen all reported success.)
-- Stays a Godot probe by nature — it is the one thing that cannot move to the console runner.
-- **Gate:** every state × act either builds or is honestly reported as unreached; runs in the smoke battery
-  beside `--smoke-marathon`.
+run for its content, it walks it for its *screen states*. **Two walks**, because one body cannot see
+everything: an unlosable one to the last god (all five acts, every kind of fight, the victory screen) and a
+mortal one that dies in Act I (the defeat screen). Both name v0.0.1 explicitly.
 
-### R3 — Release *(all three repos)* — **÷1.38, measured**
-- The console runner (R4) builds `-c Release`; `simulate.sh`'s Godot runs come from the exported release
-  binary, or from a Release-configured headless build.
-- **Gate:** golden set identical. (A Release-only difference would itself be a finding worth having.)
+**Fifteen rows**, one per branch of `RebuildScreen()` and of the combat screen's bottom band: node fork ·
+door · shop · rest · reward pick · entity pick · interlude · combat · combat: ambush · combat: elite ·
+combat: boss · combat: card choice · combat: option choice · victory · defeat.
 
-### R4 — One runner, out of Godot, many runs per process — **removes 5.15 s × N**
-- Lift `RunSimulator`'s brain (the answer loop, the four guards, the policy, the log format) into a
-  Godot-free `RogueDeck.Bot` library beside `RunPlayback`. `RunWalker` (bnb-content) and Godot's `--sim-ui`
-  both become thin callers of it, so **S8 dies**: one behaviour, one log format, one default generator.
-- `tools/simulate.sh` drives a **console runner** that plays N runs in one process on M threads: the 11.31 MB
-  document is parsed once, the JIT warms once, the act plan cache is shared.
-  - ⚠ Per run: its own `RunPlayback`, its own RNG, its own try/catch, and a watchdog thread — a crash must
-    still cost one run, not the batch. That is the single property the process-per-run model was bought for,
-    and it has to be paid for again in-process.
-  - ⚠ `RunPlayback._actPlan` is per-instance for exactly this reason (see its comment) — do **not** make the
-    new caches static.
-- Default job count = cores.
-- `Converter --playtest` stops being a `for` loop (**S6**).
-- **Gate:** golden set identical run through the console runner AND through Godot's `--sim-ui`.
+**Four words, and only one of them is good news** — the D7 lesson written into a probe:
+
+| word | what it means |
+|---|---|
+| `ok` | the screen was built for that state, in that act |
+| `FAILED` | it threw while building — the probe exits non-zero |
+| `unreached` | the walk could have gone there and did not. **Nothing is claimed.** |
+| `no room` / `n/a` | that act's map holds no such room / it cannot happen there |
+
+⚠ The fourth word is not decoration. Act V is a gauntlet of gods — no shop, no campfire, no door, no ordinary
+fight — so without it nine cells of Act V read as holes, and nine false holes hide a true one as thoroughly
+as silence does. It is answered **from the map the walk actually walked**, never from a belief about the
+design. The steering follows from the same thought: at a fork the walk prefers a room this act has not shown
+yet, because a fork answered at random walks past the shop three acts running and then reports the shop as
+unreached — a finding about the walker, dressed as a finding about the screen.
+
+**What the first run found, before it had proved anything about the screen:**
+
+```
+smoke-screens: immortal seed 7 — the run ended: Defeat (hero at 0/9999, in r19c0 against Cornerstone Oath-Stone)
+  combat: boss   ok  ok  ok  unreached  unreached
+  victory        unreached × 5
+```
+
+⚠⚠ **`9999` was called immortal for months and is not.** The greedy walker plays worse than the simulator's
+random one, takes more damage over four acts than a whole immortal `--sim` run takes over five, and dies. That
+is also the whole of the **pre-existing Act-V boss gap** this step was asked to fix: `--smoke-boss 5` printed
+`act=4 boss=NO … error=none` at `hero at 0/9999` and **exited 0** — a sentence that reads like a note beside a
+success. The budget was never the problem; it was blamed for two sessions. Fixed in three places:
+- `SessionScreen.ProbeBody` (9 999 999) — a body a *screenshot* probe cannot lose. The balance question keeps
+  its honest 9999 in `--sim-immortal`, where the golden set measures it. Nothing else shares the number.
+- `--smoke-boss N` **exits 1 and prints `!! PROBLEM`** when the walk did not stand in that act's boss fight.
+  Not arriving is a failure, not a report.
+- `--smoke-crowd` / `--smoke-boss` re-rolls now **name their map generator**. They called `StartNewRun` without
+  one, which falls through to `RunPreferences.MapGenerator` — a file on this machine. R0a fixed exactly this
+  for `--sim` and the probe *re-rolls* were missed.
+
+**Now:** `--smoke-boss 5` stands in front of **Nisaba, Keeper of the First Tablet**, round 1, with the Divine
+Rule Area on screen — the first time that probe has reached what it is named after since the map rework.
+
+**Gate passed.** `58 built, 0 FAILED, 7 unreached, 10 not in that act (of 75 state × act)`. The seven are
+named, not smoothed over: reward pick and entity pick in Act V, an in-combat option choice in Act I, and a
+defeat in Acts II–V (one mortal walk dies in Act I, which is the only defeat it can show).
+
+**Proved, not assumed** — `RebuildScreen()` made to throw only on the shop screen, then reverted:
+
+```
+shop    FAILED  FAILED  FAILED  FAILED  no room
+smoke-screens: 54 built, 4 FAILED, 7 unreached, 10 not in that act          EXIT=1
+```
+
+Exactly the four acts that have a shop, nothing else disturbed, and the probe fails. The rest of the battery
+is green on the new body (`--smoke-shop/-event/-rest/-upgrade/-ambush/-elite/-reward/-crowd/-archive-run`
+all STANDING IN IT, `--smoke-marathon` Victory 5 acts 110 rooms), and `GOLDEN OK` — R2b does not touch `--sim`.
+
+### R3 — Release ✔ **DONE** *(all three repos)* — **÷1.3, and a shipping bug came out with it**
+
+⚠⚠ **The engine was never being built in Release. By anyone. Including the game that ships.**
+
+`RogueDeck.Core` and its siblings are `ProjectReference`s from a sibling checkout, and MSBuild builds a
+referenced project in the consumer's configuration **only if that project declares the configuration**.
+Undeclared, it falls back to Debug and says nothing. Two consumers were hitting that, both invisibly:
+
+| consumer | what it asked for | what it got |
+|---|---|---|
+| Godot export (`ExportRelease`) | a release build of the game | engine in **Debug** — every shipped binary |
+| bnb-content `dotnet build -c Release` | a release converter | engine in **Debug**, copied into `bin/Release` |
+
+The second has its own twist: `dotnet build -c Release` there builds `BnbContent.slnx`, and the engine
+projects are **not members of that solution**. A solution assigns configurations only to its own projects, so
+the engine came out Debug and was copied into a folder named `Release`, where it read as a Release build to
+anyone who checked the folder name rather than the file size. Building the **project**
+(`dotnet build Converter/BnbContent.Converter.csproj -c Release`) works; building the solution does not.
+
+**The fix, one new file:** `RogueDeck-Core/Directory.Build.props` declares
+`<Configurations>Debug;Release;ExportRelease</Configurations>` and turns the optimizer on for
+`ExportRelease` (MSBuild does that by itself only for a configuration literally named `Release` — which is
+exactly how `ExportRelease` came to mean *Debug in a different folder*).
+
+**Measured, one run at a time, immortal seed 1** — every row the same result line and the same fitness line:
+
+| build | loop | wall |
+|---|---|---|
+| dev build (what `godot --headless` runs) | 40.4 s | 44.8 s |
+| exported binary, **before** the fix | 38.5 s | 42.4 s |
+| exported binary, **after** the fix | **30.4 s** | **34.3 s** |
+| dev build with `-p:Optimize=true` (for comparison) | 31.3 s | 35.6 s |
+
+and `Converter --playtest 1`, pure .NET: **110.9 s → 88.1 s**, report identical once the clock is stripped.
+
+So **÷1.3** (÷1.26–1.33 depending on which baseline reading), against the ÷1.38 this section promised. That
+is the closest any of the three projected ratios came — **and it is now the last of them to be re-measured
+against a post-R1 anchor.** (R1: ÷2.2 promised, ÷1.25 real. R2a: ÷3.3 promised, ÷5.9 real.)
+
+⚠ `Optimize` is the *whole* of Release here: neither repo contains a single `#if DEBUG` or `Debug.Assert`,
+so the DEBUG constant changes nothing at all. That is worth knowing before anyone reaches for it.
+
+⚠⚠ **A measurement trap that cost two readings, written down so it costs nobody a third.** `-p:Optimize=true`
+is a *global* property: it reaches the referenced engine projects (which is why it works) and writes optimized
+assemblies into the engine's `bin/Debug`, where the next repo to build picks them up. Two of this step's
+measurements were silently taken against each other that way. **And MSBuild's up-to-date check does not notice
+a changed property**, so `dotnet build -p:Optimize=true` after a normal build is frequently a no-op that
+reports "Build succeeded" and changes nothing. Both times the giveaway was the file size, not the log.
+
+**Delivered:**
+- `RogueDeck-Core/Directory.Build.props` — the configurations, and the optimizer for `ExportRelease`.
+- `golden.sh --release` / `simulate.sh --release` — export once (≈12 s), then play every run out of
+  `build/linux/bureaucrats-and-broomsticks.x86_64`. It fails **loudly** when the export templates are missing
+  rather than quietly handing the batch back the slow build. Default stays the dev build: R4 takes Godot out
+  of the batch path entirely, so this is the transitional half of R3.
+- bnb-content's README carries the solution-vs-project trap and the command that actually works.
+
+**Gate passed:** Core 1488 / Scenario 762 / Run 827 / Sandbox 387 green under the new props file;
+bnb-content 1527 green; **`GOLDEN OK` through the exported release binary**, all 15 runs identical field for
+field. Total run-seconds **5032 → 4015 (R1) → 1312 (R2a) → 976.5**. (Seed 1 is still 276 s of that: it is the
+one run that draws, and drawing is not what Release makes cheaper.)
+
+### R4 — One runner, out of Godot, many runs per process ✔ **DONE** — **÷2.2 short, ÷1.10 long**
+
+**`RogueDeck.Bot` (new project, beside `RunPlayback`) holds the brain.** The answer loop, the four guards, the
+policy, the card scoring, the report format — all of it, with no host in it. `RogueDeck.Bot.Cli`
+(`roguedeck-bot`) plays N runs in one process on M threads; Godot's `--sim` is now ~120 lines that read the
+command line, yield a frame every twenty answers and set the exit code.
+
+**The strongest statement this arc has made:** the same seed, walked by the two hosts, produces
+**the same log, line for line** — not the two report lines, the whole thing, every room, every choice, every
+play, with only the clock stripped. And `GOLDEN OK` through **both**: Godot with the screen on, and the
+console runner.
+
+**Measured, this machine, 12 cores** (the runs identical in every column):
+
+| batch | process per run | one process | |
+|---|---|---|---|
+| 48 short runs (400 hp, die in Act I), 12 jobs | 72.0 s | **32.6 s** | **÷2.21** |
+| 12 whole-game runs (immortal), 12 jobs | 133.2 s | **121.2 s** | ÷1.10 |
+| 12 whole-game runs, 6 jobs | 148.0 s | **134.2 s** | ÷1.10 |
+
+⚠ **The ÷ is small for long runs, and the plan's "removes 5.15 s × N" is the reason it looked bigger.** That
+fixed cost is paid in PARALLEL — at jobs = cores it is 5 s per wave, which a 30-second run drowns and a
+3-second run does not. So the honest statement is: **R4 is worth ÷2.2 wherever runs are short** (the mortal
+half of every batch, the whole defeat-path sweep) **and ÷1.10 where they are long**. The rest of its value is
+structural, and that was always half the point.
+
+⚠⚠ **A finding that nearly buried the step: the first version was SLOWER than what it replaced** — 184.6 s
+against 148.0 s for the same twelve runs. Six runs in one process share one heap, and this walk is
+allocation-heavy by construction (under the replay model every answer re-runs the run from its checkpoint),
+so they spent their time collecting each other's garbage. `ServerGarbageCollection` turned 184.6 s into
+134.2 s **and** cut peak memory from 1.39 GB to 0.97 GB. A batch tool that moves work into one process has to
+be told the process is now a server.
+
+**S8 is two-thirds dead, and the last third is named rather than pretended.** Godot's `--sim` and the console
+runner are one brain. `MapRole.Of`, `RunBot.Where`, `TableState`, `Refused`, `FullCosts`, `CanPay` and the two
+walk guards now have exactly one definition each, which the frontend calls. ⚠ **bnb-content's `RunWalker` was
+deliberately NOT converted**, against the first draft of this plan: it checkpoints and restores every five
+rooms, and that save/resume pressure is precisely the coverage §3 says must not be lost — `RunBot` does not
+checkpoint, so swapping its brain in would have quietly dropped the one thing that walker is for. It walks for
+a different question and keeps its own loop. The two probe walkers inside `SessionScreen` (`WalkUntil`,
+`SmokeMarathon`) are likewise probe behaviour, not runner behaviour; they are the remaining duplication and
+they are written down here rather than left to be discovered again.
+
+**S6 is dead:** `Converter --playtest` is a `Parallel.For` with `--jobs` (default cores). Each walk writes into
+its own buffer and the buffers print in seed order — interleaved progress from a dozen walks is a report
+nobody can read. **Four walks: 307.1 s → 121.4 s, same report line for line.**
+
+**`tools/simulate.sh` now uses both hosts, which is what R2a and R4 together are for:** the `--ui N` runs go
+through Godot *because that is the only host with a screen to check*, and the rest go through `roguedeck-bot`
+in one process. `--godot` forces the old shape.
+
+**Delivered:** `src/RogueDeck.Bot` (BotPolicy · BotOptions · BotResult · **BotReport**, the one definition of
+the two report lines three tools parse · CardFeatures · MapRole · InMemoryMetaStore · RunBot) ·
+`src/RogueDeck.Bot.Cli` · `golden.sh --console` · `simulate.sh --godot` and the two-host split ·
+`Converter --jobs`.
+
+⚠ **`InMemoryMetaStore`, and why it is not a detail.** The cross-run meta profile is mirrored into every run
+as `meta.<flag>` flags and saved back when a run completes — so a batch pointed at the player's real profile
+plays a game that depends on which machine it is on (R0a's fault again) and writes a hundred run-completions
+into the archive of somebody who was not playing. The console runner starts from an empty profile. Checked
+before relying on it: today's document reads no `meta.` flag anywhere and fields exactly one character with no
+unlock flag, so the profile cannot change a run — it is the DEPENDENCE that is removed, not a difference.
+(Godot's `--sim` still uses the player's store; that is the next small thing to take, not a claim this step
+makes.)
+
+**Gate passed:** Core 1488 / Scenario 762 / Run 827 / Sandbox 387 · **`GOLDEN OK` through the console runner**
+(130.8 s wall for the whole set at 12 jobs) **and `GOLDEN OK` through Godot with the screen on** · the smoke
+battery unchanged.
 
 ### R5 — The bot drives directly, without the replay — **÷~2.4, projected**
 The replay model exists so a single-threaded UI can park at a prompt. A bot never parks: it answers. 

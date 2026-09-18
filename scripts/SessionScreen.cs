@@ -1,3 +1,4 @@
+using RogueDeck.Bot;
 using Godot;
 using RogueDeck.Core.Combat;
 using RogueDeck.Run;
@@ -44,6 +45,19 @@ public partial class SessionScreen : Control
     private readonly List<Control> _deckStills = [];
     private Label? _deckCount;
     private static bool _fastForward;   // a smoke probe is walking: draw the screen, do not animate it
+
+    // WHO IS WATCHING. Drawing the screen is for someone who looks at it: a human always, a smoke probe
+    // always (that is what those probes are FOR), and a simulated run only when it was asked for with
+    // `--sim-ui`. A batch that draws nothing still walks the identical run — the screen reads the session,
+    // it never answers for it — it simply stops rebuilding a few thousand nodes nobody sees.
+    // `tools/simulate.sh --ui N` keeps N runs of a batch drawing, so the frontend is still walked daily.
+    private static bool ShouldDraw =>
+        !IsSimulating || OS.GetCmdlineUserArgs().Contains("--sim-ui");
+
+    private bool _drawing = true;
+
+    // Redraws that threw, counted here and added to the run's problems by the simulator.
+    private int _screenFaults;
     private Control? _enemyRow;   // the live enemy row, so a probe can measure what the layout did with it
     private Control? _regionArena;  // the fixed regions, kept so a probe can measure that they stay put
     private Control? _regionHand;
@@ -117,8 +131,12 @@ public partial class SessionScreen : Control
         side.AddChild(logPanel);
         split.AddChild(side);
 
-        GameHost.Instance.StateChanged += Rebuild;
-        Rebuild();
+        _drawing = ShouldDraw;
+        if (_drawing)
+        {
+            GameHost.Instance.StateChanged += Rebuild;
+            Rebuild();
+        }
 
         _fastForward = OS.GetCmdlineUserArgs().Any(a => a.StartsWith("--smoke", StringComparison.Ordinal))
             || IsSimulating;
@@ -153,6 +171,8 @@ public partial class SessionScreen : Control
             _ = SmokeRoom(MapNodeTags.MultiCombat, "smoke-ambush.png");
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-elite"))
             _ = SmokeRoom(MapNodeTags.Elite, "smoke-elite.png");
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-screens"))
+            _ = SmokeScreens();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-marathon"))
             _ = SmokeMarathon();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-crowd"))
@@ -569,52 +589,33 @@ public partial class SessionScreen : Control
         GetTree().Quit();
     }
 
-    private const int PlaysInATurnNobodyMakes = 50;
-    private const int TurnsAFightShouldNotNeed = 100;
+    // The walk guards, the bot's: a turn that plays this many cards is not a turn, and a fight that needs
+    // this many turns is not a fight. Named once (R4) so the probes and the runner cannot disagree about them.
+    private const int PlaysInATurnNobodyMakes = RunBot.PlaysInATurnNobodyMakes;
 
-    // Everything about the table a play could visibly move. The EXHAUST PILE is deliberately not in it: a card
-    // that burns itself and puts a fresh copy back in hand grows that pile on every play, which would make
-    // exactly the loop this reading exists to find look busy for ever. Statuses count their STACKS as well as
-    // their number, because paying a debt down usually moves the stack and not the count.
-    private static string TableState(InteractiveCombat combat)
-    {
-        var hero = combat.State.GetCombatant(combat.HeroId);
-        var energy = hero.Resources.TryGetValue(StandardCombatIds.EnergyResource, out var pool) ? pool.Current : 0;
-        var enemies = combat.State.Combatants.Where(c => c.Id != combat.HeroId).ToList();
-        var zones = combat.State.GetCardZones(combat.HeroId);
-        int Count(CardZone zone) => zones.GetCardsInZone(zone).Count;
-        static int Stacks(IEnumerable<StatusInstance> statuses) => statuses.Sum(status => status.Stacks);
-        return $"{energy}/{hero.Health.Current}/{hero.Statuses.Count}/{Stacks(hero.Statuses)}/"
-            + $"{Count(CardZone.Hand)}/{Count(CardZone.DiscardPile)}/{Count(CardZone.DrawPile)}/"
-            + $"{enemies.Sum(e => e.Health.Current)}/{enemies.Sum(e => e.Statuses.Count)}/"
-            + $"{enemies.Sum(e => Stacks(e.Statuses))}";
-    }
+    // ⚠⚠ A BODY THE PROBE CANNOT LOSE — AND 9999 WAS NOT ONE. Every walking probe was started with 9999 hp
+    // and the line beside it called that immortal. It is not: the greedy walker plays worse than the
+    // simulator's random one, takes more damage over four acts than a whole immortal SIM run takes over five,
+    // and DIED. `--smoke-boss 5` ended `act=4 boss=NO ... error=none` at `hero at 0/9999` and exited 0 for as
+    // long as anyone had been reading it; `--smoke-screens` hit the same wall on its first run and reported
+    // Act V unreached from top to bottom.
+    //
+    // A screenshot probe is not a balance measurement — it exists to REACH the screen it was aimed at. So the
+    // probes get a body that cannot run out, and the balance question keeps its own honest 9999 in
+    // `--sim-immortal`, where the golden set measures it.
+    public const int ProbeBody = 9_999_999;
+    private const int TurnsAFightShouldNotNeed = RunBot.TurnsAFightShouldNotNeed;
 
-    // Did the play go through? The fight records every attempt as a step, and a refused one carries the reason;
-    // nothing new at all means the driver dropped it (a prompt opened, say).
-    private static bool Refused(InteractiveCombat? combat, int stepsBefore)
-    {
-        if (combat is null)
-            return false;
-        var steps = combat.Steps;
-        return steps.Count <= stepsBefore || steps.Skip(stepsBefore).Any(step => step.HasProblems);
-    }
+    // Everything about the table a play could visibly move — the reading that tells a barren play from a
+    // useful one. One definition, in the bot (R4), where the guard that uses it lives.
+    private static string TableState(InteractiveCombat combat) => RunBot.TableState(combat);
 
-    // Where the run stands, in the two names that identify a room: its map id and what is being fought there.
-    internal static string Where(InteractiveRunSession session)
-    {
-        var here = session.Run.CurrentNodeId?.Value ?? "nowhere";
-        var node = session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == here);
-        var content = node?.Payload switch
-        {
-            EncounterRef fight => fight.Id.Value,
-            EventRef door => door.Id.Value,
-            ShopRef shop => shop.Id.Value,
-            { } payload => payload.GetType().Name,
-            _ => "—",
-        };
-        return $"act {session.Run.ActNumber} {here} ({content})";
-    }
+    // Did the play go through? One definition, in the bot (R4).
+    private static bool Refused(InteractiveCombat? combat, int stepsBefore) => RunBot.Refused(combat, stepsBefore);
+
+    // Where the run stands, in the two names that identify a room. ⚠ One definition, in the bot (R4): this
+    // string is in every probe's report and in every runner's log, and two copies of it drift.
+    internal static string Where(InteractiveRunSession session) => RunBot.Where(session);
 
     // THE WIDEST FIGHT THE GAME CAN PUT ON ONE SCREEN, which nothing had ever looked at. A boss with three
     // volumes standing beside it is four enemy bodies plus the hero, and this is the one thing a fight cannot
@@ -635,7 +636,7 @@ public partial class SessionScreen : Control
         var best = 0;
         foreach (var seed in new[] { 5, 7, 1, 2, 3, 4, 6, 8 })   // 5 is the one this search first found
         {
-            GameHost.Instance.StartNewRun(seed, health: 9999);
+            GameHost.Instance.StartNewRun(seed, health: ProbeBody, mapGenerator: WalkedGenerator());
             best = Math.Max(best, await WalkUntil(
                 stop: () => Enemies().Count >= Wanted,
                 prefer: node => crowded.Any(node.HasTag),
@@ -682,7 +683,7 @@ public partial class SessionScreen : Control
         // so the search below is minutes of walking to reach a fight somebody already knows where to find.
         // `--seed <n>` is the answer written down: nanna_sin is on 1, inanna on 5.
         if (BossSeedArgument() is { } pinned)
-            GameHost.Instance.StartNewRun(pinned, health: 9999);
+            GameHost.Instance.StartNewRun(pinned, health: ProbeBody, mapGenerator: WalkedGenerator());
 
         bool Found() => Session is { } s && s.Run.ActNumber >= act
             && Play?.CombatDriver?.Current is not null && AtABoss()
@@ -704,7 +705,7 @@ public partial class SessionScreen : Control
         if (!Found() && wanted.Length > 0 && BossSeedArgument() is null)
             foreach (var seed in new[] { 5, 7, 1, 2, 3, 4, 6, 8, 9, 11 })
             {
-                GameHost.Instance.StartNewRun(seed, health: 9999);
+                GameHost.Instance.StartNewRun(seed, health: ProbeBody, mapGenerator: WalkedGenerator());
                 await WalkUntil(stop: Found, prefer: node => node.HasTag(MapNodeTags.Boss), budget: 25000);
                 if (Found())
                 {
@@ -790,7 +791,15 @@ public partial class SessionScreen : Control
                 GD.Print($"  [{Name(body, combat)}] {StatusLine(combat, body)}");
 
         ReportTooltips($"boss{act}");
-        await CaptureThenQuit($"smoke-boss{act}.png");
+        // ⚠⚠ NOT ARRIVING IS A FAILURE, NOT A REPORT. This probe spent weeks printing `act=4 boss=NO` and
+        // exiting 0 — a sentence that reads like a note beside a success. It is aimed at ONE fight, so
+        // standing anywhere else is the only way it can fail, and that is what its exit code now says. The
+        // picture is still taken: it is the evidence of where the walk ended up instead.
+        var arrivedAtTheBoss = Session is { } at && at.Run.ActNumber >= act && AtABoss();
+        if (!arrivedAtTheBoss)
+            GD.Print($"!! PROBLEM smoke-boss {act}: the walk never stood in an act-{act} boss fight — "
+                + $"it ended in act {Session?.Run.ActNumber.ToString() ?? "—"}, {_walkEnded}");
+        await CaptureThenQuit($"smoke-boss{act}.png", arrivedAtTheBoss ? 0 : 1);
     }
 
     // Which stamps are on the hand as DRAWN — the labels themselves, not the marks the state carries. A card
@@ -930,7 +939,262 @@ public partial class SessionScreen : Control
             ? string.Join(", ", Enemies().Select(c => Name(c, fight)))
             : "-";
 
-    // ONE greedy walker for both probes: `stop` is what this probe came to look at, `prefer` steers the map.
+    // ── `--smoke-screens`: EVERY KIND OF SCREEN, BUILT ON PURPOSE, ACT BY ACT ────────────────────────────
+    //
+    // The systematic half of the frontend check. It does not walk a run for its CONTENT — what the fights do,
+    // what the doors cost, whether the act is beatable; that is the balance runner's question and it is
+    // answered without drawing anything since R2a. This walks a run for its SCREEN STATES: at every distinct
+    // (state, act) it meets, it builds the screen and writes down whether it built.
+    //
+    // ⚠⚠ A STATE THE WALK NEVER REACHED IS REPORTED AS *unreached*, NEVER AS *ok*. That is the D7 lesson
+    // turned into a probe: three screenshots that were all the same defeat screen reported success three
+    // times, because nothing in the battery could tell "I looked and it was fine" from "I never looked". The
+    // table below has three values and only one of them is good news.
+    //
+    // TWO WALKS, because one body cannot see everything. An immortal walk reaches all five acts, every kind
+    // of fight and the victory screen, and can never see a defeat; a mortal one dies in Act I and is the only
+    // road to the defeat screen. Both walk v0.0.1, both name their seed.
+    //
+    // The walk STEERS: at a fork it prefers a room whose screen this act has not shown yet. A fork answered
+    // at random walks past the shop three acts running and then reports the shop as unreached — a finding
+    // about the walker, dressed as a finding about the screen.
+    private async System.Threading.Tasks.Task SmokeScreens()
+    {
+        var immortalSeed = SimArg("--seed", 7);
+        var mortalSeed = SimArg("--mortal-seed", 101);
+
+        GameHost.Instance.StartNewRun(immortalSeed, health: ProbeBody, mapGenerator: WalkedGenerator());
+        await WalkUntil(stop: () => false, prefer: ShowsSomethingNew, budget: 30000, observe: NoteScreen);
+        NoteScreen();   // the run ENDED on the last answer; its final screen is a state like any other
+        var immortalEnded = _walkEnded;
+
+        // The defeat screen. On the game's own health the greedy walker dies in Act I, which is the whole
+        // reason this second walk is short.
+        GameHost.Instance.StartNewRun(mortalSeed, health: 400, mapGenerator: WalkedGenerator());
+        await WalkUntil(stop: () => false, prefer: ShowsSomethingNew, budget: 4000, observe: NoteScreen);
+        NoteScreen();
+        var mortalEnded = _walkEnded;
+
+        GD.Print($"smoke-screens: immortal seed {immortalSeed} — {immortalEnded}");
+        GD.Print($"               mortal   seed {mortalSeed} — {mortalEnded}");
+        GD.Print("");
+        GD.Print("  ok = built · FAILED = threw while building · unreached = the walk never got there, "
+            + "so nothing is claimed");
+        GD.Print("  no room = this act's map holds no such room · n/a = cannot happen in this act");
+        GD.Print("");
+        GD.Print($"  {"screen state",-22}{string.Concat(Enumerable.Range(1, LastAct).Select(a => $"act {a}".PadRight(11)))}");
+        var built = 0;
+        var failed = 0;
+        var unreached = 0;
+        var emptyRows = new List<string>();
+        foreach (var state in ScreenStates)
+        {
+            var cells = new List<string>();
+            var reachedAnywhere = false;
+            for (var act = 1; act <= LastAct; act++)
+            {
+                if (!_screensSeen.TryGetValue((state, act), out var verdict))
+                {
+                    if (NotInThisAct(state, act) is { } why)
+                    {
+                        cells.Add(why);
+                        continue;
+                    }
+                    cells.Add("unreached");
+                    unreached++;
+                    continue;
+                }
+                reachedAnywhere = true;
+                if (verdict == "ok")
+                    built++;
+                else
+                    failed++;
+                cells.Add(verdict);
+            }
+            // A row of nothing but "no room" is not a hole — it is a row about something this game does not
+            // have. Only a row that could have been walked and was not gets named below.
+            if (!reachedAnywhere && cells.Any(c => c == "unreached"))
+                emptyRows.Add(state);
+            GD.Print($"  {state,-22}{string.Concat(cells.Select(c => c.PadRight(11)))}");
+        }
+
+        GD.Print("");
+        foreach (var (key, note) in _screenNotes.OrderBy(kv => kv.Key.State).ThenBy(kv => kv.Key.Act))
+            GD.Print($"  {key.State} (act {key.Act}): {note}");
+        // A whole row of "unreached" is a hole in the WALK, and it is named out loud rather than left for
+        // somebody to notice in a grid of fourteen rows. It is not a failure — the walk may simply have
+        // gone another way — but it is the one thing about this table nobody should have to spot.
+        foreach (var row in emptyRows)
+            GD.Print($"  NOTE '{row}' was never reached in any act — this walk says nothing about it.");
+
+        GD.Print("");
+        GD.Print($"smoke-screens: {built} built, {failed} FAILED, {unreached} unreached, "
+            + $"{ScreenStates.Length * LastAct - built - failed - unreached} not in that act "
+            + $"(of {ScreenStates.Length * LastAct} state x act)");
+        GetTree().Quit(failed == 0 ? 0 : 1);
+    }
+
+    // The five acts the table has a column for. (`LastAct` is the game's, not the probe's: an act added to
+    // the game must widen this table by itself or the new act would be invisible here.)
+    private static int LastAct => 5;
+
+    // The rows of the table, in the order a run meets them. Every one of them is a different BRANCH of
+    // RebuildScreen() or of the combat screen's bottom band — this list is that dispatch, read out loud.
+    private static readonly string[] ScreenStates =
+    [
+        "node fork", "door", "shop", "rest", "reward pick", "entity pick", "interlude",
+        "combat", "combat: ambush", "combat: elite", "combat: boss",
+        "combat: card choice", "combat: option choice",
+        "victory", "defeat",
+    ];
+
+    private readonly Dictionary<(string State, int Act), string> _screensSeen = [];
+    private readonly Dictionary<(string State, int Act), string> _screenNotes = [];
+
+    // WHICH ROOMS EACH WALKED ACT ACTUALLY HOLDS. Without this, Act V — a gauntlet of gods, with no shop, no
+    // campfire, no door and no ordinary fight in it — reads as NINE holes in the table, and nine false holes
+    // hide a true one as thoroughly as silence does. A cell for a room the act does not contain says so;
+    // 'unreached' is then reserved for the thing it means: the walk could have gone there and did not.
+    private readonly Dictionary<int, HashSet<string>> _rolesInAct = [];
+
+    // Which generator a probe walks. The same contract Boot keeps for `--sim` and for the session probes:
+    // the DESIGN's maps unless `--legacy` says otherwise. ⚠ It has to be said again here, because
+    // StartNewRun's default falls through to `RunPreferences.MapGenerator` — a file on this machine — and a
+    // probe that re-rolls a run without naming its generator silently changes the map it is reporting about.
+    private static string WalkedGenerator() =>
+        OS.GetCmdlineUserArgs().Contains("--legacy") ? MapGenerators.RuleBased : MapGenerators.Strategic;
+
+    // What the screen is showing right now, in the names the table uses — or null where there is no screen
+    // to speak of (an error, a state between two answers).
+    private string? ScreenState()
+    {
+        var session = Session;
+        var play = Play;
+        if (session is null || play is null || play.Error is not null || session.Error is not null)
+            return null;
+        if (session.IsComplete)
+            return session.Run.Result switch
+            {
+                RunResult.Victory => "victory",
+                RunResult.Defeat => "defeat",
+                _ => null,
+            };
+        if (play.CombatDriver is { Current: not null } driver)
+        {
+            if (driver.PendingOptionChoice is not null)
+                return "combat: option choice";
+            if (driver.PendingCardChoice is not null)
+                return "combat: card choice";
+            return StateOfRole(HereRole()) ?? "combat";
+        }
+        if (session.IsAwaitingChoice && session.PendingSituation is not null)
+            return HereRole() switch
+            {
+                MapNodeTags.Shop => "shop",
+                MapNodeTags.Rest or MapNodeTags.Workbench => "rest",
+                _ => "door",
+            };
+        if (session.IsAwaitingEntities && session.PendingEntities is { } entities)
+            // A reward names itself ("reward", "reward-card", "reward-relic", "spoils"); everything else that
+            // asks you to pick a THING — the campfire's deck, a card to recover — is the same renderer with a
+            // different question, and the difference is worth a row of its own.
+            return entities.Purpose.StartsWith("reward", StringComparison.Ordinal)
+                || entities.Purpose == "spoils"
+                ? "reward pick"
+                : "entity pick";
+        if (session.IsAwaitingNodeChoice)
+            return "node fork";
+        if (session.IsAwaitingInterlude)
+            return "interlude";
+        return null;
+    }
+
+    // The role of the room the run is standing in, in MapView's words.
+    private string HereRole() =>
+        Session?.Run.CurrentNodeId?.Value is { } id
+        && Session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == id) is { } node
+            ? MapView.Role(node)
+            : "—";
+
+    // A room's role → the screen state standing in it is drawn as. Null where the role does not decide the
+    // screen (a treasure is a reward pick only once its fight, if any, is over).
+    private static string? StateOfRole(string role) => role switch
+    {
+        MapNodeTags.Boss => "combat: boss",
+        MapNodeTags.Elite => "combat: elite",
+        MapNodeTags.MultiCombat => "combat: ambush",
+        MapNodeTags.Combat => "combat",
+        MapNodeTags.Shop => "shop",
+        MapNodeTags.Rest or MapNodeTags.Workbench => "rest",
+        MapNodeTags.Event => "door",
+        _ => null,
+    };
+
+    // Is this cell empty because the act HAS no such room? Answered from the map the walk actually walked,
+    // never from a belief about the design — a row of rooms is a fact the run is carrying around with it.
+    // Two of these are structural rather than cartographic: a run can only be WON in the last act, and there
+    // is nothing to draw between rooms any more, so an act nobody walked has no interlude either.
+    private string? NotInThisAct(string state, int act)
+    {
+        if (state == "victory")
+            return act == LastAct ? null : "n/a";
+        if (RolesOfState(state) is not { Length: > 0 } roles)
+            return null;
+        return _rolesInAct.TryGetValue(act, out var walked) && !roles.Any(walked.Contains)
+            ? "no room"
+            : null;
+    }
+
+    // The table's rows, back to the room roles they can stand in — the inverse of StateOfRole, for the rows
+    // that have one. (A reward pick, a card choice, a defeat and a fork can stand anywhere.)
+    private static string[]? RolesOfState(string state) => state switch
+    {
+        "combat: boss" => [MapNodeTags.Boss],
+        "combat: elite" => [MapNodeTags.Elite],
+        "combat: ambush" => [MapNodeTags.MultiCombat],
+        "combat" => [MapNodeTags.Combat],
+        "shop" => [MapNodeTags.Shop],
+        "rest" => [MapNodeTags.Rest, MapNodeTags.Workbench],
+        "door" => [MapNodeTags.Event],
+        _ => null,
+    };
+
+    // At a fork: does this room show the act something it has not shown yet?
+    private bool ShowsSomethingNew(RogueDeck.Run.Node node) =>
+        StateOfRole(MapView.Role(node)) is { } state
+        && !_screensSeen.ContainsKey((state, Session?.Run.ActNumber ?? 0));
+
+    // Build the screen for whatever state is standing, once per (state, act), and write down what happened.
+    //
+    // The screen has already been drawn by the state change that got us here — every `--smoke*` probe draws.
+    // Rebuilding it again costs one redraw and buys the one thing the automatic draw cannot give: certainty
+    // about WHICH state the fault belongs to. `Rebuild()` counts its own throws (R2a), so the verdict is the
+    // difference in that count and nothing has to be caught twice.
+    private void NoteScreen()
+    {
+        if (ScreenState() is not { } state)
+            return;
+        var act = Session?.Run.ActNumber ?? 0;
+        if (act < 1)
+            return;
+        if (!_rolesInAct.ContainsKey(act) && Session is { } census)
+            _rolesInAct[act] = [.. census.Run.Map.Nodes.Select(MapView.Role)];
+        if (_screensSeen.ContainsKey((state, act)))
+            return;
+
+        var faultsBefore = _screenFaults;
+        Rebuild();
+        _screensSeen[(state, act)] = _screenFaults > faultsBefore ? "FAILED" : "ok";
+        if (state == "interlude")
+            _screenNotes[(state, act)] =
+                "there is no between-rooms screen any more — Rebuild walks it through (see its note); "
+                + "'ok' here means it walked through without throwing, not that a screen was drawn";
+        else if (Session is { } session)
+            _screenNotes[(state, act)] = Where(session);
+    }
+
+    // ONE greedy walker for three probes now: `stop` is what this probe came to look at, `prefer` steers the
+    // map at a fork, and `observe` is called once per step with the state as the player would find it.
     // Returns the widest fight it met on the way.
     //
     // Under the replay model every answer re-runs the whole run, so a walk is quadratic in its own length and
@@ -941,7 +1205,7 @@ public partial class SessionScreen : Control
     private string _walkEnded = "-";
 
     private async System.Threading.Tasks.Task<int> WalkUntil(
-        Func<bool> stop, Func<RogueDeck.Run.Node, bool> prefer, int budget)
+        Func<bool> stop, Func<RogueDeck.Run.Node, bool> prefer, int budget, Action? observe = null)
     {
         _walkEnded = "the budget ran out";
         var enteredRoomAt = 0;
@@ -976,6 +1240,9 @@ public partial class SessionScreen : Control
             if (step % 20 == 19)
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             best = Math.Max(best, Enemies().Count);
+            // `observe` sees the state BEFORE it is answered — which is the only moment an in-fight card or
+            // option prompt exists, since the branches below answer both in the same step they meet them.
+            observe?.Invoke();
             // Who was on the table last. A run that ends names the fight it ended in — without this, a defeat
             // reports a room code and leaves the next reader to walk there again to find out who was standing
             // in it.
@@ -2110,7 +2377,35 @@ public partial class SessionScreen : Control
             : null;
     }
 
+    // ⚠⚠ A SCREEN THAT THROWS MUST NOT BE SILENT. Rebuild() is reached from GameHost.StateChanged, which
+    // Godot raises through a DEFERRED call: an exception thrown in here lands on stderr and nowhere else.
+    // Measured (runner plan §1.1b): a Rebuild() made to throw on every one of 378 redraws in a whole run
+    // still printed `problems=0 error=none` and exited 0 — the ÷3.3 the runner paid for drawing bought no
+    // detection at all. So every redraw is wrapped: the fault is counted, named with the state it happened
+    // in, and folded into the run's `problems`, which is what makes the run exit non-zero.
+    //
+    // Catching is right here for a HUMAN too: a half-drawn screen with a toast beats the game vanishing,
+    // and the next state change draws it again from scratch.
     private void Rebuild()
+    {
+        if (!_drawing)
+            return;
+        try
+        {
+            RebuildScreen();
+        }
+        catch (Exception ex)
+        {
+            _screenFaults++;
+            var where = Session is null ? "\u2014" : Where(Session);
+            GD.Print($"    !! PROBLEM screen at {where}: {ex.GetType().Name}: {ex.Message}");
+            GD.PushError($"screen at {where}: {ex}");
+            if (!IsSimulating)
+                Toast($"The screen could not be drawn: {ex.Message}");
+        }
+    }
+
+    private void RebuildScreen()
     {
         var session = Session;
         // Combat gets the graphical scene (_combatRoot); everything else the ordinary list (_mainScroll).
@@ -4474,14 +4769,8 @@ public partial class SessionScreen : Control
         return definitionId;
     }
 
-    private IReadOnlyList<ResourceCost> FullCosts(string definitionId)
-    {
-        var play = Play!;
-        if (play.CardFullCosts.TryGetValue(definitionId, out var costs))
-            return costs;
-        return play.ComposedCostsFor(definitionId)
-            ?? [new ResourceCost(StandardCombatIds.EnergyResource, play.CardCosts.GetValueOrDefault(definitionId))];
-    }
+    // What a card really costs, all pools counted. One definition, in the bot (R4).
+    private IReadOnlyList<ResourceCost> FullCosts(string definitionId) => RunBot.FullCosts(Play!, definitionId);
 
     private string ResourceLabel(ResourceId id) =>
         id == StandardCombatIds.EnergyResource ? "⚡"
@@ -4570,9 +4859,7 @@ public partial class SessionScreen : Control
             .Where(cost => cost.ResourceId == StandardCombatIds.EnergyResource)
             .Sum(cost => cost.Amount);
 
-    private bool CanPay(CombatantState payer, string definitionId) =>
-        FullCosts(definitionId).All(cost =>
-            payer.Resources.TryGetValue(cost.ResourceId, out var pool) && pool.Current >= cost.Amount);
+    private bool CanPay(CombatantState payer, string definitionId) => RunBot.CanPay(Play!, payer, definitionId);
 
     private string ResourcePoolsLine(CombatantState combatant)
     {

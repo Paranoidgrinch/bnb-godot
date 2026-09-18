@@ -15,5 +15,7 @@
     <ProjectReference Include="../RogueDeck-Core/src/RogueDeck.Scenario/RogueDeck.Scenario.csproj" />
     <ProjectReference Include="../RogueDeck-Core/src/RogueDeck.Run/RogueDeck.Run.csproj" />
     <ProjectReference Include="../RogueDeck-Core/src/RogueDeck.Sandbox.Run/RogueDeck.Sandbox.Run.csproj" />
+    <!-- The runner's brain, shared with the console runner and bnb-content's playtest walker (R4). -->
+    <ProjectReference Include="../RogueDeck-Core/src/RogueDeck.Bot/RogueDeck.Bot.csproj" />
   </ItemGroup>
 </Project>

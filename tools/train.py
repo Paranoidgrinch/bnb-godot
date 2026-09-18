@@ -55,12 +55,13 @@ def mutate(rng, parent, name, sigma):
     return child
 
 
-def play(policy_file, seed, log_file, timeout, health, target_act, maps):
+def play(policy_file, seed, log_file, timeout, health, target_act, maps, draw=False):
     with open(log_file, "w") as log:
         try:
             subprocess.run(
                 ["godot", "--headless", "--", "--sim", "--sim-seed", str(seed),
-                 *health, *maps, "--sim-policy", str(policy_file)],
+                 *health, *maps, "--sim-policy", str(policy_file),
+                 *(["--sim-ui"] if draw else [])],
                 cwd=REPO, stdout=log, stderr=subprocess.STDOUT, timeout=timeout, check=False)
         except subprocess.TimeoutExpired:
             log.write("\n!! the run was cut off by the trainer's timeout\n")
@@ -82,7 +83,7 @@ def play(policy_file, seed, log_file, timeout, health, target_act, maps):
             "note": "" if reached else f"never reached the act-{target_act} boss"}
 
 
-def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps):
+def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, ui=0):
     """Every policy over every seed, in parallel; a policy's score is its mean hp lost."""
     work = []
     for policy in policies:
@@ -90,8 +91,14 @@ def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps):
         path.write_text(json.dumps(policy, indent=2))
         for seed in seeds:
             work.append((policy, path, seed, gen_dir / f"{policy['Name']}-seed{seed}.log"))
+    # The screen costs about six times the run it draws and teaches the SEARCH nothing — the fitness line
+    # comes from the session, not from the nodes. So the trainer draws nothing unless asked (--ui N draws
+    # the first N runs of each generation); the daily frontend check is tools/simulate.sh, which draws 5.
     with ThreadPoolExecutor(max_workers=jobs) as pool:
-        results = list(pool.map(lambda w: play(w[1], w[2], w[3], timeout, health, target_act, maps), work))
+        results = list(pool.map(
+            lambda iw: play(iw[1][1], iw[1][2], iw[1][3], timeout, health, target_act, maps,
+                            draw=iw[0] < ui),
+            enumerate(work)))
     scored = {}
     for (policy, _, seed, _), result in zip(work, results):
         scored.setdefault(policy["Name"], []).append(result)
@@ -115,6 +122,9 @@ def main():
     ap.add_argument("--seeds", type=int, default=2, help="content seeds every runner is judged on")
     ap.add_argument("--seed-from", type=int, default=1000)
     ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--ui", type=int, default=0,
+                    help="runs per generation that draw the screen (about 6x slower each; the trainer "
+                         "does not need it -- tools/simulate.sh is where the frontend gets walked)")
     ap.add_argument("--timeout", type=int, default=2400, help="seconds a single run may take")
     ap.add_argument("--sigma", type=float, default=0.18, help="mutation size, as a share of each gene's range")
     ap.add_argument("--out", default=None)
@@ -165,7 +175,8 @@ def main():
         gen_dir = out / f"gen-{generation:02d}"
         gen_dir.mkdir(exist_ok=True)
         started = time.time()
-        table = evaluate(population, seeds, gen_dir, args.jobs, args.timeout, health, args.target_act, maps)
+        table = evaluate(population, seeds, gen_dir, args.jobs, args.timeout, health, args.target_act,
+                         maps, ui=args.ui)
         with board.open("a", newline="") as f:
             writer = csv.writer(f)
             for row in table:

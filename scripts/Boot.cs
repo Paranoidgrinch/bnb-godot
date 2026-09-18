@@ -153,18 +153,21 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover"))
         {
             host.StartNewRun(seed: 7,
                 // ⚠ A PROBE THAT HAS TO WALK SOMEWHERE MUST SURVIVE THE WALK. The greedy walker plays badly on
                 // purpose, and on the game's own health it dies in act I — which is how `--smoke-shop`,
                 // `--smoke-event` and `--smoke-elite` all came to photograph the same DEFEAT SCREEN and call it
-                // a shop, a door and an elite. Every probe that names a room it must reach gets the same 9999
-                // the marathon and the bosses have always had; the probes that stay where the run starts do not.
+                // a shop, a door and an elite. Every probe that names a room it must reach gets the body the
+                // marathon and the bosses have always had; the probes that stay where the run starts do not.
+                // ⚠ That body is `SessionScreen.ProbeBody`, not 9999 — see the note there: 9999 was called
+                // immortal for months and the greedy walker died on it in Act IV.
                 health: userArgs.Any(a => a is "--smoke-marathon" or "--smoke-crowd" or "--smoke-boss"
+                    or "--smoke-screens"
                     or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade"
                     or "--smoke-ambush" or "--smoke-elite" or "--smoke-reward"
-                    or "--smoke-archive-run") ? 9999 : null,
+                    or "--smoke-archive-run") ? SessionScreen.ProbeBody : null,
                 // Every session probe walks the DESIGN, which since the map rework is v0.0.1 — and `--legacy`
                 // walks the same probe over the old maps instead. A probe that cannot name its generator is a
                 // probe that cannot say whether what it found is about the map or about the game.
