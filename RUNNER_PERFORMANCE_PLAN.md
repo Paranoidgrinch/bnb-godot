@@ -623,13 +623,16 @@ reaches the end of Act IV.** Today's runner cannot answer that, and not because 
 
 ### 5.1 What the trained runner actually does not do
 
-- **It does not build a deck.** `SimPick` is **random even under a policy** (`RunSimulator.cs`, the
-  `IsAwaitingEntities` arm): the policy decides *whether* to skip an offer, never *which* card or relic to
-  take. A run's strength in this genre is mostly its deck. **This is the biggest single gap in the instrument.**
+- ~~**It does not build a deck.**~~ **✔ B1, 2026-09-18.** It was random even under a policy — the brain was
+  handed display STRINGS, and a string cannot be turned back into a card. It now receives each offer's
+  identity (`EntityArt`, the same one a reward screen draws its card face from) and scores it with the
+  evaluator that scores a card in hand. *Read B1 below before believing this made the runner stronger: it
+  made the runner ANSWERABLE, which is not the same thing.*
 - **It picks doors by their ordinal position.** `EventLate` is one scalar, clamped into the choice list's
   index (`PickChoice`). A door is chosen by *where it is printed*, not by what it does.
-- **It cannot see magnitudes.** A card's value is the number of times `node.dealDamage` appears as a
-  **substring of its JSON** (`Features`). A 3-damage card and a 30-damage card score identically.
+- ~~**It cannot see magnitudes.**~~ **✔ B3, 2026-09-18.** It counted how often `node.dealDamage` appeared as
+  a **substring of the card's JSON**, so a 3-damage jab and a 30-damage haymaker scored the same. The
+  evaluator now walks the authored program and adds up what it actually applies.
 - **It cannot see what is coming.** `InteractiveCombat.UpcomingIntentFor` exists, but `ActionIntent` carries
   only `Label` + `Kind` — **no number**. Blocking the right amount, the single most important skill in the
   genre, is not computable from what the engine exposes.
@@ -640,12 +643,75 @@ reaches the end of Act IV.** Today's runner cannot answer that, and not because 
 
 ### 5.2 What to do about it, in order
 
-- **B1 — Let the policy choose what it takes.** Score reward cards, relics and shop goods with the same
-  evaluator that scores a card in hand. *(Biggest win; smallest change.)*
+- **B1 — Let the policy choose what it takes. ✔ DONE 2026-09-18 — and it did NOT win.** Reward cards,
+  relics and shelf slots now arrive with their identity beside their name (`BotMind.EntityPicks` takes an
+  `EntityArt` list; the direct seat reads it off the candidate, the replay seat off the request it parks
+  with) and are scored by the same evaluator that scores a card in hand. A relic is weighed without the cost
+  term. `RewardSkip` stopped being a coin flip and became a threshold on the DECK RANK — walk away from a
+  card that beats less than this share of the deck it would join. In a shop, the best slot on the shelf is
+  bought and price only breaks a tie.
+
+  **Measured, 8 immortal seeds, the same hand-written policy on both sides** (the six seeds that ran to the
+  end on both): **42388 health left → 37960**, i.e. the runner takes about **10 % MORE damage** when it picks
+  greedily than when it picks at random. Four of the six seeds improved; one (seed 5) lost 4083 health on its
+  own. The deck says why: seven copies of *Notarial Press*, five of *Waxing Authority*. **The evaluator
+  cannot see magnitudes** (§5.1), so "best" means "most effect nodes", which buys multi-hit chaff — and a
+  greedy picker on a blind evaluator builds a worse deck than the dice do, because the dice at least
+  diversify. What B1 delivers is not strength but REACH: before it, no amount of breeding could move the
+  deck at all, and the search space now contains deck-building.
+
+  ⚠ **The gene has changed meaning, so every weight bred before today is stale** — `RewardSkip` used to say
+  "decline everything declinable", it now says "how much better than my deck must this be". Breeding again
+  is part of the step, not an afterthought.
+
+  ⚠ **One fault found in B1's own first draft, and it is written down because it was measured rather than
+  reasoned about:** the walk-away rule ranked EVERY offer against the deck, and a relic — about one point to
+  the crude features, where a deck card is worth several — beat almost nothing in the deck and was declined.
+  A run reached act V with **4 relics where the dice player had 27**, and paid ~4000 health for it. What is
+  free is taken; only a card is ever refused. Pinned by `RunnerPicksTests`, which falls over without it.
+
+  ➜ **This reorders what comes next: B3 is now the prerequisite for B1 to pay**, not an improvement on top
+  of it.
 - **B2 — Choose doors by their effect.** Score an `EventChoice` by what its program does (gold, hp, cards,
   relics, curses), not by its index.
-- **B3 — Read the authored numbers.** Replace substring counting with the real amounts off the card's
-  program. The evaluator becomes a function of the game, not of the JSON's spelling.
+- **B3 — Read the authored numbers. ✔ DONE 2026-09-18 — and it did not win either.** `CardFeatures` walks
+  the authored program instead of counting words: constants are read, arithmetic over constants is folded, a
+  repeat multiplies by its own count, "choose 1 of 3" scales by a third, a conditional branch counts half,
+  and a spell on every enemy multiplies by **how many enemies this game's own encounters have** (1.41). Three
+  numbers the document cannot supply are named in one place — `MaybeRuns`, `ScalingTerm`, `CardsInAZone`.
+  Every bucket is normalized by the average card **that does that thing**, so 1.0 = "what a card of this game
+  that blocks, blocks".
+
+  ⚠ **The first normalization was wrong in an instructive way:** dividing a bucket by the mean over ALL cards
+  divides it by all the zeroes in it, so the RARER an effect is the bigger every instance of it scores. Block
+  (about a fifth of the cards) came out 2.5× too large, and the runner blocked for a hundred turns in the
+  first fight of the game without ever killing anything. Measured, not reasoned about.
+
+  **Measured by BREEDING, which is the only fair way to judge an evaluator** (weights bred for the old one
+  mean nothing under the new one). Same budget, same search seed, same identical starting population —
+  4 generations × 8 runners × 2 seeds — then both winners played over **ten held-out seeds** under their own
+  build:
+
+  | bred against | reached the act-V boss | mean damage on the way |
+  |---|---|---|
+  | the old word-counting evaluator | 7/10 | **4408** |
+  | the new authored-amount evaluator | 8/10 | 8250 |
+
+  ⚠⚠ **AND THE BRED WEIGHTS SAY WHY, IN ONE NUMBER: `WDamage = −1.84`.** The new evaluator is sharp enough to
+  express "avoid attacking", and against the fitness as written — *damage taken at 9999 HP on the way to a
+  boss* — avoiding attacks is CORRECT: a runner that never kills anything never gets hit back, it just takes
+  longer. Two of its ten runs stalled a fight for a hundred turns. The old evaluator was too blunt to find
+  that exploit; the new one found it immediately. **A sharper answer to the wrong question is a worse
+  runner** — so the binding constraint is no longer the evaluator.
+
+  ➜ **B6 moves to the front. The question has to be fixed before the answer is sharpened any further.**
+
+- **THE TRAINER NOW BREEDS THROUGH THE CONSOLE RUNNER (2026-09-18).** `tools/train.py` started a whole Godot
+  per run, driven through the replay model — it had never been given R4 or R5. One runner's seeds are now
+  played by ONE `roguedeck-bot` process answering the engine inline; `--godot` is the way back. Measured:
+  4 generations × 8 runners × 2 seeds in **~5 minutes**, where the README still warned of 10–20 minutes per
+  RUN. This is not decoration: an evaluator can only be judged by breeding against it, and before this the
+  judgement cost a day.
 - **B4 — Engine seam: an intent carries its number.** Let `ActionIntent` state the damage/block it is about
   to apply. Additive, no rule changes — **and the player's screen wants it as much as the bot does**
   (today the UI shows a word where every game in the genre shows a number).
@@ -655,8 +721,8 @@ reaches the end of Act IV.** Today's runner cannot answer that, and not because 
   Two runners for two questions:
   - **coverage runner** — fast, dumb, hundreds of seeds: finds crashes, walls, unreachable content;
   - **champion runner** — slow, careful, few seeds: answers whether a seed is beatable.
-- **B6 — Breed on the real question.** Real health, real death, fitness = *did it clear Act IV*, scored per
-  seed. The report the player wants is not a damage number: it is **"these 7 of 500 seeds no runner we have
+- **B6 — Breed on the real question. ⬅ DO THIS NEXT — B3 measured it into first place.** Real health, real
+  death, fitness = *did it clear Act IV*, scored per seed. The report the player wants is not a damage number: it is **"these 7 of 500 seeds no runner we have
   can beat, and here is the room each one died in."**
 
 ### 5.3 The sweep that closes V-7
