@@ -238,21 +238,49 @@ diff, exit 1; the runs killed before they could report → failure naming the ab
 **Re-record only when a change to the GAME is intended**, and say in the commit which lines moved and why. A
 change meant only to make the runner faster must never need one.
 
-### R1 — Compile once per fight, not once per answer *(RogueDeck-Core)* — **÷2.2, measured**
-The library half of every fight's registry is constant for the whole process; only the encounter's own
-triggers, the run's relic contributions and the hero's projected deck vary.
-- Give `CombatDefinitionRegistryBuilder` a **prebuilt base registry** to start from, and let `Encounters` hold
-  one compiled library per catalog. The registry is already read-only after `Build()` (checked: no public
-  mutator on `CombatDefinitionRegistry`), and the triggered programs / interceptors are *already* shared
-  instances across fights today — this shares nothing that is not shared now.
-- Alternative if the seam proves awkward: memoise `CompiledScenario` in the run layer, keyed on encounter id +
-  a fingerprint of (deck definition ids and tags, enabled relic ids, unit ids, hero resources). The prototype
-  keyed on the fight's identity alone and already hit 98 %.
-- ⚠ The key must include everything `ApplyRunProjection` reads (`CombatNode.cs:361`) — deck, tags, relics,
-  units — or a fight would be built from a stale deck. **This is the one place in the plan that can change the
-  game if it is got wrong**, which is why the golden set exists.
-- **Gate:** Core 1475/755/387/827 + bnb-content 1526/1526 + golden set identical.
-- **Bonus, worth saying out loud:** this is the fix for player-facing click latency in Act V.
+### R1 — Compile once per fight, not once per answer *(RogueDeck-Core)* ✔ **DONE**
+`Compile()` ran **4586 times per run**, and each time built the game's whole authored library — 2564
+definitions — into a fresh registry and re-validated every effect program in it. The library is the same in
+every fight; only the roster, the projected deck and what the run adds on top differ.
+
+**What was built.** `CompiledCombatLibrary` (RogueDeck.Scenario) compiles the authored half once.
+`ScenarioBlueprint.Library` names it. `CombatDefinitionRegistryBuilder` gained a constructor that starts from
+an already-built registry. `EncounterCatalog` holds one library per per-turn draw count and hands it to every
+fight it builds.
+
+⚠ **There is no cache key.** The plan's one dangerous idea — a fingerprint of everything `ApplyRunProjection`
+reads — was not needed and was not built. Nothing run-dependent is shared: no deck, no relic, no hero, no HP.
+What is shared is the AUTHORED content, which is the same in every fight of the game by construction. The
+danger this step was supposed to carry does not exist in what was built.
+
+**The first attempt was fast in the wrong place.** It copied the base registry into the new builder's mutable
+dictionaries — still O(library) per fight, just with a cheaper constant. Golden set: 5032 s → 4188 s, and
+`Compile()` still expensive. The second attempt REFERENCES the base and lets `Build()` add its handful of
+deltas onto the immutable collections it already holds. That is what actually removed the cost.
+
+**A real fault the new tests caught.** Once the base was referenced rather than copied, build-time validation
+only saw this builder's own registrations — so a card or trigger belonging to one fight was judged against an
+empty library and rejected for naming a status or a damage handler that was right there. Every bnb fight
+would have failed to compile. Fixed by `KnowsStatus` / `KnowsCard` / `KnowsEffectRequestHandler`, which ask
+the base too. It was `A_fight_may_bring_content_of_its_own_on_top_of_a_library` that found it.
+
+**Measured, with the instrument R0c froze:**
+- `Compile()`: **~60 s → 0.1 s** over the 4586 calls of one run (temporary meter, removed again).
+- One run alone, seed 1: **286.3 s → 228.2 s** (÷1.25).
+- The golden set: **5032 s → 4015 s** run-seconds.
+
+⚠ **The ÷2.2 this section used to promise was wrong, and the mistake is worth keeping.** It came from a
+prototype measured against a **110-second** run, not against the real anchor. The ABSOLUTE saving matches the
+audit exactly — about 60 seconds, which is what `Compile()` cost — but as a share of a 286-second run that is
+21 %, not 55 %. **Every other ratio in §2 and §4 was measured the same way and should be re-checked against
+the 228 s anchor before it is believed.**
+
+**Gate:** Core 1488 (+6) · Scenario 762 (+7) · Run 827 · Sandbox 387 · bnb-content 1527 · `GOLDEN OK`, all
+15 runs identical field for field.
+
+**Bonus, as predicted:** this is also the fix for player-facing click latency — the real game recompiled the
+whole library on every click too.
+
 
 ### R2a — The runner stops drawing, and a screen fault becomes a finding *(bnb-godot)* — **÷3.3, measured**
 - `SessionScreen._Ready` subscribes `Rebuild` only when a human (or `--sim-ui`, or a smoke probe) is watching.
