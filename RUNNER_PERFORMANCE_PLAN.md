@@ -528,22 +528,91 @@ makes.)
 (130.8 s wall for the whole set at 12 jobs) **and `GOLDEN OK` through Godot with the screen on** · the smoke
 battery unchanged.
 
-### R5 — The bot drives directly, without the replay — **÷~2.4, projected**
-The replay model exists so a single-threaded UI can park at a prompt. A bot never parks: it answers. 
-- An `IRunChoiceProvider` + `ICombatDriver` pair that answers inline and drives `InteractiveCombat` forward
-  once. No park, no restore, no re-execution — `RunRunner` walks the run exactly once.
-- The replay path keeps its coverage through the `--sim-resume` probe of §3.
-- **Gate:** the golden set identical **through both drivers** — that equality is also the strongest statement
-  the project has ever made that replay and direct play are the same game.
+### R5 — The bot drives directly, without the replay — ✔ DONE (2026-09-18), **÷2.05 per run, ÷2.31 per set**
+The replay model exists so a single-threaded UI can park at a prompt. A bot never parks: it answers. So
+`BotSeat` simply IS the collaborator — `IRunChoiceProvider` + `IRunEntityChooser` + `IRunInterlude` +
+`ICombatDriver` + both in-combat choosers at once — and `RunRunner` walks the run exactly once. No park, no
+restore, no re-execution.
 
-**Expected after R1–R5** (measured where marked, otherwise projected from the measured factors):
+**Measured, this machine** (the runs identical in every column):
 
-| | today | after |
-|---|---|---|
-| one immortal whole-game run | 324.5 s | **~15 s** |
-| 100 immortal runs | ~68 min (8 jobs) | **~2 min** (12 jobs) |
-| `train.py` defaults (80 runs) | ~1 h 50 m | **~2 min** |
-| `train.py` 10×12×3 (360 runs) | ~4 h | **~8 min** |
+| | replay model | walked once | |
+|---|---|---|---|
+| one immortal whole-game run, alone | 42.5 s | **20.7 s** | **÷2.05** |
+| the golden set, 15 runs, 12 jobs | 183.3 s | **79.2 s** | **÷2.31** |
+
+Peak memory is unchanged (471 MB either way): what is saved is work, not space.
+
+**ONE BRAIN, TWO SEATS.** Every decision and every counter moved into `BotMind`; `RunBot.Play` is now the
+REPLAY seat (the poll loop that hands answers back through the very methods a mouse click calls) and
+`BotSeat` is the DIRECT one. Both build their run through the same `RunPlayback` — same blueprint, content,
+registry, meta profile and labeler (`RunPlayback.Prepare` / `StartDirect`) — so the comparison below is
+between two ways of ASKING, and nothing else. ⚠ The order the Random is drawn in is part of that contract: a
+card before its target, a target only when a card was chosen.
+
+**Gate passed:** Core 1488 / Scenario 762 / Run 828 / Sandbox 389 · bnb-content 1527 (the whole content
+suite against the changed engine) · the smoke battery unchanged
+(`--smoke-screens` 58 built / 0 FAILED, `--smoke-quit` resumes into a playable fight, `--smoke-boss 5`
+arrives) · **`GOLDEN OK` through all three: Godot with a screen, the console runner through the replay model
+(`--console --replay`), and the console runner walking once (`--console`).**
+
+#### ⚠⚠ What the gate found: three faults in the mid-fight save, and none of them were the runner's
+
+The equality did not hold at first — eleven of the twelve immortal runs came out different. Every difference
+was the SAME kind of thing, and every one of them is a bug a player meets by pressing "save and quit" inside
+a fight. The replay model takes that same capture at every turn boundary, which is why a bot walking one run
+two ways could find in an afternoon what months of playing had not.
+
+1. **The Queue was not in the capture.** `CombatantCardZonesSnapshot` carried five zones and not the sixth —
+   so every card the Bureaucrat had QUEUED (played, paid for, targeted, waiting) was silently destroyed by a
+   save. The cost had been paid for nothing and no message said so. The locked target was not captured
+   either. *(Fix: `QueuePile` + `QueuedTargetId` in the snapshot, restore and hash, all defaulted so an older
+   save reads as an empty queue. Test: `QueueTortureTests.A_save_taken_with_a_card_waiting_…`.)*
+2. **Queueing opened an action and never closed it.** `CardPlay` returns early on the queue path, past the
+   `CloseAction`. "Once per action" is claimed against whatever action is OPEN, and outside one no claim may
+   succeed at all — so a stale scope standing for the rest of the fight let once-per-action rules fire at
+   status ticks and turn boundaries. Measured before the fix: a scope was open at **1397** hero turn
+   boundaries in one run. *(Fix: close it behind the effect list, exactly as a program-less card does. Test:
+   `Queueing_closes_its_action_instead_of_leaving_the_scope_standing`.)*
+3. **Resuming a fight spent the player's free step.** A run resumed inside a fight re-enters the room it is
+   already standing in, and a node is never its own successor — so `AdvanceToNode` read the re-entry as a
+   step off the paths and decremented `UnrestrictedSteps`. Every mid-fight save cost one. *(Fix: `from !=
+   nodeId`. Test: `Re_entering_the_room_it_is_already_in_does_not_spend_the_step`.)*
+
+A fourth difference was the runner's own: a card that PARKS to ask its own question records the park as a
+problem step, and `RunBot.Refused` read that as "the rules said no" and struck the card off the turn — while
+the direct seat, where nothing parks, kept offering it. A park is the engine working; only a refusal counts.
+
+**The golden set was therefore re-recorded** (2026-09-18, through Godot, one run drawing). **Eight of its
+thirty lines did not move: the three mortal runs and immortal seed 3.** Those die in act I or hold nothing in
+the queue — short fights, few turn boundaries, no free step in hand — which is exactly the shape the three
+faults needed in order not to bite. The other eleven immortal runs are different runs now, and they are
+different because the game they were recorded from had three bugs in it.
+
+**Delivered:** `src/RogueDeck.Bot/BotMind.cs` + `BotSeat.cs` · `RunPlayback.Prepare` / `StartDirect` ·
+`RunEntityLabeler.Display` (one spelling of a picked thing's name, for both seats) ·
+`roguedeck-bot` walks once by default, `--replay` for the other driver · `golden.sh --console --replay` ·
+the three engine fixes above with their tests.
+
+⚠ The replay path keeps its coverage: it is still the driver Godot's `--sim` uses, still half of what
+`golden.sh --console` checks, and still what `--smoke-quit` walks.
+
+**After R1–R5, measured** (2026-09-18, this machine, 12 cores; the "today" column is §0's anchor):
+
+| | today | after | |
+|---|---|---|---|
+| one immortal whole-game run | 324.5 s | **20.7 s** | ÷15.7 |
+| the golden set (12 immortal + 3 mortal), 12 jobs | 5032 s of run-time | **79.2 s wall** | — |
+
+⚠ The promised "~15 s" is not quite reached and the honest number is 20.7. The projections were multiplied
+together; the real factors were ÷1.25 (R1), ÷5.9 (R2a), ÷1.3 (R3), ÷1.10 for a long run (R4) and ÷2.05 (R5),
+and a long run is exactly the case where R4 pays least.
+
+⚠ And a run alone is not a run in a batch: the golden set puts twelve whole games through twelve cores in
+79 s, which is about **40 s of WALL per run** once they are all competing for the machine — not 20.7. So a
+500-seed immortal sweep is about **half an hour at 12 jobs**, against the three days §0 would have cost. That
+is the instrument §5.3 asked for, and the champion runner's ~5× on top of it is what has to be budgeted
+next, not assumed away.
 
 ---
 

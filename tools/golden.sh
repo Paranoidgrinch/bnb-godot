@@ -8,6 +8,7 @@
 #   tools/golden.sh --ui 0       # no run draws the screen (fastest); --ui 15 makes every run draw
 #   tools/golden.sh --release    # play the set out of an EXPORTED binary, whose engine is optimized
 #   tools/golden.sh --console    # play the set through the Godot-free console runner, one process (R4)
+#   tools/golden.sh --console --replay   # …and the same set driven through the REPLAY model instead (R5)
 #
 # ⚠ ONE RUN OF THE SET DRAWS. Since R2a the runner only builds the screen when asked (`--sim-ui`), and the
 # first immortal seed is asked. That is not decoration: the outcome lines below are recorded from a run
@@ -26,7 +27,7 @@ cd "$(dirname "$0")/.."
 
 GOLDEN=tools/golden-runs.txt
 RELEASE_BIN=build/linux/bureaucrats-and-broomsticks.x86_64
-mode=check; jobs=6; ui=1; release=no; console=no
+mode=check; jobs=6; ui=1; release=no; console=no; replay=no
 BOT=../RogueDeck-Core/src/RogueDeck.Bot.Cli
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,9 +39,24 @@ while [[ $# -gt 0 ]]; do
     # out of a process that has never heard of Godot. If both hosts reproduce this file, then the runner's
     # behaviour is in `RogueDeck.Bot` and not in either host — which is the whole claim R4 makes.
     --console) console=yes; shift ;;
+    # ⚠⚠ THE GATE ON R5, AND THE MOST THAT CAN BE SAID ABOUT REPLAY. The console runner walks a run ONCE by
+    # default — the bot answers the engine where it stands. `--replay` plays the same fifteen runs through
+    # the replay model instead: parked at every prompt and re-executed from a baseline behind every answer,
+    # which is the driver the frontend uses. If this file comes back out of BOTH, then deterministic replay
+    # and direct play are the same game — a claim the project could never make with evidence before, and the
+    # one that found three faults in the mid-fight save the day it was first asked.
+    --replay) replay=yes; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
+
+# `--replay` is a property of the console runner; Godot's `--sim` has a screen to keep parked and always
+# drives its run through the replay model. Asking for it without `--console` would quietly play the ordinary
+# set and report a pass for something that was never tried.
+if [[ $replay == yes && $console != yes ]]; then
+  echo "--replay needs --console (Godot's runner already drives its run through the replay model)" >&2
+  exit 2
+fi
 
 # THE SET. Twelve immortal runs, which walk all five acts and are where the content is, plus three on a
 # mortal body, which die in act I — the defeat path, the run-end and the reward screens a winner never sees,
@@ -85,6 +101,8 @@ which_build="dev build"; [[ $release == yes ]] && which_build="exported release 
 drawn="$ui drawing the screen"
 if [[ $console == yes ]]; then
   which_build="console runner, one process"
+  which_build="console runner, one process, answering the engine inline"
+  [[ $replay == yes ]] && which_build="console runner, one process, through the replay model"
   drawn="none drawing the screen (the console runner has no screen)"
 fi
 echo "golden set: ${#IMMORTAL_SEEDS[@]} immortal + ${#MORTAL_SEEDS[@]} mortal runs, $jobs at a time, \
@@ -124,7 +142,8 @@ if [[ $console == yes ]]; then
     local body=$1 from=$2 many=$3 health=$4 started elapsed
     started=$(date +%s.%N)
     # shellcheck disable=SC2086
-    "$bot" --game content/game.roguedeck.json --runs "$many" --seed-from "$from" $health \
+    local how=""; [[ $replay == yes ]] && how="--replay"
+    "$bot" --game content/game.roguedeck.json --runs "$many" --seed-from "$from" $health $how \
       --jobs "$jobs" --out "$out" >"$out/bot-$body.log" 2>&1
     elapsed=$(awk "BEGIN{printf \"%.1f\", $(date +%s.%N) - $started}")
     for ((i = 0; i < many; i++)); do

@@ -17,6 +17,12 @@
 # paid N times. Measured 2026-09-18 on this machine: 48 short runs, 72.0 s the old way and 32.6 s this way;
 # 12 whole-game runs, 133.2 s and 121.2 s — a long run drowns its own boot, a short one does not.
 #
+# TWO SEATS, ONE BRAIN (R5). Those console runs are also walked ONCE now — the bot answers the engine where
+# it stands instead of parking at every prompt and being re-executed from a baseline behind every answer.
+# Nothing here asks for it; it is what the runner does. Measured on the golden set at 12 jobs: 187.5 s
+# through the replay model against 87.4 s walked once, the fifteen result lines identical. The Godot half
+# keeps the replay model, because a screen has to be able to stand at a prompt.
+#
 # THE SCREEN. A run that draws costs about SIX TIMES a run that does not (measured: 228.0 s against 38.7 s
 # for immortal seed 1), and the walk is identical either way -- the screen reads the session, it never
 # answers for it. So the first `--ui N` runs of the batch draw and the rest do not: the frontend is still
