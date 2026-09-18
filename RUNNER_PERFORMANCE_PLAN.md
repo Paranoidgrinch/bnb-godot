@@ -211,13 +211,32 @@ half of each of the two decree tests.
 **Measured, not assumed:** with the fix reverted, exactly **2 fail** — both the new "may be spent" tests;
 with it, 0. **Gate:** Core **1482 / 755 / 827 / 387** green; the anchor reports `problems=0`.
 
-### R0c — The golden run set (half a day)
-Freeze the instrument before moving it.
-- `tools/golden.sh`: 12 named seeds × immortal, records `sim-fitness:` + `sim-result:` into
-  `tools/golden-runs.txt`.
-- A `--check` mode that re-runs them and diffs. **Every phase below gates on this.**
-- Also freezes the measurement: the file carries the wall clock per seed, so a regression in speed is as
-  visible as a regression in outcome.
+### R0c — The golden run set ✔ **DONE**
+Freeze the instrument before moving it. `tools/golden.sh` (+ `tools/golden-README.md`, + the recording in
+`tools/golden-runs.txt`, which is the contract and lives in git).
+
+**The set:** 12 immortal runs (seeds 1–12) that walk all five acts, plus 3 on a mortal body (101–103) that
+die in act I — the defeat path, the run-end and the screens a winner never sees, for about a tenth of the
+cost of one immortal run. ⚠ The seeds are **not chosen for their outcomes**: a set of runs that all win could
+not notice runs starting to lose.
+
+**What is compared:** the two report lines per run — result, acts, rooms, fights, hp, damage taken and healed,
+the per-act damage table, `problems`, `error`, and why the run stopped.
+
+⚠ **`seconds=` is stripped before the diff.** The clock is what this whole arc exists to change; a gate that
+failed when the runner got faster would be a gate against its own purpose. The timings are kept at the foot
+of the file so the speed-up stays visible, and never compared.
+
+⚠⚠ **A run that reports nothing FAILS.** A crashed process, a missing fitness line, a walk that never ended —
+each is written in as the absence it is (`THE RUN PRODUCED NO RESULT LINE`) and fails against a recording that
+holds a result. Silence must never read as agreement. (D7's lesson, where three screenshots were the same
+defeat screen and all three reported success.)
+
+**All three behaviours were proved, not assumed:** unchanged → pass, exit 0; one number tampered with → the
+diff, exit 1; the runs killed before they could report → failure naming the absence, exit 1.
+
+**Re-record only when a change to the GAME is intended**, and say in the commit which lines moved and why. A
+change meant only to make the runner faster must never need one.
 
 ### R1 — Compile once per fight, not once per answer *(RogueDeck-Core)* — **÷2.2, measured**
 The library half of every fight's registry is constant for the whole process; only the encounter's own
