@@ -55,12 +55,12 @@ def mutate(rng, parent, name, sigma):
     return child
 
 
-def play(policy_file, seed, log_file, timeout, health, target_act):
+def play(policy_file, seed, log_file, timeout, health, target_act, maps):
     with open(log_file, "w") as log:
         try:
             subprocess.run(
                 ["godot", "--headless", "--", "--sim", "--sim-seed", str(seed),
-                 *health, "--sim-policy", str(policy_file)],
+                 *health, *maps, "--sim-policy", str(policy_file)],
                 cwd=REPO, stdout=log, stderr=subprocess.STDOUT, timeout=timeout, check=False)
         except subprocess.TimeoutExpired:
             log.write("\n!! the run was cut off by the trainer's timeout\n")
@@ -82,7 +82,7 @@ def play(policy_file, seed, log_file, timeout, health, target_act):
             "note": "" if reached else f"never reached the act-{target_act} boss"}
 
 
-def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act):
+def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps):
     """Every policy over every seed, in parallel; a policy's score is its mean hp lost."""
     work = []
     for policy in policies:
@@ -91,7 +91,7 @@ def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act):
         for seed in seeds:
             work.append((policy, path, seed, gen_dir / f"{policy['Name']}-seed{seed}.log"))
     with ThreadPoolExecutor(max_workers=jobs) as pool:
-        results = list(pool.map(lambda w: play(w[1], w[2], w[3], timeout, health, target_act), work))
+        results = list(pool.map(lambda w: play(w[1], w[2], w[3], timeout, health, target_act, maps), work))
     scored = {}
     for (policy, _, seed, _), result in zip(work, results):
         scored.setdefault(policy["Name"], []).append(result)
@@ -122,6 +122,8 @@ def main():
                     help="a body of this size instead of the immortal 9999 — only for shaking the trainer out")
     ap.add_argument("--target-act", type=int, default=LAST_ACT,
                     help="which act's boss the runners are measured to (default: the game's last act)")
+    ap.add_argument("--legacy", action="store_true",
+                    help="breed against the OLD maps (v0.0.0) instead of the design's v0.0.1")
     ap.add_argument("--resume", default=None, help="a previous training folder to keep breeding from")
     args = ap.parse_args()
 
@@ -135,6 +137,10 @@ def main():
         print(build.stdout[-2000:]); sys.exit("build failed")
 
     health = ["--sim-health", str(args.health)] if args.health else ["--sim-immortal"]
+    # WHICH MAPS THE RUNNERS ARE BRED AGAINST. Passed to the game, never read from the player's settings:
+    # a policy bred on one generator is not a policy for the other, and a leaderboard that cannot say which
+    # one it walked is a leaderboard about an unknown act.
+    maps = ["--legacy"] if args.legacy else []
     rng = random.Random(7)
     seeds = list(range(args.seed_from, args.seed_from + args.seeds))
     population = []
@@ -151,14 +157,15 @@ def main():
                                 f"score (mean damage taken to the act-{args.target_act} boss)",
                                 "arrivals", "mean rooms", "note"])
 
-    print(f"training in {out}  (measured to the act-{args.target_act} boss)")
+    print(f"training in {out}  (measured to the act-{args.target_act} boss, "
+          f"maps {'v0.0.0' if args.legacy else 'v0.0.1'})")
     print(f"  {args.generations} generations × {args.population} runners × {len(seeds)} seeds "
           f"= {args.generations * args.population * len(seeds)} runs, {args.jobs} at a time")
     for generation in range(args.generations):
         gen_dir = out / f"gen-{generation:02d}"
         gen_dir.mkdir(exist_ok=True)
         started = time.time()
-        table = evaluate(population, seeds, gen_dir, args.jobs, args.timeout, health, args.target_act)
+        table = evaluate(population, seeds, gen_dir, args.jobs, args.timeout, health, args.target_act, maps)
         with board.open("a", newline="") as f:
             writer = csv.writer(f)
             for row in table:
@@ -181,7 +188,7 @@ def main():
     best = json.loads((out / "best-policy.json").read_text())
     print(f"\nbest runner: {json.dumps(best, indent=2)}")
     print(f"\nreplay it:  godot --headless -- --sim --sim-seed {seeds[0]} --sim-immortal "
-          f"--sim-policy {out / 'best-policy.json'}")
+          f"{' '.join(maps)}{' ' if maps else ''}--sim-policy {out / 'best-policy.json'}")
 
 
 if __name__ == "__main__":

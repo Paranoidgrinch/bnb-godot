@@ -142,7 +142,14 @@ public partial class Boot : Control
             SessionScreen.SimCharacter = character;
             host.StartNewRun(seed, character,
                 health: userArgs.Contains("--sim-immortal") ? 9999
-                    : SessionScreen.SimArg("--sim-health", 0) is > 0 and var hp ? hp : null);
+                    : SessionScreen.SimArg("--sim-health", 0) is > 0 and var hp ? hp : null,
+                // ⚠ A RUNNER MUST NAME ITS OWN MAP. This used to fall through to the player's remembered
+                // preference — `user://settings.cfg`, a file outside the repository — so which act a batch of
+                // runs had walked depended on the machine it ran on, and two reports could disagree without
+                // either of them being wrong. The runner walks the DESIGN, which since the map rework is
+                // v0.0.1, and `--legacy` walks the old maps instead: the same contract the smoke probes below
+                // already keep.
+                mapGenerator: userArgs.Contains("--legacy") ? MapGenerators.RuleBased : MapGenerators.Strategic);
             CallDeferred(nameof(GoToSession));
             return;
         }

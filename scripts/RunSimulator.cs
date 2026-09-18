@@ -73,7 +73,12 @@ public partial class SessionScreen : Control
         }
         var policy = _policy;
 
-        GD.Print($"sim: policy={policy?.Name ?? "random"} seed={seed} character={SimCharacter ?? "—"} "
+        // WHICH GAME THIS IS A REPORT ABOUT. The generator is named on every line a reader might see on its
+        // own, because two runs of the same seed on two generators are two different games — and a report
+        // that does not say which one it walked cannot be compared with anything.
+        var maps = MapGenerators.Name(session?.Run.GeneratedMapGenerator);
+        GD.Print($"sim: policy={policy?.Name ?? "random"} seed={seed} maps={maps} "
+            + $"character={SimCharacter ?? "—"} "
             + $"hp={session?.Run.Health.Current}/{session?.Run.Health.Max} deck={session?.Run.Deck.Count} "
             + $"relics={string.Join(",", session?.Run.Relics.Select(r => r.Id.Value) ?? [])}");
 
@@ -326,13 +331,14 @@ public partial class SessionScreen : Control
         // What it states instead is the DEEPEST act whose boss room the run entered, plus the whole per-act
         // table; whoever is measuring says which act they are measuring to (tools/train.py --target-act).
         var deepestActBoss = hpAtActBoss.Count == 0 ? 0 : hpAtActBoss.Keys.Max();
-        GD.Print($"sim-fitness: policy={policy?.Name ?? "random"} seed={seed} "
+        GD.Print($"sim-fitness: policy={policy?.Name ?? "random"} seed={seed} maps={maps} "
             + $"deepestActBoss={deepestActBoss} "
             + $"damageTaken={damageTaken} healed={healed} "
             + $"actBossDamage={string.Join(",", damageAtActBoss.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}:{kv.Value}"))} "
             + $"actBossHp={string.Join(",", hpAtActBoss.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}:{kv.Value}"))} "
             + $"rooms={rooms.Count} result={session?.Run.Result}");
-        GD.Print($"sim-result: seed={seed} result={session?.Run.Result} acts={acts} rooms={rooms.Count} "
+        GD.Print($"sim-result: seed={seed} maps={maps} result={session?.Run.Result} acts={acts} "
+            + $"rooms={rooms.Count} "
             + $"fights={fights} hp={session?.Run.Health.Current}/{session?.Run.Health.Max} "
             + $"problems={problems} error={error} seconds={clock.Elapsed.TotalSeconds:0.0} "
             + $"stopped because {reason}");

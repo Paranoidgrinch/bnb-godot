@@ -6,6 +6,7 @@
 #   tools/simulate.sh 50 --real    # 50 runs at the game's own health (most die early)
 #   tools/simulate.sh 50 --immortal   # nothing can kill them: the deepest content coverage
 #   tools/simulate.sh 30 --seed-from 500 --jobs 8 --out ~/somewhere
+#   tools/simulate.sh 50 --legacy      # walk the OLD maps (v0.0.0) instead of the design's v0.0.1
 #
 # One Godot process per run, so a crash costs that run and not the batch. Logs land in
 #   ~/Desktop/bnb-run-logs/<timestamp>/run-<seed>.log
@@ -14,7 +15,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 count=${1:-20}; [[ $count == --* ]] && count=20 || shift 2>/dev/null || true
-health="--sim-health 400"; seed_from=1; jobs=4; out=""
+health="--sim-health 400"; seed_from=1; jobs=4; out=""; maps=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --real)      health=""; shift ;;
@@ -23,6 +24,9 @@ while [[ $# -gt 0 ]]; do
     --seed-from) seed_from=$2; shift 2 ;;
     --jobs)      jobs=$2; shift 2 ;;
     --out)       out=$2; shift 2 ;;
+    # The runner walks v0.0.1, the design's maps, unless this says otherwise. It is passed to the game
+    # rather than read from the player's settings so a batch means the same thing on every machine.
+    --legacy)    maps="--legacy"; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -34,14 +38,15 @@ mkdir -p "$out" || exit 1
 [[ -f tools/run-logs-README.md ]] && cp tools/run-logs-README.md "$(dirname "$out")/ANLEITUNG.md"
 
 dotnet build -v q --nologo >"$out/build.log" 2>&1 || { echo "build failed — see $out/build.log"; exit 1; }
-echo "simulating $count runs (seeds $seed_from..$((seed_from + count - 1)), ${health:-authored health}, $jobs at a time)"
+echo "simulating $count runs (seeds $seed_from..$((seed_from + count - 1)), ${health:-authored health}, \
+maps ${maps:+v0.0.0}${maps:-v0.0.1}, $jobs at a time)"
 echo "  -> $out"
 
-export SIM_OUT="$out" SIM_HEALTH="$health"
+export SIM_OUT="$out" SIM_HEALTH="$health" SIM_MAPS="$maps"
 run_one() {
   local seed=$1 log="$SIM_OUT/run-$(printf %04d "$1").log"
   # shellcheck disable=SC2086
-  timeout 1800 godot --headless -- --sim --sim-seed "$seed" $SIM_HEALTH >"$log" 2>&1
+  timeout 1800 godot --headless -- --sim --sim-seed "$seed" $SIM_HEALTH $SIM_MAPS >"$log" 2>&1
   local code=$?
   printf 'seed %-5s exit %-3s %s\n' "$seed" "$code" \
     "$(grep -m1 '^sim-result:' "$log" || echo 'no result line — the process died')"
