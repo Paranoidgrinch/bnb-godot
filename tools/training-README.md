@@ -29,6 +29,16 @@ Gegner leeren); was er NIMMT, bewertet er weiter wie jeder Politik-Läufer. Kost
 (83–107 s statt ~21 s unsterblich) und ist dafür messbar der bessere Spieler: **488 statt 790 Schaden bis zum
 Akt-I-Boss**, drei von drei ganzen Spielen gewonnen.
 
+**Er plant den GANZEN ZUG, nicht die nächste Karte.** Gesucht wird über Reihenfolgen: an jedem Punkt darf der
+Zug aufhören (und wird dann bewertet) oder noch eine Karte nehmen. Bezahlbar ist das, weil ein Kampf ein
+*deterministisches Rätsel* ist — der Zufall hängt an Seed und Schrittzahl, die Gegnerabsicht ist eine Funktion
+des Zustands, und `CombatStateHasher` gibt jeder Stellung einen Fingerabdruck: zwei Reihenfolgen, die auf
+derselben Stellung landen, werden nur einmal durchsucht. Gemessen: **~170 Gabeln für einen Drei-Karten-Zug**,
+ein Akt-I-Lauf geht von ~6 s auf ~20 s.
+
+⚠ **„Kämpfen ist damit automatisiert" gilt genau einen Zug tief.** Innerhalb des Zuges ist die Suche
+erschöpfend; darüber hinaus wird die Stellung weiterhin geschätzt (das Rennen), nicht zu Ende gespielt.
+
 ⚠ Bewertet wird ein Zug als **Rennen**, nicht als Kontostand: *dieser Zug hat so viel von ihnen genommen und
 so viel von mir gekostet — wer ist bei dem Tempo zuerst unten?* Die erste Fassung rechnete Kontostand und
 hörte auf, Karten zu spielen: der allererste Gegner des Spiels bestraft Handeln (nichts tun kostete 0 Leben,

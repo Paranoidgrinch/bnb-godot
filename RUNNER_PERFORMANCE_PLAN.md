@@ -724,9 +724,25 @@ reaches the end of Act IV.** Today's runner cannot answer that, and not because 
   ⚠ A fork has nobody sitting at it, so an enemy action that ASKS something is answered by the headless
   default on the copy; that is the one case where a projection can differ from the event.
 
-- **B5 — Champion mode: one-ply lookahead. ✔ DONE 2026-09-19.** `--champion` (and `--sim-champion` in the
-  game) decides each play by forking the fight, playing the card on the copy, letting the enemies answer and
-  looking at what is left. One gene: `Aggression`. `tools/train.py --champion` breeds them.
+- **B5 — Champion mode. ✔ DONE 2026-09-19, and it PLANS THE WHOLE TURN (2026-09-19, second pass).**
+  `--champion` (and `--sim-champion` in the game) decides by forking the fight, playing cards on the copy,
+  letting the enemies answer and looking at what is left. One gene: `Aggression`. `tools/train.py --champion`
+  breeds them.
+
+  The first version picked the best single card, played it and asked again — which is GREEDY, and a greedy
+  player can never find *"A alone is worse than doing nothing, but A then B wins"*. The search is now over
+  SEQUENCES: at every point the turn may stop (be ended and scored) or take one more card, and what is
+  compared is whole turns. What makes that affordable is that **a fight is a deterministic puzzle**: the dice
+  are bound to the seed and the step count, the enemy's intent is a function of the state, and
+  `CombatStateHasher` fingerprints every position — so two orders that arrive at the same table are searched
+  once. Measured on real fights: **~170 forks for a three-card turn**, and an act-I run goes from ~6 s to
+  ~20 s. Two named ceilings (`PlansAhead`, `ForksPerTurn`) keep a looping hand from turning a plan into a
+  hang; hitting them costs the turn its optimality, not its correctness.
+
+  ⚠ **"The fighting is now automated" is true to ONE TURN's depth and no further.** Inside the turn the
+  search is exhaustive; beyond it the position is still scored by a heuristic (the race), not played to the
+  end of the fight. Whole-fight search is the next rung, and it is the rung that would let the runner's
+  failure be called a proof.
 
   ⚠⚠ **ITS FIRST EVALUATOR STOPPED PLAYING CARDS ALTOGETHER, and the fight was right to make it.** It scored
   a turn by what was LEFT of each side — health kept against enemy health removed. Measured on the fork
