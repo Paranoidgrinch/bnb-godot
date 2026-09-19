@@ -739,6 +739,23 @@ reaches the end of Act IV.** Today's runner cannot answer that, and not because 
   ~20 s. Two named ceilings (`PlansAhead`, `ForksPerTurn`) keep a looping hand from turning a plan into a
   hang; hitting them costs the turn its optimality, not its correctness.
 
+  **Bred against the planner (6 generations × 8 × 3 seeds, act I), and then swept over twelve seeds on a
+  real body — the sharpest picture V-7 has of itself:**
+
+  | | best runner reaches |
+  |---|---|
+  | greedy champion, policy bred for it | 12.7 of act I's 22 rooms |
+  | planning champion, policy bred for it | **18.0 rooms — and on one seed the act-I BOSS ROOM** |
+
+  Still **0 of 12 seeds cleared**, but where they die is now a pattern rather than a scatter: **4 in a
+  multi-combat, 3 at an elite, 1 in a treasure room that was a mimic** — two thirds of the deaths are in the
+  rooms that are meant to be hard. Three ordinary fights and one boss make up the rest. That is a lead, and
+  it is the first one this project has had that points at specific ROOMS rather than at a number.
+
+  ⚠ It is still a statement about the runner, and the biggest hole in it is now named: **the runner picks
+  doors by their printed position** (`EventLate`), which is B2 and is not built. A bred `EventLate` of 0.1
+  means "always take the first door" — through every event in the game, sight unseen.
+
   ⚠ **"The fighting is now automated" is true to ONE TURN's depth and no further.** Inside the turn the
   search is exhaustive; beyond it the position is still scored by a heuristic (the race), not played to the
   end of the fight. Whole-fight search is the next rung, and it is the rung that would let the runner's
