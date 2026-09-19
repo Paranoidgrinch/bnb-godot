@@ -88,6 +88,12 @@ def reading(text, target_act):
     `sim-clearance:` die echte (ist ein WIRKLICHER Koerper durchgekommen, und wenn nicht, wo blieb er).
     """
     lines = text.splitlines()
+    # ⚠⚠ EIN LAUF, DER NICHT ZU ENDE GING, IST KEIN LAUF. `result=Ongoing` heisst: ein Waechter hat ihn
+    # abgeraeumt — fast immer „der Kampf war nach 100 Zuegen nicht zu Ende", also ein Laeufer, der perfekt
+    # blockt und den Gegner nicht totkriegt. Er hat nichts gemessen, und er darf auch nichts verdienen; was
+    # das kostet, wenn man es ihm durchgehen laesst, steht in _rank.
+    outcome = next((l for l in lines if l.startswith("sim-result:")), "")
+    stalled = "result=Ongoing" in outcome
     clear = next((l for l in lines if l.startswith("sim-clearance:")), None)
     cleared, died, hp = 0, "", 0
     if clear:
@@ -99,7 +105,7 @@ def reading(text, target_act):
     line = next((l for l in lines if l.startswith("sim-fitness:")), None)
     if not line:
         return {"reached": False, "damage": UNREACHED, "rooms": 0, "cleared": cleared, "hp": hp,
-                "died": died, "note": "no fitness line — the run died"}
+                "died": died, "stalled": stalled, "note": "no fitness line — the run died"}
     f = dict(re.findall(r"(\w+)=(\S+)", line))
     # actBossDamage="1:120,2:310,3:604" — what the run had lost, added up, when it entered each act's boss
     # room. The target act's entry is the measurement; its absence is the miss.
@@ -111,8 +117,10 @@ def reading(text, target_act):
             # Damage ADDED UP, not health remaining: the content heals, and one act-II door heals to full.
             "damage": table[target_act] if reached else UNREACHED,
             "rooms": int(f.get("rooms", 0)),
-            "cleared": cleared, "hp": hp, "died": died,
-            "note": "" if reached else f"never reached the act-{target_act} boss"}
+            "cleared": cleared, "hp": hp, "died": died, "stalled": stalled,
+            "note": "STOOD STILL" if stalled
+                    else "" if reached
+                    else f"never reached the act-{target_act} boss"}
 
 
 # ── EIN RUNNER, ALLE SEEDS, EIN PROZESS (der schnelle Weg) ───────────────────────────────────────────────
@@ -210,22 +218,41 @@ def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, 
 #
 # Gleichstand wird nach Strecke und Restleben gebrochen, nie nach genommenem Schaden: wie teuer ein Sieg war,
 # ist eine Frage an den BALANCE-Bericht, nicht an die Auslese.
+# ⚠⚠ EIN STILLSTAND DARF NICHTS VERDIENEN, und bis 2026-09-19 verdiente er das Beste von allem. Die Formel
+# unten belohnt Restleben als Gleichstandsbrecher — und ein Laeufer, der hundert Zuege lang blockt und den
+# Gegner nicht totkriegt, endet mit VOLLEM Leben. Er rangierte damit ueber einem Laeufer, der an derselben
+# Stelle gekaempft hat und gestorben ist. Genau dieselbe Form wie der Stillstand des Champions (Core
+# 81a382c): Nichtstun war billiger als Handeln, also wurde Nichtstun gelernt.
+#
+# Gemessen, als es auffiel: die Politik vom 2026-09-19 blieb in 2 von 200 Laeufen stehen; keine aeltere tat
+# das je. Die Auslese hatte bei 16 Seeds je Runner schlicht noch keinen gesehen.
+#
+# Die Behebung braucht keine erfundene Strafzahl: ein Lauf, der nichts gemessen hat, wird gewertet, als
+# haette er nichts gelaufen. Null Raeume, null Restleben. Damit liegt ein Stillstand in Raum 9 STRIKT unter
+# einem Tod in Raum 9, und kein Gewicht der Formel musste dafuer angefasst werden.
+def _stood(run):
+    return run.get("stalled", False)
+
+
 def _rank(policies, scored, question, target_act):
     table = []
     for policy in policies:
         runs = scored[policy["Name"]]
         if question == "clearance":
             through = sum(1 for r in runs if r["cleared"] >= target_act)
-            rooms = sum(r["rooms"] for r in runs) / len(runs)
-            health = sum(r["hp"] for r in runs) / len(runs)
+            rooms = sum(0 if _stood(r) else r["rooms"] for r in runs) / len(runs)
+            health = sum(0 if _stood(r) else r["hp"] for r in runs) / len(runs)
             score = (len(runs) - through) * 10_000 - rooms * 10 - health
             note = "; ".join(sorted({r["died"] for r in runs if r["cleared"] < target_act and r["died"]}))
+            stood = sum(1 for r in runs if _stood(r))
             table.append({"policy": policy, "score": round(score, 1),
-                          "arrivals": f"{through}/{len(runs)}", "rooms": round(rooms, 1), "note": note})
+                          "arrivals": f"{through}/{len(runs)}", "rooms": round(rooms, 1),
+                          "note": (f"STOOD STILL in {stood} of {len(runs)}; " if stood else "") + note})
             continue
         arrivals = sum(1 for r in runs if r["reached"])
         # A miss is penalised by how far it got, so a runner that walks further ranks above one that stalls.
-        score = sum(r["damage"] if r["reached"] else UNREACHED - r["rooms"] * 100 for r in runs) / len(runs)
+        score = sum(r["damage"] if r["reached"] else UNREACHED - (0 if _stood(r) else r["rooms"]) * 100
+                    for r in runs) / len(runs)
         table.append({"policy": policy, "score": round(score, 1), "arrivals": f"{arrivals}/{len(runs)}",
                       "rooms": round(sum(r["rooms"] for r in runs) / len(runs), 1),
                       "note": "; ".join(sorted({r["note"] for r in runs if r["note"]}))})
