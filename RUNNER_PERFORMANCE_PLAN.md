@@ -829,6 +829,37 @@ reaches the end of Act IV.** Today's runner cannot answer that, and not because 
   cannot be answered by an instrument that dies in act I; the honest state is *"we do not know yet"*, and
   that is worth more than a number bred against immortality.
 
+### 5.2a The stall — what reading one fight was worth (2026-09-19)
+
+Asked where the runs were dying, the answer turned out to be *somewhere else*: **three of twelve walked into
+their last fight with one health of seventy**, ruined several rooms earlier. One of those rooms cost 52 of 70
+on its own, and the log of it says why — the champion **stood still for three turns at a time, holding a full
+hand.**
+
+It was not confused; the evaluation told it to. A turn is scored by how the race is going, in turns, and both
+sides of that have a ceiling for "never". A stall hits both — it deals nothing, and against the Contradictory
+Signpost (the second room of the game, which punishes acting) it costs nothing — so a stall scored
+`(1-lean)·100 - lean·100`, **positive for any runner leaning even slightly defensive.** The bred champion
+leaned 0.43.
+
+A fight that never ends is a fight that is lost, so a turn that brings the end no closer is now worth less
+than any turn that does. ⚠ The first version of that fix was not enough: a stall then sat at a fixed value
+while slow-but-real progress went negative, so at a high lean the bands crossed and the runner stalled again
+for the opposite reason. Progress is lifted clear of the stall band entirely — a deliberate bias, and the one
+a single-turn horizon needs, because it cannot see the enemy ramping while it waits.
+
+**Fixed, then bred against (6 generations), same twelve seeds:**
+
+| | before | after |
+|---|---|---|
+| rooms reached, median | 11.5 | **14.5** |
+| worst run | 4 rooms | **9 rooms** |
+| walked into the fatal fight at ≤1 health | 3 of 12 | **1 of 12** |
+| reached the act-I boss room | 1 | **2**, and a third cleared act I |
+
+The floor more than doubled and the catastrophic runs are gone; the single best run got shorter (56 → 35
+rooms). A tighter distribution from a runner that no longer throws turns away.
+
 ### 5.2b The autopsy — turning a death into evidence (2026-09-19)
 
 A runner that dies tells you it died. It does not tell you whether it COULD have lived, and that is the only
