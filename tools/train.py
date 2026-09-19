@@ -30,6 +30,14 @@ GENES = {
     "WCost": (-3, 1), "EndTurnBelow": (-1, 3), "TargetLowestHp": (0, 1),
     "PathCombat": (0, 1), "PathElite": (0, 1), "PathShop": (0, 1), "PathRest": (0, 1),
     "PathEvent": (0, 1), "PathTreasure": (0, 1), "RewardSkip": (0, 1), "ShopBuy": (0, 1), "EventLate": (0, 1),
+    # Der einzige Knopf des Champions (B5): 0 spielt, um den Zug zu ueberleben, 1 spielt, um den Gegner zu
+    # leeren. Ohne --champion liest ihn niemand, und er wird trotzdem mitgezuechtet — ein Gen, das nichts tut,
+    # kostet nichts, und ein Lauf, der ohne ihn gezuechtet wurde, waere als Champion nicht wiederverwendbar.
+    "Aggression": (0, 1),
+    # Unter welchem Anteil vom vollen Leben eine heilende Tuer allem anderen vorgezogen wird. Ohne ihn ging
+    # der Laeufer an jedem Rastplatz vorbei — auf einem unsterblichen Koerper kostete das nichts, und deshalb
+    # hat es niemand gesehen, bis B6 nach einem echten fragte.
+    "RestBelow": (0, 1),
 }
 UNREACHED = 1_000_000   # never arriving at the target boss is worse than any arrival
 # The last act the game has, and so the default thing to measure to. One number, kept next to the flag that
@@ -100,7 +108,7 @@ def reading(text, target_act):
 # der Engine direkt: gemessen 2026-09-18 rund 20 s statt 40 s je Lauf, und die festen Kosten fallen einmal
 # statt einmal pro Lauf. Gezuechtet wird damit dasselbe Spiel — das Golden-Set beweist, dass beide Wirte
 # denselben Lauf gehen; `--godot` bleibt als Rueckweg, wenn genau das einmal bezweifelt wird.
-def play_block(policy_file, seeds, out_dir, timeout, health, target_act, maps):
+def play_block(policy_file, seeds, out_dir, timeout, health, target_act, maps, champion=False):
     out_dir.mkdir(parents=True, exist_ok=True)
     with open(out_dir / "bot.log", "w") as log:
         try:
@@ -108,6 +116,7 @@ def play_block(policy_file, seeds, out_dir, timeout, health, target_act, maps):
                 [str(BOT_BIN), "--game", "content/game.roguedeck.json",
                  "--runs", str(len(seeds)), "--seed-from", str(seeds[0]),
                  *health, *maps, "--policy", str(policy_file),
+                 *(["--champion"] if champion else []),
                  "--jobs", str(len(seeds)), "--out", str(out_dir)],
                 cwd=REPO, stdout=log, stderr=subprocess.STDOUT,
                 timeout=timeout * len(seeds), check=False)
@@ -121,12 +130,13 @@ def play_block(policy_file, seeds, out_dir, timeout, health, target_act, maps):
 
 
 # ── DERSELBE LAUF DURCH DEN BILDSCHIRM (--godot) ─────────────────────────────────────────────────────────
-def play(policy_file, seed, log_file, timeout, health, target_act, maps, draw=False):
+def play(policy_file, seed, log_file, timeout, health, target_act, maps, draw=False, champion=False):
     with open(log_file, "w") as log:
         try:
             subprocess.run(
                 ["godot", "--headless", "--", "--sim", "--sim-seed", str(seed),
                  *health, *maps, "--sim-policy", str(policy_file),
+                 *(["--sim-champion"] if champion else []),
                  *(["--sim-ui"] if draw else [])],
                 cwd=REPO, stdout=log, stderr=subprocess.STDOUT, timeout=timeout, check=False)
         except subprocess.TimeoutExpired:
@@ -135,7 +145,7 @@ def play(policy_file, seed, log_file, timeout, health, target_act, maps, draw=Fa
 
 
 def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, ui=0, godot=False,
-             question="clearance"):
+             question="clearance", champion=False):
     """Every policy over every seed, in parallel; a policy's score is its mean hp lost."""
     paths = {}
     for policy in policies:
@@ -150,7 +160,8 @@ def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, 
         with ThreadPoolExecutor(max_workers=at_once) as pool:
             blocks = list(pool.map(
                 lambda policy: play_block(paths[policy["Name"]], seeds,
-                                          gen_dir / policy["Name"], timeout, health, target_act, maps),
+                                          gen_dir / policy["Name"], timeout, health, target_act, maps,
+                                          champion),
                 policies))
         for policy, runs in zip(policies, blocks):
             scored[policy["Name"]] = runs
@@ -166,7 +177,7 @@ def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, 
     with ThreadPoolExecutor(max_workers=jobs) as pool:
         results = list(pool.map(
             lambda iw: play(iw[1][1], iw[1][2], iw[1][3], timeout, health, target_act, maps,
-                            draw=iw[0] < ui),
+                            draw=iw[0] < ui, champion=champion),
             enumerate(work)))
     for (policy, _, seed, _), result in zip(work, results):
         scored.setdefault(policy["Name"], []).append(result)
@@ -234,6 +245,10 @@ def main():
     ap.add_argument("--legacy", action="store_true",
                     help="breed against the OLD maps (v0.0.0) instead of the design's v0.0.1")
     ap.add_argument("--resume", default=None, help="a previous training folder to keep breeding from")
+    ap.add_argument("--champion", action="store_true",
+                    help="breed CHAMPIONS (B5): each play is decided by forking the fight, playing the card "
+                         "on the copy and looking at what is left. Slower per run and the only runner whose "
+                         "failure to clear an act is evidence about the act")
     ap.add_argument("--godot", action="store_true",
                     help="breed through the GAME instead of the console runner: one Godot process per run, "
                          "driven through the replay model. About twice the wall clock per run plus a boot "
@@ -292,7 +307,7 @@ def main():
 
     asked = (f"can a real body clear act {args.target_act}?" if args.question == "clearance"
              else f"what does the act-{args.target_act} boss cost to reach at 9999 hp?")
-    print(f"training in {out}  ({asked} "
+    print(f"training in {out}  ({'CHAMPIONS, ' if args.champion else ''}{asked} "
           f"maps {'v0.0.0' if args.legacy else 'v0.0.1'}, "
           f"{'through the game' if args.godot else 'through the console runner'})")
     print(f"  {args.generations} generations × {args.population} runners × {len(seeds)} seeds "
@@ -302,7 +317,8 @@ def main():
         gen_dir.mkdir(exist_ok=True)
         started = time.time()
         table = evaluate(population, seeds, gen_dir, args.jobs, args.timeout, health, args.target_act,
-                         maps, ui=args.ui, godot=args.godot, question=args.question)
+                         maps, ui=args.ui, godot=args.godot, question=args.question,
+                         champion=args.champion)
         with board.open("a", newline="") as f:
             writer = csv.writer(f)
             for row in table:

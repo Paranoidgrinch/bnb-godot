@@ -15,6 +15,7 @@ namespace BnbGodot;
 // faults R2a made countable, and the exit code.
 //
 //   godot --headless -- --sim [--sim-seed N] [--sim-immortal] [--sim-steps N] [--sim-ui] [--sim-policy f]
+//                            [--sim-champion]
 public partial class SessionScreen : Control
 {
     public static string? SimCharacter;   // whoever Boot rolled for this run, for the log header
@@ -27,6 +28,9 @@ public partial class SessionScreen : Control
         var at = Array.IndexOf(args, name);
         return at >= 0 && at + 1 < args.Length && int.TryParse(args[at + 1], out var value) ? value : fallback;
     }
+
+    // A flag that is either there or not — no value follows it.
+    private static bool SimFlag(string name) => Array.IndexOf(OS.GetCmdlineUserArgs(), name) >= 0;
 
     private static string? SimStringArg(string name)
     {
@@ -65,6 +69,10 @@ public partial class SessionScreen : Control
             Maps = MapGenerators.Name(Session?.Run.GeneratedMapGenerator),
             Character = SimCharacter,
             Policy = policy,
+            // ⚠ THE CHAMPION DECIDES WHAT TO PLAY BY PLAYING IT (B5) — it forks the fight, plays the card on
+            // the copy, lets the enemies answer and looks at what is left. What it TAKES is still scored,
+            // so it wants the card features exactly as much as any other policy runner does.
+            Champion = SimFlag("--sim-champion"),
             // Only a policy runner scores cards, and only then is the document worth re-reading for it.
             Features = policy is null ? null
                 : CardFeatures.FromDocument(Godot.FileAccess.GetFileAsString(GameDocument)),

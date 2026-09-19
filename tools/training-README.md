@@ -17,9 +17,26 @@ sieht (B3), findet die Zucht diesen Ausweg sofort — der beste Runner der Schad
 **`WDamage = −1,84`**. Wer nichts tötet, wird nicht zurückgeschlagen; er braucht nur länger. Auf die
 Räum-Frage gezüchtet, räumt so einer gar nichts.
 
-**⚠ Stand 2026-09-18: kein gezüchteter Läufer räumt Akt I auf einem echten Körper.** Zehn Generationen, bester
-Lauf 13,7 von ~22 Räumen. Das ist eine Aussage über den RUNNER, nicht über das Spiel: er kann nicht sehen, was
-auf ihn zukommt, also kann er nicht richtig blocken (B4), und er kann nicht einen Zug vorausrechnen (B5).
+## Der Champion (`--champion`, B5)
+
+```bash
+tools/train.py --champion --target-act 1        # Champions züchten
+roguedeck-bot ... --champion --policy p.json    # einen laufen lassen
+```
+Er entscheidet jeden Zug, indem er den Kampf **gabelt**, die Karte auf der Kopie spielt, die Gegner antworten
+lässt und anschaut, was übrig ist. Sein einziger Knopf ist **`Aggression`** (0 = den Zug überleben, 1 = den
+Gegner leeren); was er NIMMT, bewertet er weiter wie jeder Politik-Läufer. Kostet ~4,5× einen normalen Lauf
+(83–107 s statt ~21 s unsterblich) und ist dafür messbar der bessere Spieler: **488 statt 790 Schaden bis zum
+Akt-I-Boss**, drei von drei ganzen Spielen gewonnen.
+
+⚠ Bewertet wird ein Zug als **Rennen**, nicht als Kontostand: *dieser Zug hat so viel von ihnen genommen und
+so viel von mir gekostet — wer ist bei dem Tempo zuerst unten?* Die erste Fassung rechnete Kontostand und
+hörte auf, Karten zu spielen: der allererste Gegner des Spiels bestraft Handeln (nichts tun kostete 0 Leben,
+ein Sechs-Schaden-Stich kostete 15), und auf einer Skala, auf der Stillstehen gratis ist, war das richtig.
+
+**⚠⚠ Stand 2026-09-19: auch der Champion räumt Akt I auf einem echten Körper nicht** — er stirbt in Raum
+13–18 von 22. Aber der Abstand ist jetzt gezählt: ~5 Leben je Kampf früh in Akt I, ~18 zurück je Rastplatz.
+Die nächste benannte Lücke ist **der Läufer kann keinen Trank trinken** (er benutzt nie ein Consumable).
 
 ## Welche Seeds keiner schafft
 
@@ -77,6 +94,11 @@ entscheiden alles, was ein Spieler entscheidet:
   besser ist als jede Karte im Deck. Gewichte, die vor B1 gezüchtet wurden, meinen mit dieser Zahl also etwas
   anderes als der Runner heute; sie müssen neu gezüchtet werden. **Nur Karten werden je abgelehnt** — ein
   Relikt und ein Angebot ohne Identität (Gold, Heilung) werden immer genommen.
+- **RestBelow** — unter welchem Anteil vom vollen Leben eine heilende Tür allem anderen vorgezogen wird.
+  ⚠⚠ Es gibt dieses Gen, weil ein Rastplatz „leave" sagt wie ein Laden — und der Läufer deshalb **in der
+  ganzen Geschichte dieses Projekts kein einziges Mal gerastet hat**. Auf 9999 HP kostet das nichts; erst die
+  echte Frage (B6) hat es sichtbar gemacht.
+- **Aggression** — nur der Champion liest es (siehe unten).
 - **ShopBuy / EventLate** — wie eifrig Gold ausgegeben wird (**was** gekauft wird, entscheidet seit B1 derselbe
   Bewerter, bei Gleichstand das Billigere), und welche Tür — Türen weiterhin nach ihrer POSITION, nicht nach
   ihrer Wirkung; das ist B2.

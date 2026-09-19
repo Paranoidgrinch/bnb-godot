@@ -633,9 +633,9 @@ reaches the end of Act IV.** Today's runner cannot answer that, and not because 
 - ~~**It cannot see magnitudes.**~~ **✔ B3, 2026-09-18.** It counted how often `node.dealDamage` appeared as
   a **substring of the card's JSON**, so a 3-damage jab and a 30-damage haymaker scored the same. The
   evaluator now walks the authored program and adds up what it actually applies.
-- **It cannot see what is coming.** `InteractiveCombat.UpcomingIntentFor` exists, but `ActionIntent` carries
-  only `Label` + `Kind` — **no number**. Blocking the right amount, the single most important skill in the
-  genre, is not computable from what the engine exposes.
+- ~~**It cannot see what is coming.**~~ **✔ B4, 2026-09-19.** `ActionIntent` carried only `Label` + `Kind`,
+  so blocking the right amount was not computable from what the engine exposed. `InteractiveCombat.Foresee()`
+  now answers it exactly — by forking the fight and letting the enemies take their turn on the copy.
 - **Shop buying is a coin flip** (`ShopBuy` picks a random `buy-` choice).
 - ~~**The fitness is a proxy for the wrong question.**~~ **✔ B6, 2026-09-18.** It bred on *damage taken at
   9999 HP to an act's boss* — an immortal runner never has to survive, never has to block, never faces a
@@ -713,16 +713,61 @@ reaches the end of Act IV.** Today's runner cannot answer that, and not because 
   4 generations × 8 runners × 2 seeds in **~5 minutes**, where the README still warned of 10–20 minutes per
   RUN. This is not decoration: an evaluator can only be judged by breeding against it, and before this the
   judgement cost a day.
-- **B4 — Engine seam: an intent carries its number. ⬅ DO THIS NEXT (with B5) — B6 measured them into first
-  place.** Let `ActionIntent` state the damage/block it is about
-  to apply. Additive, no rule changes — **and the player's screen wants it as much as the bot does**
-  (today the UI shows a word where every game in the genre shows a number).
-- **B5 — Champion mode: one-ply lookahead.** A full combat clone was measured at **~0.2 ms** (snapshot 0.04 ms
-  + restore 0.17 ms), so trying every playable card and scoring the resulting state is affordable: ~5 clones ×
-  ~4 ms per decision. That is roughly **5× the cost of a dumb run** — which is exactly why R1–R5 come first.
-  Two runners for two questions:
-  - **coverage runner** — fast, dumb, hundreds of seeds: finds crashes, walls, unreachable content;
-  - **champion runner** — slow, careful, few seeds: answers whether a seed is beatable.
+- **B4 — Engine seam: an intent carries its number. ✔ DONE 2026-09-19 — and the number is PLAYED OUT, not
+  annotated.** Annotating it would author the same number twice — once in the program that applies it, once
+  in the label that promises it — and the two would part company on the first relic that changes damage. So
+  `InteractiveCombat.Fork()` makes a throwaway copy of the fight and `Foresee()` simply lets the enemies take
+  their turn on it. What comes back is not an estimate: it is what will happen, with every strength stack,
+  vulnerability, guard and passive modifier already in it, because it is the same code that will run.
+  Per blow: who throws it, what it is telegraphed as, what it costs in health and in guard, and whether it
+  kills. Every test foresees, then ends the turn for real, and holds the two against each other.
+  ⚠ A fork has nobody sitting at it, so an enemy action that ASKS something is answered by the headless
+  default on the copy; that is the one case where a projection can differ from the event.
+
+- **B5 — Champion mode: one-ply lookahead. ✔ DONE 2026-09-19.** `--champion` (and `--sim-champion` in the
+  game) decides each play by forking the fight, playing the card on the copy, letting the enemies answer and
+  looking at what is left. One gene: `Aggression`. `tools/train.py --champion` breeds them.
+
+  ⚠⚠ **ITS FIRST EVALUATOR STOPPED PLAYING CARDS ALTOGETHER, and the fight was right to make it.** It scored
+  a turn by what was LEFT of each side — health kept against enemy health removed. Measured on the fork
+  against the very first enemy of the game, the Contradictory Signpost: ending the turn having done nothing
+  cost **0** health; playing a six-damage jab cost **15**, because that enemy punishes acting. At one ply,
+  on a scale where standing still is free, refusing to play is correct — and it lost every fight, since the
+  enemy's damage ramps while you wait. A fight is a RACE, so what is scored is now turns: this turn removed
+  so much of them and cost so much of me, and at that rate, who runs out first. Both rates are measured on
+  the fork; the ceiling for "never" is the runner's own `TurnsAFightShouldNotNeed`.
+
+  **What the champion is worth, measured:**
+
+  | | dice player | champion |
+  |---|---|---|
+  | immortal seed 1, damage to the act-I boss | 790 | **488** |
+  | immortal seed 1, damage over the whole game | 8563 | **7493** |
+  | whole games won (immortal, seeds 1–3) | 3/3 | **3/3** |
+  | seconds per immortal run | ~21 | ~83–107 (**≈4.5×**, the plan predicted ~5×) |
+
+  The two runners the plan asked for now exist and are both worth having: the **coverage runner** stays fast
+  and dumb for hundreds of seeds (crashes, walls, unreachable content), the **champion** is slow and careful
+  and is the only one whose failure to clear an act says anything about the act.
+
+  ⚠⚠ **AND THE CHAMPION FOUND THE BUG THE WHOLE INSTRUMENT HAD BEEN CARRYING.** Put on a real body it never
+  healed — `healed=0` over eighteen rooms, with two rest sites walked through on the way. The runner answered
+  every door with a way out the way it answers a SHOP: *nothing worth buying, so leave*. A rest site offers
+  `rest`, `amend` and `leave`, and has nothing to buy. **This runner had never rested once, in the entire
+  history of the project**, and nobody could have seen it: every measurement before B6 was taken on a 9999-hp
+  body, where never resting costs exactly nothing. Fixed, with one new gene (`RestBelow`) and a test that
+  falls over without it — the heal is READ off the door (`ComputedHealRunEffect` evaluated against the run),
+  never guessed.
+
+  **Where that leaves V-7's question — quantified, and no longer unbounded:**
+  - the champion wins every immortal game and takes 38 % less damage through act I than the dice player,
+    so it is the best player we have by a measurable margin;
+  - on a real 70-hp body it now rests, and still dies at **room 13–18 of act I's 22**;
+  - early act I costs it about **5 health per fight**, and a rest site gives back about **18**.
+
+  So the gap is small and countable, not a wall. The honest verdict is still *"we do not know yet"* — but the
+  next thing to try is named: **the runner cannot drink a potion.** It never uses a consumable, which is a
+  real player's emergency button, and in a fight that is lost by five health that is exactly the margin.
 - **B6 — Breed on the real question. ✔ DONE 2026-09-18 — and the answer is about the RUNNER.** Real health,
   real death, fitness = *did it clear act IV*, scored per seed. Three pieces:
   - the runner reports it: a third line, `sim-clearance: … cleared=3 reached=4 hp=0/70 stopped=elite
