@@ -38,6 +38,20 @@ GENES = {
     # der Laeufer an jedem Rastplatz vorbei — auf einem unsterblichen Koerper kostete das nichts, und deshalb
     # hat es niemand gesehen, bis B6 nach einem echten fragte.
     "RestBelow": (0, 1),
+    # ⚠⚠ WIE VIELE RAEUME WEIT EINE TUER BEURTEILT WIRD (O2). Bis hierher war eine Tuer wert, was DAHINTER
+    # steht, und nichts weiter — das Karten-Orakel hat gemessen, was das kostet: die Tuerwahl des Champions
+    # lag im 50. Perzentil der angebotenen Routen, also eine Muenze. Ab 2 wird die Tuer nach der besten Route
+    # der naechsten N Raeume beurteilt (MapForesight), und zwar nach dem, was ein SPIELER auf der Karte sieht
+    # (Rollen, Mimics weiter getarnt) — nie nach dem, was in einem Kampf steckt.
+    #
+    # ⚠⚠ ER GEHOERT HIERHER, WEIL KEINE HAELFTE ALLEIN ETWAS BRINGT — 200 Seeds, echtes Leben, gemessen:
+    #     PathRest hoch, ohne Sicht ....... +0,04 Raeume (t=+0,8)   nichts
+    #     Sicht 8, mit den alten Gewichten  +0,61 Raeume (t=+1,6)   nicht belegbar
+    #     beides zusammen ................. +1,91 Raeume (t=+4,5)   Rastplaetze 50 % -> 92 %
+    # Eine Vorliebe ohne Sicht kann nicht handeln, und Sicht auf die falsche Vorliebe optimiert das Falsche
+    # nur gruendlicher (Sicht 40 mit den alten Gewichten war SCHLECHTER als gar keine). Die beiden muessen
+    # zusammen gezuechtet werden, sonst findet die Zucht keines von beiden.
+    "Foresight": (0, 12),
 }
 UNREACHED = 1_000_000   # never arriving at the target boss is worse than any arrival
 # The last act the game has, and so the default thing to measure to. One number, kept next to the flag that
