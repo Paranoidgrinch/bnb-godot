@@ -829,6 +829,36 @@ reaches the end of Act IV.** Today's runner cannot answer that, and not because 
   cannot be answered by an instrument that dies in act I; the honest state is *"we do not know yet"*, and
   that is worth more than a number bred against immortality.
 
+### 5.2b The autopsy — turning a death into evidence (2026-09-19)
+
+A runner that dies tells you it died. It does not tell you whether it COULD have lived, and that is the only
+thing the balance question wants to know. `--autopsy` plays the last turns again, **every way they could have
+gone**, and answers:
+
+| verdict | what it means |
+|---|---|
+| **Avoidable** | a line existed and the runner did not take it — *the loss is the player's* |
+| **Unavoidable** | nothing survives, **not even a searcher that can see the deck** — *the loss is the fight's* |
+| **Undecided** | the search ran out of budget, and says so rather than guessing |
+
+⚠⚠ **The searcher forks the fight, so it knows what it will draw — which a player does not.** That makes it
+strictly stronger than any fair player, and therefore makes exactly one of its answers a PROOF: *Unavoidable*
+is real, *Avoidable* is not a claim that a fair player would have found the line.
+
+⚠ **"Was the whole fight winnable" is not computable, and the tool says so instead of pretending.** Measured:
+a fight runs ~5.5 turns and a turn reaches a few hundred distinct positions, so the tree is past 10¹⁰ leaves;
+60 000 positions of searching got four turns deep and answered *undecided* every time. So the question is
+asked **backwards** — *when did it stop being survivable?* — where it is both cheap and sharp. Positions are
+merged by the SHAPE of the table (what each pile holds, in order, by definition rather than by identity),
+because two copies of the same card are the same move and the engine's own fingerprint says they are not.
+
+**First eight autopsies, act I, on a real body:**
+- seed 13 — `Avoidable lastChance=5 provenLost=4`: the last **four** turns were provably lost, and five turns
+  out there was still a line. The mistake is dated to a single turn.
+- seeds 7, 11 — avoidable as far back as the window was kept.
+- five — `provenLost=2`, undecided further back: the last two turns were already lost.
+- **not one fight came back Unavoidable.** Every death examined so far was the runner's, or undecided.
+
 ### 5.3 The sweep that closes V-7
 With a run at ~15 s and a champion at ~5×: **500 seeds × 3 candidate champions ≈ 30 min on 12 cores.** That is
 the instrument the goal actually needs, and it is out of reach today by a factor of about 60.
