@@ -93,15 +93,21 @@ def reading(text, target_act):
     # blockt und den Gegner nicht totkriegt. Er hat nichts gemessen, und er darf auch nichts verdienen; was
     # das kostet, wenn man es ihm durchgehen laesst, steht in _rank.
     outcome = next((l for l in lines if l.startswith("sim-result:")), "")
-    stalled = "result=Ongoing" in outcome
     clear = next((l for l in lines if l.startswith("sim-clearance:")), None)
-    cleared, died, hp = 0, "", 0
+    cleared, died, hp, called_off = 0, "", 0, False
     if clear:
         c = dict(re.findall(r"(\w+)=(\S+)", clear))
         cleared = int(c.get("cleared", 0))
         hp = int(c.get("hp", "0/0").split("/")[0])
+        # ⚠⚠ EIN ABGERUFENER LAUF IST KEIN STILLSTAND. `--stop-after-act N` beendet den Lauf am Tor zu Akt
+        # N+1, und ein so beendeter Lauf steht wie jeder unfertige mit `result=Ongoing` da. Ohne diese Zeile
+        # wuerde die Stillstand-Strafe unten JEDEN Kandidaten treffen, der den Zielakt geraeumt hat — also
+        # genau die besten — und mit 0 Raeumen und 0 Restleben bewerten. Die Naht dafuer ist `calledOff=`
+        # auf der Clearance-Zeile, damit gerade nicht am Wortlaut von `result=` geraten werden muss.
+        called_off = c.get("calledOff") == "asked"
         # `at=` ist das letzte Feld und traegt Leerzeichen ("act 4 r12c0 (…)"), also bis Zeilenende lesen.
         died = clear.split(" at=", 1)[1].strip() if " at=" in clear else ""
+    stalled = "result=Ongoing" in outcome and not called_off
     line = next((l for l in lines if l.startswith("sim-fitness:")), None)
     if not line:
         return {"reached": False, "damage": UNREACHED, "rooms": 0, "cleared": cleared, "hp": hp,
@@ -130,7 +136,8 @@ def reading(text, target_act):
 # der Engine direkt: gemessen 2026-09-18 rund 20 s statt 40 s je Lauf, und die festen Kosten fallen einmal
 # statt einmal pro Lauf. Gezuechtet wird damit dasselbe Spiel — das Golden-Set beweist, dass beide Wirte
 # denselben Lauf gehen; `--godot` bleibt als Rueckweg, wenn genau das einmal bezweifelt wird.
-def play_block(policy_file, seeds, out_dir, timeout, health, target_act, maps, champion=False):
+def play_block(policy_file, seeds, out_dir, timeout, health, target_act, maps, champion=False,
+               stop_after=0):
     out_dir.mkdir(parents=True, exist_ok=True)
     with open(out_dir / "bot.log", "w") as log:
         try:
@@ -139,6 +146,7 @@ def play_block(policy_file, seeds, out_dir, timeout, health, target_act, maps, c
                  "--runs", str(len(seeds)), "--seed-from", str(seeds[0]),
                  *health, *maps, "--policy", str(policy_file),
                  *(["--champion"] if champion else []),
+                 *(["--stop-after-act", str(stop_after)] if stop_after else []),
                  "--jobs", str(len(seeds)), "--out", str(out_dir)],
                 cwd=REPO, stdout=log, stderr=subprocess.STDOUT,
                 timeout=timeout * len(seeds), check=False)
@@ -167,7 +175,7 @@ def play(policy_file, seed, log_file, timeout, health, target_act, maps, draw=Fa
 
 
 def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, ui=0, godot=False,
-             question="clearance", champion=False):
+             question="clearance", champion=False, stop_after=0):
     """Every policy over every seed, in parallel; a policy's score is its mean hp lost."""
     paths = {}
     for policy in policies:
@@ -183,7 +191,7 @@ def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, 
             blocks = list(pool.map(
                 lambda policy: play_block(paths[policy["Name"]], seeds,
                                           gen_dir / policy["Name"], timeout, health, target_act, maps,
-                                          champion),
+                                          champion, stop_after),
                 policies))
         for policy, runs in zip(policies, blocks):
             scored[policy["Name"]] = runs
@@ -283,6 +291,14 @@ def main():
                     help="the act that has to be cleared (clearance) or measured to (damage). Default: 4 for "
                          "clearance -- the design's promise is that every seed is beatable through act IV, "
                          f"act V is the cherry -- and {LAST_ACT} for damage")
+    # ⚠⚠ DER SCHWANZ HINTER DER FRAGE IST DER TEURE TEIL. Auf `--target-act 2` wird nichts benotet, was
+    # nach Akt II passiert — gemessen am 2026-09-20 mit dem fairen Champion kostet ein Akt-I-Tod 423 s und
+    # der eine Lauf bis Akt IV 4571 s, die Kosten einer Generation STEIGEN also genau dann, wenn die
+    # Population besser wird. `--stop-after-act` beendet jeden Lauf am Tor zum naechsten Akt; was er fuer
+    # die Akte 1..N berichtet, ist Feld fuer Feld das, was er ohne die Bremse berichtet haette.
+    ap.add_argument("--stop-after-act", type=int, default=0,
+                    help="end every run the moment act N is cleared -- the tail past the question is paid "
+                         "for and never scored. Sensibly the same number as --target-act. 0 = play it out")
     ap.add_argument("--legacy", action="store_true",
                     help="breed against the OLD maps (v0.0.0) instead of the design's v0.0.1")
     ap.add_argument("--resume", default=None, help="a previous training folder to keep breeding from")
@@ -298,6 +314,10 @@ def main():
     args = ap.parse_args()
     if args.target_act is None:
         args.target_act = 4 if args.question == "clearance" else LAST_ACT
+    # ⚠ NUR DER KONSOLEN-LAEUFER KENNT DIE BREMSE. Sie stillschweigend fallen zu lassen hiesse, eine Nacht
+    # zu planen, die um ein Vielfaches laenger laeuft als angesagt.
+    if args.stop_after_act and args.godot:
+        sys.exit("--stop-after-act is the console runner's flag; the game's --sim does not take it")
 
     desktop = Path.home() / ("Schreibtisch" if (Path.home() / "Schreibtisch").is_dir() else "Desktop")
     out = Path(args.out) if args.out else desktop / "bnb-balance-training" / time.strftime("%Y%m%d-%H%M%S")
@@ -359,7 +379,7 @@ def main():
         started = time.time()
         table = evaluate(population, seeds, gen_dir, args.jobs, args.timeout, health, args.target_act,
                          maps, ui=args.ui, godot=args.godot, question=args.question,
-                         champion=args.champion)
+                         champion=args.champion, stop_after=args.stop_after_act)
         with board.open("a", newline="") as f:
             writer = csv.writer(f)
             for row in table:

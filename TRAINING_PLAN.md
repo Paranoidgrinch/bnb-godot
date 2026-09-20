@@ -85,14 +85,44 @@ fits at generation 1 may not fit at generation 12. **T0 below removes exactly th
 
 ## 4. The plan
 
-### T0 — bound the tail (do this first, it pays for itself)
+### T0 — bound the tail — ✔ **DONE 2026-09-20** (`Core` + `tools/train.py`)
 
-Add `--stop-after-act N`: the run ends when act N is cleared. The clearance fitness asks "did it clear act
-N?" and everything the runner does afterwards is paid for and never read. Today the answer costs up to 4571 s
-of tail that no gene is judged on.
+`--stop-after-act N` ends the run at the gates of act N+1. It stops the walk BEFORE its next answer, by the
+same throw every other guard uses, so both seats end in the same state; `Acts` moves up to the act whose
+gates it stands at, which is what makes `cleared=N` true; and the clearance line carries `calledOff=asked`
+so that nothing downstream has to guess at the wording of `result=Ongoing`.
 
-**Gate:** a run with `--stop-after-act 2` reports the same `cleared`, `rooms` and `hp` for acts I–II as the
-same seed run without it, and the golden set is untouched (the flag is off by default).
+**Gate — passed.** Four immortal seeds of the shipped game, `--stop-after-act 2` against the same seeds
+played out: identical act lines, identical `actBossDamage`/`actBossHp` for acts I–II, identical per-act
+receipts, `cleared=2 rooms=47`, and the bounded run's log **byte-equal** to the unbounded one for the first
+1588–1961 lines — up to the line where it stops. The golden set is untouched through **both** seats
+(`--console` and `--console --replay`, 15/15). Both seats also produce the same bounded run. Suites green:
+Core 1488 · Scenario 769 · Sandbox 478 · Run 834.
+
+**What it costs:** those four immortal runs, 29.8 s → 9.8 s (÷3.0). The saving on the champion is the tail,
+which is where the risk was; T2 is what measures it.
+
+⚠⚠ **Two defects the gate found, both fixed here:**
+
+1. **The trainer would have scored every good candidate as a standstill.** A called-off run reports
+   `result=Ongoing`, and `_stood()` reads exactly that — so the stall penalty (0 rooms, 0 health) would have
+   landed on precisely the runners that CLEARED the target act, wiping out the rooms-and-health tie-break
+   that carries the whole gradient once several candidates get through. `tools/train.py` now reads
+   `calledOff=`, and `--stop-after-act` is threaded through to the runner (it refuses `--godot`, which has
+   no such flag). Smoke: 1 generation, 2 runners, `--target-act 1 --stop-after-act 1` — the clearing runner
+   scores −10229 on 23 rooms, the genuinely stalled one still scores 20000 as `STOOD STILL in 2 of 2`.
+2. **The damage receipt was losing the closing exchange of every fight but the run's last.** The ledger is
+   read on every ANSWER, and after the killing blow there are no more answers in that fight — only `Finish`
+   looked again, and only at the fight the run ended in. It showed up as the bounded run naming 23 MORE
+   points in act II than the unbounded one. A fight is now read once more as it ends: over the four immortal
+   seeds `unnamed` falls from **1685 of 34758 to 533** — two thirds of the hole §5 leaves open.
+
+⚠ **And one finding NOT fixed, because it is nobody's bug in this step:** under the REPLAY seat the damage
+ledger reads almost nothing — seed 1 names 17 of 2054, seed 4 names 1 of 1900, `blocked=0` throughout. The
+receipt is a statement about the DIRECT seat only. Every balance sweep this project has published used the
+direct seat (the console runner's default), so nothing measured is wrong; but a receipt taken out of Godot's
+`--sim`, which drives through the replay model, is empty. The two report lines the golden set diffs agree
+between the seats — it is only the ledger that does not.
 
 ### T1 — teach the trainer the fighter
 
@@ -153,4 +183,7 @@ health goes, `city_elite_appeal_01` and `_03` kill the most runs, and act II has
 - **`unnamed` is 15 %.** The damage receipt cannot yet name a seventh of the health. Measured out so far:
   it is not the opening bell, not in-fight healing, not `SetHealth`, not max-health changes, and it is inside
   the fights (the run's own health does not move at all while a fight runs — `duringFight=0` on every seed).
-  Next probe would be per fight rather than per run.
+  Next probe would be per fight rather than per run. ⚠ **T0 found most of it**: the ledger was never reading
+  what a fight wrote after its last decision, and closing that took `unnamed` from 1685 of 34758 to 533 on
+  the four immortal seeds. The 15 % figure above is from the fair champion at 70 health and has not been
+  re-measured since — do that before quoting it again.
