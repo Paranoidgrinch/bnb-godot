@@ -918,3 +918,91 @@ mistake stays visible — *the reproduction named a symptom, and the symptom nam
   between `--sim` and `--playtest`: `--playtest` names v0.0.1 outright, `--sim` reads
   `RunPreferences.MapGenerator` → `user://settings.cfg`. This machine's file says `v0.0.1`, so they agree
   today by accident. → **R0a.**
+
+---
+
+## 7. P1–P4 — the balance instrument, and the player it needed (2026-09-20)
+
+Written after the fact, against `Core a678831`. Every number here was measured on this machine with the bred
+policy `g29-p0` and `content/game.roguedeck.json`.
+
+### P1 — defence had to be representable ✔
+
+`Champion.PlanAhead` cut its beam with `OrderByDescending(Worth).Take(Beam)`, and `Worth` has two
+deliberately separated bands: a turn that takes nothing off the enemy scores about 200 points below one that
+does. With a beam of four and a real hand, **a pure block turn was never carried to the next turn boundary**
+— the one thing a second turn of sight exists to find, "block now, kill next turn", was structurally
+unreachable. `ChampionHorizonTests` stayed green throughout because its toy hand has three candidates and
+nothing is ever cut.
+
+Half the beam's seats now belong to the lines that kept the most health. The band is untouched and still
+decides the leaf.
+
+| routes through act I, seeds 1–8, 70 hp | cleared | seeds with a route |
+|---|---|---|
+| horizon 1 (the baseline) | 5 / 67 | 2 / 8 |
+| horizon 3, BEFORE P1 (C2's failed gate) | 4 / 67 | — |
+| **horizon 3, after P1** | **9 / 67** | **5 / 8** |
+
+C2's conclusion — "the planning depth is not the bottleneck" — was a misreading of its own defect.
+
+### P2 — where the life goes ✔
+
+`DamageLedger` reads the trace the damage pipeline already writes and files every point of health under the
+enemy AND the action that swung it, the card that cost blood, the status that ate the body, or the room that
+bit outside a fight. It reconciles against what the run actually spent and prints what it could not name.
+
+Three defects fell out of building it:
+- **the step log had a blind spot** — everything the hero's own turn start did (a poison ticking, a
+  turn-start rule speaking) belonged to no step and was invisible to every reader, the narrative log
+  included. `InteractiveCombat.EndTurn` records the hand-back now.
+- **`DamageTaken` misses the killing blow** — it is health watched *before* each answer and a dead run is
+  asked nothing further, so every losing run reported short by exactly the blow that ended it (seed 1: 56
+  against 70 actually spent). `sim-fitness` is left alone; the closing blow is its own number.
+- **a status could not say which status it was** — a quarter of act I sat under "—/overtime". The damage
+  request now carries the status that asked for the hit, diagnostic only.
+
+### P3 — the map ✔
+
+`BalanceMap` adds the receipts up. 500 seeds at 70 health take **two minutes** and 8148 room visits.
+
+| act | combat | boss | elite | multi-combat |
+|---|---|---|---|---|
+| I | 5.1 (23 rooms) | **13.2** (5) | 22.0 (10) | **23.9** (9) |
+| II | 5.5 (23) | 10.0 (5) | 15.4 (9) | 24.0 (11) |
+| III | 2.3 (12) | **7.0** (3) | 6.5 (9) | **30.5** (8) |
+| IV | 6.0 (26) | **8.0** (1) | **28.7** (7) | 21.0 (3) |
+
+- **the boss is the cheapest named fight in every act.** Elites and multi-combats cost two to four times what
+  the act's own ending costs.
+- `city_normal_appeal_04` costs 16.2 a visit against 5.1 for its kind (**×3.18**) over 138 visits and stopped
+  20 runs — a fight authored as NORMAL charging three quarters of an elite.
+- the elites do the killing: `city_elite_appeal_01` 41, `city_elite_delay_01` 39, then 21/20/18/17.
+- the budget is spent in the **first fourteen rooms of act I**: 70 health down to 34.9, about 2.5 a room.
+- nothing outside a fight costs anything: event, treasure, rest and shop all read 0.0.
+- `unnamed` is 14 % and is printed rather than hidden.
+
+Three ways a sweep lies, each refused with a test: popularity is not difficulty (rank by what a VISIT costs);
+a later act is not an outlier for being later (median of the same role IN THE SAME ACT, and the outliers are
+listed per act); a curve that rises late is the survivors talking (`runs=` is printed before the mean).
+
+### P4 / C4 — the player, made fair before it was made strong ✔
+
+A fork draws what the real fight would draw, so above a horizon of 1 the search was a prophet and every
+number it produced had to be read as an upper bound. Above one sample the fight is now forked several times
+with **its own draw pile shuffled differently in each**, and an opening is scored by what it is worth ON
+AVERAGE across those worlds. An opening is kept only as far as the hand the player is holding — every world
+starts from the same hand, so those plays name the same decision in all of them.
+
+| four seeds, 70 hp | time | rooms | act II reached |
+|---|---|---|---|
+| one turn of sight (fair) | 1 m 21 | 80 | 1 seed |
+| three turns, PROPHET | 8 m 50 | 93 | 1 seed |
+| **three turns, six decks, FAIR** | **15 m 10** | **114** | **2 seeds** |
+
+Four seeds is not evidence that the fair player is stronger and it is not claimed. What it settles is the
+question C4 existed to ask: **being honest about the deck did not cost this player its strength.**
+
+⚠ Cost control mattered more than it looks. Deciding one CARD at a time per sample — the first version —
+measured at more than 3.6× the unfair search (24× the ordinary runner) on four runs that never finished. The
+worlds now share one decision's fork budget and the known part of a turn is decided at once.
