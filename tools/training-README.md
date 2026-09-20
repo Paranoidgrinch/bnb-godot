@@ -21,8 +21,39 @@ Räum-Frage gezüchtet, räumt so einer gar nichts.
 
 ```bash
 tools/train.py --champion --target-act 1        # Champions züchten
+tools/train.py --champion --target-act 2 --horizon 3 --beam 4 --samples 6 --stop-after-act 2
 roguedeck-bot ... --champion --policy p.json    # einen laufen lassen
 ```
+
+### ⚠⚠ Der Kämpfer wird VORGEGEBEN, nicht gezüchtet (T1)
+
+`--horizon`, `--beam` und `--samples` sind **keine Gene**. Sie kaufen Stärke mit Rechenzeit, und die Fitness
+sieht keine Rechenzeit — eine Zucht, die sie mitzüchtet, maximiert sie immer, und am Ende ist die Uhr
+optimiert und nicht das Spiel. Sie werden in **jeden** geschriebenen Kandidaten gestempelt (auch in
+`best-policy.json`) und stehen in der Kopfzeile jeder Zucht: eine Politik, die ihren Kämpfer nicht nennen
+kann, ist mit keiner anderen vergleichbar — derselbe Grund, aus dem jeder Lauf `maps=` nennt.
+
+`--samples` über 1 macht den Spieler **fair**: der ungezogene Stapel wird je Welt neu gemischt, also plant er
+nicht mehr um Karten herum, die niemand gesehen hat (C4).
+
+### ⚠⚠ Was unter `--champion` NICHT gezüchtet wird — und was doch
+
+Weggelassen werden **genau zwei** Gene: **`EndTurnBelow`** und **`TargetLowestHp`**. Beide stehen in
+`BotMind.ChoosePlay` hinter der Zeile `if (_options.Champion) return ChampionPlay(combat);`, also liest sie
+dort niemand.
+
+⚠ **Der Trainingsplan behauptete, alle acht Karten-Gewichte seien für den Champion tot. Das war falsch.**
+`WDamage`, `WBlock`, `WStatus`, `WDraw`, `WResource` und `WCost` entscheiden nicht nur, was gespielt wird,
+sondern auch, was **genommen** wird: `ScoreOffer` bewertet damit jede Belohnung, jede Karten-Entfernung und
+jeden Laden, `Weighted` jedes Relikt, und `DoorHealth`/`DoorGold` sind Wechselkurse gegen genau diese
+Wertung (B2). Der Champion gabelt den Kampf — sein **Deck** baut er mit diesen Zahlen.
+
+Nachgemessen am 2026-09-20, fairer Champion, Seeds 1–3, 70 HP, `--stop-after-act 1`:
+
+| geändert | Wirkung |
+|---|---|
+| `EndTurnBelow` −0,815 → 2,5 · `TargetLowestHp` 0,54 → 0,0 | **alle drei Läufe Zeile für Zeile gleich** |
+| `WDamage` 1,387 → −2,0 · `WBlock` 0,743 → 3,0 | 411 / 670 / 580 Zeilen anders; Seed 3 geht von „Tod in Raum 13" auf „Akt I geräumt, 70/70" |
 Er entscheidet jeden Zug, indem er den Kampf **gabelt**, die Karte auf der Kopie spielt, die Gegner antworten
 lässt und anschaut, was übrig ist. Sein einziger Knopf ist **`Aggression`** (0 = den Zug überleben, 1 = den
 Gegner leeren); was er NIMMT, bewertet er weiter wie jeder Politik-Läufer. Kostet ~4,5× einen normalen Lauf

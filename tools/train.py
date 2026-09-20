@@ -53,6 +53,22 @@ GENES = {
     # zusammen gezuechtet werden, sonst findet die Zucht keines von beiden.
     "Foresight": (0, 12),
 }
+# ⚠⚠ DIE ZWEI GENE, DIE DER CHAMPION NICHT LIEST — UND NUR DIESE ZWEI. `EndTurnBelow` und
+# `TargetLowestHp` stehen beide in `BotMind.ChoosePlay` HINTER der Zeile `if (_options.Champion) return
+# ChampionPlay(combat);`, also entscheidet sie unter `--champion` niemand mehr.
+#
+# ⚠ DER PLAN SAGTE „alle acht Karten-Gewichte sind tot" UND DAS WAR FALSCH. `WDamage`, `WBlock`, `WStatus`,
+# `WDraw`, `WResource` und `WCost` entscheiden nicht nur, WAS gespielt wird, sondern auch, was GENOMMEN wird:
+# `BotMind.ScoreOffer` bewertet jede Belohnung, jede Entfernung und jeden Laden damit, `Weighted` auch jedes
+# Relikt, und `DoorHealth`/`DoorGold` sind Wechselkurse GEGEN genau diese Kartenwertung (B2). Der Champion
+# forkt den Kampf, aber sein Deck baut er damit.
+#
+# Am 2026-09-20 nachgemessen, fairer Champion, Seeds 1-3, 70 HP, `--stop-after-act 1`:
+#   EndTurnBelow -0,815 -> 2,5 und TargetLowestHp 0,54 -> 0,0 ... alle drei Laeufe ZEILE FUER ZEILE gleich
+#   WDamage 1,387 -> -2,0 und WBlock 0,743 -> 3,0 ....... 411/670/580 Zeilen anders, und Seed 3 geht von
+#                                                         „Tod in Raum 13" auf „Akt I geraeumt, 70/70"
+CHAMPION_CANNOT_READ = ("EndTurnBelow", "TargetLowestHp")
+
 UNREACHED = 1_000_000   # never arriving at the target boss is worse than any arrival
 # The last act the game has, and so the default thing to measure to. One number, kept next to the flag that
 # reads it, because "the end of the game" is a fact about the content and moves when the content does.
@@ -63,18 +79,45 @@ UNREACHED = 1_000_000   # never arriving at the target boss is worse than any ar
 LAST_ACT = 5
 
 
-def random_policy(rng, name):
+def genes_for(champion):
+    """Der Raum, in dem gezuechtet wird. Unter `--champion` ohne die zwei Gene, die dort niemand liest."""
+    if not champion:
+        return GENES
+    return {g: span for g, span in GENES.items() if g not in CHAMPION_CANNOT_READ}
+
+
+# ⚠ `genes` IST PFLICHT UND HAT KEINE VORGABE. Mit einer Vorgabe waere ein vergessenes Argument eine Nacht
+# lang still — es wuerde den vollen Satz zuechten, also auch die zwei Gene, die der Champion nicht liest.
+def random_policy(rng, name, genes):
     p = {"Name": name}
-    p.update({g: round(rng.uniform(lo, hi), 3) for g, (lo, hi) in GENES.items()})
+    p.update({g: round(rng.uniform(lo, hi), 3) for g, (lo, hi) in genes.items()})
     return p
 
 
-def mutate(rng, parent, name, sigma):
+def mutate(rng, parent, name, sigma, genes):
     child = {"Name": name}
-    for g, (lo, hi) in GENES.items():
+    for g, (lo, hi) in genes.items():
         span = hi - lo
         child[g] = round(min(hi, max(lo, parent[g] + rng.gauss(0, sigma * span))), 3)
     return child
+
+
+# ── DER KAEMPFER IST KEIN GEN (T1) ───────────────────────────────────────────────────────────────────────
+# ⚠⚠ `Horizon`, `Beam` und `Samples` KAUFEN STAERKE MIT RECHENZEIT, und die Fitness sieht keine Rechenzeit.
+# Eine Zucht, die sie mitzuechtet, maximiert sie immer — am Ende ist die Uhr optimiert und nicht das Spiel,
+# und die Population driftet dorthin, wo der Timeout sie gerade noch durchlaesst. Sie werden darum FEST
+# vorgegeben und in jeden Kandidaten geschrieben, statt in GENES zu stehen.
+#
+# Geschrieben wird beim Speichern und nirgends sonst: so kann kein `mutate` sie anfassen und keine
+# fortgesetzte Zucht (`--resume`) alte Werte weiterschleppen. In JEDE Politik, auch in eine ohne
+# `--champion`: eine Politik, die ihren Kaempfer nicht nennen kann, ist mit keiner anderen vergleichbar —
+# derselbe Grund, aus dem jeder Lauf `maps=` nennt.
+FIGHTER = {}
+
+
+def written(policy):
+    """Eine Politik, wie sie auf die Platte geht: die Gene plus die fest vorgegebenen Knoepfe des Kaempfers."""
+    return dict(policy, **FIGHTER)
 
 
 BOT = REPO.parent / "RogueDeck-Core" / "src" / "RogueDeck.Bot.Cli"
@@ -180,7 +223,7 @@ def evaluate(policies, seeds, gen_dir, jobs, timeout, health, target_act, maps, 
     paths = {}
     for policy in policies:
         paths[policy["Name"]] = gen_dir / f"{policy['Name']}.json"
-        paths[policy["Name"]].write_text(json.dumps(policy, indent=2))
+        paths[policy["Name"]].write_text(json.dumps(written(policy), indent=2))
 
     scored = {}
     if not godot:
@@ -296,6 +339,17 @@ def main():
     # der eine Lauf bis Akt IV 4571 s, die Kosten einer Generation STEIGEN also genau dann, wenn die
     # Population besser wird. `--stop-after-act` beendet jeden Lauf am Tor zum naechsten Akt; was er fuer
     # die Akte 1..N berichtet, ist Feld fuer Feld das, was er ohne die Bremse berichtet haette.
+    # ⚠⚠ DER KAEMPFER WIRD VORGEGEBEN, NICHT GEZUECHTET — warum, steht bei FIGHTER. Die Vorgaben sind die
+    # der Engine (BotPolicy), also genau der Spieler, den dieses Projekt immer gezuechtet hat; wer einen
+    # tieferen will, sagt es hier und es steht in der Kopfzeile jedes Laufs.
+    ap.add_argument("--horizon", type=float, default=0,
+                    help="how many hero-turns the champion follows a line before scoring it (0/1 = the "
+                         "one-turn search this runner has always done)")
+    ap.add_argument("--beam", type=float, default=4,
+                    help="how many lines survive each turn boundary of that search")
+    ap.add_argument("--samples", type=float, default=0,
+                    help="how many shuffled draw piles a decision is scored across. Above 1 the player is "
+                         "FAIR -- it no longer plans around cards it has not drawn (C4)")
     ap.add_argument("--stop-after-act", type=int, default=0,
                     help="end every run the moment act N is cleared -- the tail past the question is paid "
                          "for and never scored. Sensibly the same number as --target-act. 0 = play it out")
@@ -318,6 +372,8 @@ def main():
     # zu planen, die um ein Vielfaches laenger laeuft als angesagt.
     if args.stop_after_act and args.godot:
         sys.exit("--stop-after-act is the console runner's flag; the game's --sim does not take it")
+    FIGHTER.update(Horizon=args.horizon, Beam=args.beam, Samples=args.samples)
+    genes = genes_for(args.champion)
 
     desktop = Path.home() / ("Schreibtisch" if (Path.home() / "Schreibtisch").is_dir() else "Desktop")
     out = Path(args.out) if args.out else desktop / "bnb-balance-training" / time.strftime("%Y%m%d-%H%M%S")
@@ -349,14 +405,6 @@ def main():
     maps = ["--legacy"] if args.legacy else []
     rng = random.Random(7)
     seeds = list(range(args.seed_from, args.seed_from + args.seeds))
-    population = []
-    if args.resume:
-        best = json.loads((Path(args.resume) / "best-policy.json").read_text())
-        population = [dict(best, Name="g0-p0")] + [mutate(rng, best, f"g0-p{i}", args.sigma)
-                                                   for i in range(1, args.population)]
-    else:
-        population = [random_policy(rng, f"g0-p{i}") for i in range(args.population)]
-
     board = out / "leaderboard.csv"
     with board.open("w", newline="") as f:
         csv.writer(f).writerow(["generation", "policy",
@@ -373,6 +421,42 @@ def main():
           f"{'through the game' if args.godot else 'through the console runner'})")
     print(f"  {args.generations} generations × {args.population} runners × {len(seeds)} seeds "
           f"= {args.generations * args.population * len(seeds)} runs, {args.jobs} at a time")
+    # ⚠⚠ WER DA KAEMPFT, STEHT UEBER JEDER ZUCHT. Dieselben Gene gegen einen anderen Kaempfer sind eine
+    # andere Frage, und eine Bestenliste, die ihren Kaempfer nicht nennt, ist mit keiner anderen vergleichbar.
+    if args.champion:
+        fair = ("a FAIR player: it does not see what it has not drawn" if args.samples > 1
+                else "⚠ SEES UNDRAWN CARDS above horizon 1, so its numbers are an upper bound")
+        print(f"  fighter (fixed, NOT bred): horizon {args.horizon:g}, beam {args.beam:g}, "
+              f"samples {args.samples:g} — {fair}")
+        print(f"  not bred under --champion: {', '.join(CHAMPION_CANNOT_READ)} — both sit behind the "
+              f"champion's own branch in BotMind.ChoosePlay, so nothing reads them. The card weights ARE "
+              f"bred: they score what the runner TAKES (rewards, removals, shops, relics, doors).")
+    if args.stop_after_act:
+        print(f"  every run ends when act {args.stop_after_act} is cleared; the tail past the question is "
+              f"not scored")
+    print(f"  breeding on seeds {seeds[0]}..{seeds[-1]} — grade the winner on seeds it has never seen")
+
+    population = []
+    if args.resume:
+        best = json.loads((Path(args.resume) / "best-policy.json").read_text())
+        # ⚠ …UND EIN GEN, DAS DIE ALTE ZUCHT NICHT HATTE, MUSS IRGENDWO ANFANGEN. Das passiert genau dann,
+        # wenn eine Champion-Zucht ohne `--champion` fortgesetzt wird: die Datei traegt `EndTurnBelow` und
+        # `TargetLowestHp` nicht, der Politik-Laeufer braucht sie. Es wird gesagt statt geraten.
+        missing = [g for g in genes if g not in best]
+        if missing:
+            print(f"  ⚠ the resumed policy carries no {', '.join(missing)} — started from the middle of "
+                  f"the range, because this run breeds genes that one did not")
+            for g in missing:
+                lo, hi = genes[g]
+                best[g] = round((lo + hi) / 2, 3)
+        # ⚠ NUR DIE GENE KOMMEN MIT. Eine fortgesetzte Zucht erbt sonst die Kaempfer-Knoepfe und die Gene,
+        # die dieser Lauf gar nicht mehr zuechtet, aus einer alten Datei — und der Elternteil truege dann
+        # andere Felder als seine eigenen Kinder.
+        seed_parent = {"Name": "g0-p0", **{g: best[g] for g in genes if g in best}}
+        population = [seed_parent] + [mutate(rng, best, f"g0-p{i}", args.sigma, genes)
+                                      for i in range(1, args.population)]
+    else:
+        population = [random_policy(rng, f"g0-p{i}", genes) for i in range(args.population)]
     for generation in range(args.generations):
         gen_dir = out / f"gen-{generation:02d}"
         gen_dir.mkdir(exist_ok=True)
@@ -390,7 +474,7 @@ def main():
             print(f"  {row['policy']['Name']:<10} score {row['score']:>10}  "
                   f"{'cleared' if args.question == 'clearance' else 'arrived'} {row['arrivals']}"
                   f"  rooms {row['rooms']:>5}  {row['note']}")
-        (out / "best-policy.json").write_text(json.dumps(table[0]["policy"], indent=2))
+        (out / "best-policy.json").write_text(json.dumps(written(table[0]["policy"]), indent=2))
         (gen_dir / "ranking.json").write_text(json.dumps(
             [{k: v for k, v in row.items()} for row in table], indent=2))
 
@@ -398,7 +482,8 @@ def main():
         population = [dict(p, Name=f"g{generation + 1}-p{i}") for i, p in enumerate(parents)]
         while len(population) < args.population:
             parent = parents[rng.randrange(len(parents))]
-            population.append(mutate(rng, parent, f"g{generation + 1}-p{len(population)}", args.sigma))
+            population.append(
+                mutate(rng, parent, f"g{generation + 1}-p{len(population)}", args.sigma, genes))
 
     best = json.loads((out / "best-policy.json").read_text())
     print(f"\nbest runner: {json.dumps(best, indent=2)}")

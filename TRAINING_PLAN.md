@@ -34,10 +34,24 @@ And the gate that closed C4 — 67 routes through act I, seeds 1–8:
 
 ## 2. What training can and cannot move
 
-⚠⚠ **The champion does not read the card weights.** `WDamage`, `WBlock`, `WStatus`, `WDraw`, `WResource`,
-`WCost`, `EndTurnBelow`, `TargetLowestHp` decide a play only for the *policy* runner. The champion forks the
-fight and looks, and the only knob it reads is `Aggression`. Breeding those eight genes against a champion
-breeds noise, and that is worth knowing before a night is spent on it.
+⚠⚠ **CORRECTED 2026-09-20 AT T1 — THIS SECTION SAID EIGHT AND THE ANSWER IS TWO.** The claim was that
+`WDamage`, `WBlock`, `WStatus`, `WDraw`, `WResource`, `WCost`, `EndTurnBelow` and `TargetLowestHp` are all
+dead for a champion. Only the last two are. The first six decide not just what is PLAYED but what is TAKEN:
+`BotMind.ScoreOffer` scores every reward, every card removal and every shop slot with them, `Weighted` scores
+every relic, and `DoorHealth`/`DoorGold` are exchange rates against exactly that card score (B2). The
+champion forks the fight — it builds its DECK with these numbers.
+
+Measured rather than read, fair champion, seeds 1–3, 70 health, `--stop-after-act 1`:
+
+| changed | what happened |
+|---|---|
+| `EndTurnBelow` −0.815 → 2.5 and `TargetLowestHp` 0.54 → 0.0 | **all three runs identical, line for line** |
+| `WDamage` 1.387 → −2.0 and `WBlock` 0.743 → 3.0 | 411 / 670 / 580 lines differ; seed 3 goes from *died in room 13* to *act I cleared, 70/70* |
+
+Both of the two sit behind `if (_options.Champion) return ChampionPlay(combat);` in `BotMind.ChoosePlay`, and
+nothing else reads them. Those two are dropped from the gene set under `--champion`; the other six are bred.
+
+⚠ **Had this section been believed, the night would have bred a champion that cannot judge a reward.**
 
 What the policy still decides for a champion, and therefore what is worth breeding:
 
@@ -46,8 +60,16 @@ What the policy still decides for a champion, and therefore what is worth breedi
 | `PathCombat/Elite/Shop/Rest/Event/Treasure` | which door |
 | `Foresight` | how many rooms down a door is judged (O2 — measured worth +1.91 rooms *only together with* the path weights) |
 | `RestBelow` | when a healing door outranks everything beside it |
-| `RewardSkip`, `ShopBuy`, `EventLate`, `DoorHealth`, `DoorGold` | what is taken and bought |
+| `RewardSkip`, `ShopBuy`, `EventLate` | what is taken and bought |
+| `WDamage`, `WBlock`, `WStatus`, `WDraw`, `WResource`, `WCost` | what a card or relic on offer is WORTH — the deck the champion ends up fighting with |
 | `Aggression` | the champion's single fighting knob |
+
+⚠ **`DoorHealth` and `DoorGold` are in `BotPolicy` but have never been in the trainer's `GENES`** — this
+table listed them and the trainer never bred them. Measured before deciding, same method as above: `DoorHealth`
+3 → 0.2 and `DoorGold` 1 → 5 over seeds 1–3, **38 door choices between them including rest sites and three
+shop visits — all three runs identical, line for line.** So there is no evidence they are worth a gene, and
+two more genes in an 8-runner population is a known cost. Left out, and this is why. ⚠ Unlike the two genes
+above, this is *no effect on these seeds*, not *nothing reads them*: `BotMind` line 850 does.
 
 **The hypothesis this training exists to test, stated so it can fail:** the current policy was bred against a
 weak fighter, and a strong fighter should want a different run. Specifically — **`PathElite` should rise**
@@ -124,13 +146,27 @@ direct seat (the console runner's default), so nothing measured is wrong; but a 
 `--sim`, which drives through the replay model, is empty. The two report lines the golden set diffs agree
 between the seats — it is only the ledger that does not.
 
-### T1 — teach the trainer the fighter
+### T1 — teach the trainer the fighter — ✔ **DONE 2026-09-20** (`tools/train.py`)
 
-`tools/train.py` writes `Horizon`, `Beam` and `Samples` into every candidate from command-line values, and
-prints them in its header. They are **not** in `GENES`. The eight card weights are dropped from `GENES` when
-`--champion` is given, with a line in the log saying why (§2).
+`--horizon`, `--beam` and `--samples` are stamped into **every** policy that is written — the candidates a
+generation plays and `best-policy.json` — by one `written()` helper at the moment of saving, and nowhere
+else, so no `mutate` can touch them and no `--resume` can drag old values along. They are not in `GENES`.
+They go into non-champion policies too: a policy that cannot name the fighter it was bred against is
+comparable with nothing, which is the same reason every run prints `maps=`.
 
-**Gate:** the written policy files contain the three fields; a breeding run's header states the fighter.
+Dropped from the gene set under `--champion`: **`EndTurnBelow` and `TargetLowestHp`, and those two only** —
+see the correction in §2, which is the real finding of this step.
+
+`--resume` now carries over the genes alone, and a gene the resumed file does not have (a champion-bred
+policy continued *without* `--champion`) starts from the middle of its range **and says so** instead of
+raising a KeyError or inventing a number quietly.
+
+**Gate — passed.** `--champion --horizon 3 --beam 4 --samples 6`: every candidate file and `best-policy.json`
+carry `Horizon: 3.0, Beam: 4.0, Samples: 6.0`, carry the six card weights and carry neither dropped gene. The
+trainer's header names the fighter, and the runner's own header confirms it played as one — *"champion: 3
+turns of lookahead, beam 4, 6 shuffled decks per decision — a fair player: it does not see what it has not
+drawn"*. The non-champion path is unchanged: the same two-runner smoke scores −10229 and 20000 as before,
+with all 20 genes in the file.
 
 ### T2 — breed the run layer overnight
 
@@ -173,7 +209,10 @@ health goes, `city_elite_appeal_01` and `_03` kill the most runs, and act II has
 
 ## 5. Traps already paid for
 
-- **A gene that does nothing costs nothing — except a night.** The card weights are the case in point.
+- **A gene that does nothing costs nothing — except a night.** ⚠ And a gene wrongly BELIEVED to do nothing
+  costs the whole answer: this plan said all eight card weights were dead for a champion, and six of them
+  are what it judges every reward, relic, shop slot and door with. Read the branch, then change the gene and
+  play the seed — a run that comes back line-for-line identical is the only proof a knob is dead.
 - **Standing still must lose.** The trainer already scores a stalled run as zero rooms and zero health; it
   was added because a stall with full health once ranked above an honest death at the same depth.
 - **Never grade on the breeding seeds.** The 5× improvement claimed for the last policy held up on 200
