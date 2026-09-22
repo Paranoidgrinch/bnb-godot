@@ -230,22 +230,26 @@ public static class BugReport
     //   3. `res://bugreport.cfg` — a dev checkout (gitignored); present when running from the editor
     //   4. beside the executable — the exported game, where tools/export.sh copies it next to the binary
     //      rather than into the .pck, so swapping the channel does not mean re-exporting the game
-    public static string? Webhook()
+    public static string? Webhook() => FindWebhook(WebhookFile, WebhookEnv);
+
+    // The same four places for any webhook the game posts to (the run log uses its own file and variable).
+    public static string? FindWebhook(string webhookFile, string webhookEnv)
     {
-        var fromEnv = OS.GetEnvironment(WebhookEnv);
+        var fromEnv = OS.GetEnvironment(webhookEnv);
         if (Usable(fromEnv))
             return fromEnv.Trim();
         // ⚠ A PROBE DOES NOT POST INTO THE LIVE CHANNEL. Once bugreport.cfg sits in a dev checkout, every
         // `--smoke-bug` run would file a report against the real channel, and a probe that spams the place
         // where real reports arrive is a probe somebody switches off. Under a smoke run the environment
         // variable is therefore the ONLY way to reach a webhook: deliberate, per command, never by accident.
-        if (OS.GetCmdlineUserArgs().Any(a => a.StartsWith("--smoke", StringComparison.Ordinal)))
+        if (OS.GetCmdlineUserArgs().Any(a => a.StartsWith("--smoke", StringComparison.Ordinal)
+                || a.StartsWith("--sim", StringComparison.Ordinal)))
             return null;
         foreach (var path in new[]
                  {
-                     $"user://{WebhookFile}",
-                     $"res://{WebhookFile}",
-                     OS.GetExecutablePath().GetBaseDir().PathJoin(WebhookFile),
+                     $"user://{webhookFile}",
+                     $"res://{webhookFile}",
+                     OS.GetExecutablePath().GetBaseDir().PathJoin(webhookFile),
                  })
         {
             if (OnDisk(path) is { } text && Usable(text))

@@ -17,5 +17,12 @@ if [[ -f bugreport.cfg ]]; then
 else
   echo "bug reports: NO bugreport.cfg — these builds will save reports locally and upload nothing"
 fi
+# The run log's webhook, the same way: beside the binary, never in git or in the package.
+if [[ -f runlog.cfg ]]; then
+  cp runlog.cfg build/linux/ && cp runlog.cfg build/windows/
+  echo "run log: webhook copied beside both binaries"
+else
+  echo "run log: NO runlog.cfg — these builds will record runs locally and upload nothing"
+fi
 
 echo "built desktop binaries under build/"

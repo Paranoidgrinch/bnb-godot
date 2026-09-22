@@ -149,6 +149,8 @@ public partial class SessionScreen : Control
             SmokeTarget();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-draw"))
             _ = SmokeDraw();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-mapkey"))
+            _ = MapKeyShot();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-map"))
             _ = MapShot(); // a fresh run parks at the entry fork — screenshot the map
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-full"))
@@ -1740,6 +1742,27 @@ public partial class SessionScreen : Control
         GetTree().Quit(grew && straightened && inFront && restored ? 0 : 1);
     }
 
+    // M IN THE MIDDLE OF A FIGHT: walk into the first fight, press M the way a player does, photograph it.
+    private async System.Threading.Tasks.Task MapKeyShot()
+    {
+        var session = Session;
+        var play = Play;
+        for (var step = 0; step < 60 && session is not null && play is not null; step++)
+        {
+            if (play.CombatDriver?.Current is not null) break;
+            if (session.IsAwaitingNodeChoice) session.PickNode(session.PendingNodeChoices[0].Id.Value);
+            else if (session.IsAwaitingInterlude) session.Continue();
+            else if (session.IsAwaitingEntities) session.PickEntities([0]);
+            else if (session.IsAwaitingChoice) session.Pick(session.PendingChoices[0].Id);
+            else break;
+        }
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        _UnhandledInput(new InputEventKey { Keycode = Key.M, Pressed = true });
+        GD.Print($"smoke-mapkey: overlay open={GetNodeOrNull(MapOverlayName) is not null}"
+            + $" · in a fight={play?.CombatDriver?.Current is not null}");
+        await CaptureThenQuit("smoke-mapkey.png");
+    }
+
     private async System.Threading.Tasks.Task MapShot()
     {
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -2234,11 +2257,20 @@ public partial class SessionScreen : Control
     // underneath it (an enemy acting while it is open) redraws the game behind the dialog and leaves it alone.
     public override void _UnhandledInput(InputEvent @event)
     {
+        if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.M })
+        {
+            ToggleMapOverlay();
+            return;
+        }
         if (@event is null || !@event.IsActionPressed("ui_cancel"))
             return;
         // Esc closes the topmost thing first. The report window is opened FROM the settings window, so it is
         // the one on top; without this, Esc out of a half-typed report would reopen the settings behind it.
-        if (GetNodeOrNull(BugReportPanel.OverlayName) is { } reporting)
+        if (GetNodeOrNull(MapOverlayName) is { } looking)
+        {
+            looking.QueueFree();
+        }
+        else if (GetNodeOrNull(BugReportPanel.OverlayName) is { } reporting)
         {
             reporting.QueueFree();
         }
@@ -2265,6 +2297,85 @@ public partial class SessionScreen : Control
             AddChild(overlay);
         }
         GetViewport().SetInputAsHandled();
+    }
+
+    // M SHOWS THE MAP, from anywhere in a run — in a fight, in a shop, in front of an event — so a player can
+    // look at where the act is going without having to reach a fork first. Only to look at: the rooms are not
+    // buttons (MapView without an onPick). It is not offered on top of a menu (settings, report, archive):
+    // those are the "menus" a player is in, and a map over a half-typed bug report is a key press lost. Like
+    // the settings overlay it hangs off the SCREEN, so the enemy acting underneath redraws the game and leaves
+    // the map standing.
+    private const string MapOverlayName = "MapOverlay";
+
+    private void ToggleMapOverlay()
+    {
+        if (GetNodeOrNull(MapOverlayName) is { } open)
+        {
+            open.QueueFree();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (Session is not { Run.Map.Nodes.Count: > 0 } session
+            || GetNodeOrNull("SettingsOverlay") is not null
+            || GetNodeOrNull(BugReportPanel.OverlayName) is not null
+            || GetNodeOrNull(ArchivePanel.OverlayName) is not null)
+            return;
+
+        // Its own canvas layer, above everything the fight draws — part of the table sits on layers of its own,
+        // and a map drawn beneath them had the fight showing through it.
+        var layer = new CanvasLayer { Name = MapOverlayName, Layer = 50 };
+        // A canvas layer breaks the theme's inheritance, so the veil is handed the screen's own.
+        var veil = new Control { MouseFilter = MouseFilterEnum.Stop, Theme = Theme };
+        veil.SetAnchorsPreset(LayoutPreset.FullRect);
+        layer.AddChild(veil);
+        // Opaque: the map is what is being looked at, and a fight showing through it is two pictures.
+        var dim = new ColorRect { Color = MoonvineTheme.Bg };
+        dim.SetAnchorsPreset(LayoutPreset.FullRect);
+        veil.AddChild(dim);
+
+        var column = new VBoxContainer();
+        column.SetAnchorsPreset(LayoutPreset.FullRect);
+        column.OffsetLeft = column.OffsetRight = 0;
+        column.AddThemeConstantOverride("separation", 8);
+        veil.AddChild(column);
+
+        var head = new HBoxContainer { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
+        head.AddThemeConstantOverride("separation", 16);
+        var title = new Label { Text = $"Act {session.Run.ActNumber} — the map" };
+        title.AddThemeFontSizeOverride("font_size", 20);
+        head.AddChild(title);
+        var close = new Button { Text = "Close (M)" };
+        close.Pressed += () => GetNodeOrNull(MapOverlayName)?.QueueFree();
+        head.AddChild(close);
+        column.AddChild(head);
+
+        var scroll = new ScrollContainer
+        {
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Auto,
+        };
+        var map = new MapView(session.Run.Map, session.Run) { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
+        var mount = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        mount.AddThemeStyleboxOverride("panel", MoonvineTheme.StoneFrame(padH: 14, padV: 12));
+        var centre = new CenterContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        centre.AddChild(map);
+        mount.AddChild(centre);
+        scroll.AddChild(mount);
+        column.AddChild(scroll);
+        column.AddChild(MapLegend());
+
+        AddChild(layer);
+        CallDeferred(nameof(ScrollOverlayToCurrentRoom), scroll, map);
+        GetViewport().SetInputAsHandled();
+    }
+
+    private void ScrollOverlayToCurrentRoom(ScrollContainer scroll, MapView map)
+    {
+        if (!IsInstanceValid(map) || !IsInstanceValid(scroll) || map.CurrentRoomPosition == Vector2.Zero)
+            return;
+        var target = (int)(map.GlobalPosition.Y - scroll.GlobalPosition.Y + map.CurrentRoomPosition.Y
+            - scroll.Size.Y / 2);
+        scroll.ScrollVertical = Math.Max(0, target);
     }
 
     // LEAVING A RUN, ON PURPOSE. The game already autosaves at every point the player has settled something,
@@ -2866,9 +2977,10 @@ public partial class SessionScreen : Control
         });
         confirm.Disabled = _selectedEntities.Count != entities.Count;
 
-        // A declinable reward (e.g. a card reward): let the player take nothing.
+        // A declinable pick: a reward the player may take nothing of, or a removal the player may call off
+        // (the shop's — which is then not charged and stays on offer).
         if (entities.AllowSkip)
-            AddButton("Skip — take none", () =>
+            AddButton(entities.Intent == RunChoiceIntent.Remove ? "Cancel — keep my deck" : "Skip — take none", () =>
             {
                 _selectedEntities.Clear();
                 session.PickEntities([]);

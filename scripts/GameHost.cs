@@ -18,6 +18,8 @@ public partial class GameHost : Godot.Node
     public RunBlueprint Blueprint { get; private set; } = null!;
     public RunPlayback? Play { get; private set; }
     public string? HostError { get; private set; }
+    // A short hash of the shipped content document — what a run recording names as the game it was played on.
+    public string? ContentHash { get; private set; }
 
     private readonly GodotMetaStore _metaStore = new();
     private const string SavePath = "user://run-save.json";
@@ -41,6 +43,7 @@ public partial class GameHost : Godot.Node
         {
             var json = Godot.FileAccess.GetFileAsString("res://content/game.roguedeck.json");
             Blueprint = RunJson.BlueprintFromJson(json, RunJson.CreateOptions());
+            ContentHash = RunRecorder.ContentHash(json);
             // What every named thing in the document MEANS, ready before the first screen asks.
             Glossary.Build(Blueprint);
         }
@@ -49,6 +52,8 @@ public partial class GameHost : Godot.Node
             HostError = $"Could not load the game document: {ex.Message}";
             GD.PushError(HostError);
         }
+        // Runs finished while offline are sent now.
+        _ = RunLog.Flush(this);
     }
 
     public string GameTitle => Blueprint?.Presentation.Game?.FlavorText ?? "RogueDeck game";
@@ -60,8 +65,14 @@ public partial class GameHost : Godot.Node
     {
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
+        var generator = mapGenerator ?? RunPreferences.MapGenerator;
+        // The profile as the run starts on it, read BEFORE the run does — unlocks become run flags, so a replay
+        // needs exactly the profile this run saw.
+        var meta = Meta;
         Play.Start(health is { } hp ? WithHealth(Blueprint, hp) : Blueprint, seed, interactive: true, characterId,
-            mapGenerator ?? RunPreferences.MapGenerator);
+            generator);
+        if (Play.Error is null && health is null)
+            RunLog.Begin(Play, seed, characterId, generator, meta, ContentHash);
         EmitChanged();
     }
 
@@ -93,8 +104,9 @@ public partial class GameHost : Godot.Node
         var json = Play?.SaveJson();
         if (json is null)
             return Play?.Error ?? "No run to save.";
-        using var file = Godot.FileAccess.Open(SavePath, Godot.FileAccess.ModeFlags.Write);
-        file?.StoreString(json);
+        using (var file = Godot.FileAccess.Open(SavePath, Godot.FileAccess.ModeFlags.Write))
+            file?.StoreString(json);
+        RunLog.Saved();
         return null;
     }
 
@@ -106,12 +118,15 @@ public partial class GameHost : Godot.Node
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
         Play.Resume(Blueprint, save, interactive: true);
+        if (Play.Error is null)
+            RunLog.Resume(Play, save.RandomSeed);
         EmitChanged();
         return Play.Error is null;
     }
 
     public void AbandonRun()
     {
+        RunLog.Abandon();
         Play?.Dispose();
         Play = null;
         EmitChanged();
@@ -121,5 +136,9 @@ public partial class GameHost : Godot.Node
     // driver notifications from one answer becomes redraws after the state has fully settled.
     private void OnPlayChanged() => CallDeferred(nameof(EmitChanged));
 
-    private void EmitChanged() => EmitSignal(SignalName.StateChanged);
+    private void EmitChanged()
+    {
+        RunLog.Observe(this);
+        EmitSignal(SignalName.StateChanged);
+    }
 }

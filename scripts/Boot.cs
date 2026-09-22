@@ -153,7 +153,7 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover" or "--smoke-mapkey"))
         {
             host.StartNewRun(seed: 7,
                 // ⚠ A PROBE THAT HAS TO WALK SOMEWHERE MUST SURVIVE THE WALK. The greedy walker plays badly on
@@ -183,6 +183,15 @@ public partial class Boot : Control
         // a fade standing over one of those is six reviews of a dimmed veil, which D6 already paid for once.
         // So the opening runs when nobody passed an argument at all, and never otherwise.
         var watching = userArgs.Contains("--smoke-splash");
+        // The first start on a machine asks who is playing. Only a player is asked — a probe passes arguments —
+        // and the question stands UNDER the opening, so the fade lifts onto it.
+        if ((userArgs.Count() == 0 && !PlayerIdentity.HasName || userArgs.Contains("--smoke-name"))
+            && !DisplayServer.GetName().Contains("headless"))
+        {
+            OpenNamePrompt();
+            if (userArgs.Contains("--smoke-name"))
+                _ = CaptureThenQuit("user://smoke-name.png");
+        }
         if ((userArgs.Count() == 0 || watching) && !DisplayServer.GetName().Contains("headless"))
         {
             Splash.Play(this, () => { });
@@ -795,6 +804,12 @@ public partial class Boot : Control
         quit.Pressed += () => GetTree().Quit();
         actions.AddChild(quit);
         root.AddChild(actions);
+        if (PlayerIdentity.Name is { } player)
+        {
+            var who = MutedLabel($"Playing as {player}");
+            who.HorizontalAlignment = HorizontalAlignment.Center;
+            root.AddChild(who);
+        }
 
         // THE TITLE SCREEN IS WHERE THE MUSIC STARTS, and the only screen that can put it back once a run
         // has ended. Asked for here rather than in _Ready because the probes above return before this point
@@ -922,6 +937,61 @@ public partial class Boot : Control
     }
 
     private ArchivePanel? OpenArchive() => ArchivePanel.Open(this);
+
+    // WHO ARE YOU — asked once per machine (PlayerIdentity). Modal on purpose: the name goes on every run this
+    // machine records, and a run started before it was given would be a run nobody played.
+    private void OpenNamePrompt()
+    {
+        if (GetNodeOrNull("NameOverlay") is not null)
+            return;
+        var veil = new Control { Name = "NameOverlay", MouseFilter = MouseFilterEnum.Stop };
+        veil.SetAnchorsPreset(LayoutPreset.FullRect);
+        var dim = new ColorRect { Color = new Color(0, 0, 0, 0.8f) };
+        dim.SetAnchorsPreset(LayoutPreset.FullRect);
+        veil.AddChild(dim);
+        var center = new CenterContainer();
+        center.SetAnchorsPreset(LayoutPreset.FullRect);
+        veil.AddChild(center);
+
+        var panel = new PanelContainer { CustomMinimumSize = new Vector2(420, 0) };
+        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.StoneFrame(padH: 24, padV: 20));
+        center.AddChild(panel);
+        // The frame is only a frame; the question needs a ground of its own, or the title reads through it.
+        panel.AddChild(new ColorRect { Color = MoonvineTheme.BgPanel });
+        var column = new VBoxContainer();
+        column.AddThemeConstantOverride("separation", 12);
+        panel.AddChild(column);
+
+        var title = new Label { Text = "Who is playing?", HorizontalAlignment = HorizontalAlignment.Center };
+        title.AddThemeFontSizeOverride("font_size", 22);
+        column.AddChild(title);
+        column.AddChild(MutedLabel("Give yourself a name. You are asked once, on this machine."));
+
+        var field = new LineEdit
+        {
+            PlaceholderText = "Your name",
+            MaxLength = PlayerIdentity.MaxNameLength,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        column.AddChild(field);
+        var ok = new Button { Text = "That's me", Disabled = true };
+        column.AddChild(ok);
+
+        void Accept()
+        {
+            if (PlayerIdentity.SetName(field.Text))
+            {
+                veil.QueueFree();
+                Rebuild();
+            }
+        }
+        field.TextChanged += text => ok.Disabled = PlayerIdentity.Clean(text) is null;
+        field.TextSubmitted += _ => Accept();
+        ok.Pressed += Accept;
+
+        AddChild(veil);
+        field.CallDeferred(Control.MethodName.GrabFocus);
+    }
 
     // FOUR PICTURES, because this screen has four faces and only the first of them is the shelf. The plate is
     // where the player reads how much HP a thing has and what it does — the whole request — and each of the
