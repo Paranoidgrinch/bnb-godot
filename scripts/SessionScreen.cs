@@ -3049,6 +3049,13 @@ public partial class SessionScreen : Control
     private Control CardPick(
         string definitionId, int upgradeLevel, bool selected, string? caption, Action? onClick, bool dimmed = false)
     {
+        // ⚠ AN IMPROVED COPY SAYS WHAT THE IMPROVED CARD SAYS. It fights as "<id>+" (RunDeckMappers.UpgradeSuffix),
+        // and until now it was drawn as the BASE card with a "+" on its name — "Paper Cut+ · Deal 6 damage" in the
+        // deck, while the fight dealt 8. The face is the "+" definition's whenever the document has one.
+        var shown = ShownDefinition(definitionId, upgradeLevel);
+        var plusInName = shown != definitionId ? Math.Max(0, upgradeLevel - 1) : upgradeLevel;
+        definitionId = shown;
+        upgradeLevel = plusInName;
         var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definitionId);
         var rules = presentation?.FlavorText ?? "";
         var tooltip = string.Join("\n", new[] { CostLabel(definitionId), Glossary.Explain(rules) }
@@ -3083,6 +3090,12 @@ public partial class SessionScreen : Control
         column.AddChild(label);
         return column;
     }
+
+    // The definition a run card copy fights as: "<id>+" once improved, when the document has that card.
+    private static string ShownDefinition(string definitionId, int upgradeLevel) =>
+        upgradeLevel > 0 && GameHost.Instance.Blueprint.Presentation.Cards.ContainsKey(definitionId + "+")
+            ? definitionId + "+"
+            : definitionId;
 
     // A relic, on the same tile the shelf wears it on — its pool frame included, so what RANK of relic this is
     // gets answered before its name is read. Bigger than the shelf's 50 px: on a reward or a shop shelf the
