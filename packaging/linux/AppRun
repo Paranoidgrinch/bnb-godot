@@ -1,0 +1,5 @@
+#!/bin/sh
+# The AppImage's front door: start the game from inside the mounted image. The .pck, the .NET folder and the
+# two webhook files sit beside the binary in usr/bin, which is where Godot looks for all of them.
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/bin/bureaucrats-and-broomsticks.x86_64" "$@"

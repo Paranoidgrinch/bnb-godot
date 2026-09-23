@@ -313,6 +313,22 @@ tools/import-art.sh    # after dropping PNGs into assets/art/ — Godot only rea
 ```
 C# has no Godot web export, so the targets are desktop (Linux / Windows).
 
+## Releasing to testers
+```
+tools/release.sh              # export, then package into dist/<version>/
+tools/release.sh --no-export  # package what is already in build/
+```
+Output: a Windows installer (NSIS: per user, no admin prompt, Start menu entry, uninstaller), a Windows
+portable zip, a Linux AppImage, a Linux tarball, `README-ALPHA.txt` for the testers (English + German, from
+`packaging/README-ALPHA.txt`) and `SHA256SUMS.txt`. The version is `application/config/version` in
+`project.godot`. It is shown on the title screen and named in every bug report and run recording. Raise it
+together with the two `*_version` lines in `export_presets.cfg`.
+
+The script refuses to run without `bugreport.cfg` and `runlog.cfg`. The packages carry both webhooks, so
+`dist/` is gitignored and a release is never attached to this public repository. `makensis` and
+`appimagetool` do not need root: see the header of `tools/release.sh`. The icon comes from
+`tools/make-icon.py`. Save a better `assets/brand/icon.png` and `icon.ico` over it to replace it.
+
 ## Presentation
 Art/flavor/rarity come from the blueprint's presentation manifest (never from the engine): card rarity
 tints the hand, card/relic flavor shows as tooltips, character flavor shows on the title. An `Art` path

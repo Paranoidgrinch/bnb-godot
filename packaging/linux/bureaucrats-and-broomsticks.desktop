@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Bureaucrats & Broomsticks
+Comment=A deckbuilding roguelike in triplicate
+Exec=bureaucrats-and-broomsticks
+Icon=bureaucrats-and-broomsticks
+Categories=Game;CardGame;
+Terminal=false

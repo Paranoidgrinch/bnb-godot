@@ -3,6 +3,7 @@
 .DS_Store
 
 build/
+dist/
 __pycache__/
 
 # The bug-report webhook is a write credential for a channel and this repository is public.
