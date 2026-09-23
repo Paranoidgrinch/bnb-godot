@@ -17,6 +17,11 @@
 #
 #   tools/release.sh               export, then package
 #   tools/release.sh --no-export   package what is already in build/
+#   tools/release.sh --publish     export, package, then push to itch.io (moonvine-forge/bnb-alpha)
+#   (--no-export and --publish can be combined, in any order)
+#
+# Publishing needs butler (~/.local/opt/butler, linked into ~/.local/bin) and a one-time `butler login`.
+# Each channel keeps the same link and password on the itch page; a push replaces the previous file.
 #
 # ⚠ A RELEASE WITHOUT THE WEBHOOKS IS REFUSED. A tester's build that cannot send runs or bug reports home is an
 # alpha that teaches us nothing, and nothing on the tester's screen would say so.
@@ -25,7 +30,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 export_first=1
-[[ "${1:-}" == "--no-export" ]] && export_first=0
+publish=0
+for arg in "$@"; do
+  case "$arg" in
+    --no-export) export_first=0 ;;
+    --publish) publish=1 ;;
+    *) echo "unknown option: $arg" >&2; exit 1 ;;
+  esac
+done
+itch_target="moonvine-forge/bnb-alpha"
 
 version=$(sed -n 's/^config\/version="\(.*\)"$/\1/p' project.godot)
 [[ -n "$version" ]] || { echo "no application/config/version in project.godot" >&2; exit 1; }
@@ -43,6 +56,10 @@ appimagetool=$(command -v appimagetool || true)
 [[ -z "$appimagetool" && -x "$opt/appimagetool-x86_64.AppImage" ]] && appimagetool="$opt/appimagetool-x86_64.AppImage"
 [[ -n "$makensis" ]] || { echo "makensis not found (see the header)" >&2; exit 1; }
 [[ -n "$appimagetool" ]] || { echo "appimagetool not found (see the header)" >&2; exit 1; }
+if (( publish )); then
+  command -v butler >/dev/null || { echo "butler not found (see the header)" >&2; exit 1; }
+  [[ -f "$HOME/.config/itch/butler_creds" ]] || { echo "butler is not logged in: run 'butler login' once" >&2; exit 1; }
+fi
 
 (( export_first )) && bash tools/export.sh
 
@@ -92,3 +109,12 @@ rm -rf "$stage"
 
 echo "release $version:"
 ls -lh "$dist" | tail -n +2
+
+# ── itch.io ──────────────────────────────────────────────────────────────────────
+if (( publish )); then
+  butler push "$dist/$name-windows-setup.exe"          "$itch_target:windows-installer" --userversion "$version"
+  butler push "$dist/$name-windows-portable.zip"       "$itch_target:windows-portable"  --userversion "$version"
+  butler push "$dist/$name-linux-x86_64.AppImage"      "$itch_target:linux-appimage"    --userversion "$version"
+  butler push "$dist/$name-linux-x86_64.tar.gz"        "$itch_target:linux-tarball"     --userversion "$version"
+  echo "published $version to https://moonvine-forge.itch.io/bnb-alpha"
+fi

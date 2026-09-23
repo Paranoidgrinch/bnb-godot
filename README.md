@@ -317,6 +317,7 @@ C# has no Godot web export, so the targets are desktop (Linux / Windows).
 ```
 tools/release.sh              # export, then package into dist/<version>/
 tools/release.sh --no-export  # package what is already in build/
+tools/release.sh --publish    # … and push every package to itch.io (moonvine-forge/bnb-alpha, password-protected)
 ```
 Output: a Windows installer (NSIS: per user, no admin prompt, Start menu entry, uninstaller), a Windows
 portable zip, a Linux AppImage, a Linux tarball, `README-ALPHA.txt` for the testers (English + German, from
