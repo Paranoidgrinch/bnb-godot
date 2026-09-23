@@ -94,10 +94,10 @@ public partial class SessionScreen
         form.AddChild(remark);
 
         // THE STAMP, laid across the corner of the sheet the way a clerk brings it down: at an angle, not quite
-        // square, over whatever was written there.
+        // square, over whatever was written there. Only on a win: a death certificate is left unstamped.
         var holder = new Control { CustomMinimumSize = new Vector2(0, 0), MouseFilter = MouseFilterEnum.Ignore };
         var stamp = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore, RotationDegrees = -14 };
-        var ink = victory ? MoonvineTheme.Accent : MoonvineTheme.Harm;
+        var ink = MoonvineTheme.Accent;
         var box = new StyleBoxFlat
         {
             BgColor = new Color(0, 0, 0, 0),
@@ -107,14 +107,15 @@ public partial class SessionScreen
         box.SetBorderWidthAll(4);
         box.SetCornerRadiusAll(6);
         stamp.AddThemeStyleboxOverride("panel", box);
-        var word = new Label { Text = victory ? "APPROVED" : "FILED · DECEASED" };
+        var word = new Label { Text = "APPROVED" };
         word.AddThemeFontSizeOverride("font_size", 30);
         word.AddThemeColorOverride("font_color", ink);
         stamp.AddChild(word);
         stamp.Position = new Vector2(430, -300);
         stamp.Modulate = new Color(1, 1, 1, 0.85f);
         holder.AddChild(stamp);
-        form.AddChild(holder);
+        if (victory)
+            form.AddChild(holder);
 
         var centre = new CenterContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         centre.AddChild(sheet);
