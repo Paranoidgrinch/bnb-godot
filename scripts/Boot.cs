@@ -101,6 +101,12 @@ public partial class Boot : Control
         // question about the DISK, and it is asked THROUGH THE FILE — an in-memory round trip proves nothing
         // about a save (see the ValueTuple that ate a combat snapshot). The picture comes last, and it is
         // taken with the gods still unmet on purpose: "???" is the state the player starts in.
+        if (userArgs.Contains("--smoke-history"))
+        {
+            BuildTitle(host);
+            _ = SmokeHistory();
+            return;
+        }
         if (userArgs.Contains("--smoke-archive"))
         {
             ReportArchive(blueprint);
@@ -796,6 +802,13 @@ public partial class Boot : Control
         archive.Pressed += () => OpenArchive();
         actions.AddChild(archive);
 
+        // THE PLAYER'S OWN RUNS, a main-menu item of its own beside the archive: the archive is what the game
+        // holds, this is what the player did with it.
+        var history = new Button { Text = "History", CustomMinimumSize = new Vector2(140, 44) };
+        history.TooltipText = "Every run you have played, and the numbers across them.";
+        history.Pressed += () => HistoryPanel.Open(this);
+        actions.AddChild(history);
+
         var settings = new Button { Text = "Settings", CustomMinimumSize = new Vector2(140, 44) };
         settings.Pressed += OpenSettings;
         actions.AddChild(settings);
@@ -997,6 +1010,47 @@ public partial class Boot : Control
     // where the player reads how much HP a thing has and what it does — the whole request — and each of the
     // three kinds draws it with a different widget (a body, a card face, a framed object), so each of the
     // three is looked at.
+    // `--smoke-history`: four made-up runs written through the real file format into a probe file, read back,
+    // and shown. What it checks is the one thing that can quietly go wrong — a field that does not survive the
+    // disk — and the picture is for the eye.
+    private async System.Threading.Tasks.Task SmokeHistory()
+    {
+        RunHistory.Path = "user://run-history-probe.json";
+        DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(RunHistory.Path));
+        var start = new DateTime(2026, 9, 20, 18, 0, 0, DateTimeKind.Utc);
+        string At(int hours) => start.AddHours(hours).ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+        RunHistory.Append(new RunSummary { StartedUtc = At(0), EndedUtc = At(1), Seed = 11, Character = "Bureaucrat",
+            Result = "Defeat", Act = 1, Rooms = 9, Health = 0, MaxHealth = 70, Gold = 41, EndedAt = "Sealed Door Ward",
+            Deck = ["Paper Cut", "Paper Cut", "Cower Behind a Desk", "Strong Binder+"], Relics = ["Rubber Stamp"] });
+        RunHistory.Append(new RunSummary { StartedUtc = At(2), EndedUtc = At(3), Seed = 12, Character = "Bureaucrat",
+            Result = "Abandoned", Rooms = 3 });
+        RunHistory.Append(new RunSummary { StartedUtc = At(4), EndedUtc = At(6), Seed = 13, Character = "Bureaucrat",
+            Result = "Victory", Act = 5, Rooms = 110, Health = 22, MaxHealth = 70, Gold = 310,
+            Deck = ["Paper Cut+", "Permit A38", "Strong Binder"], Relics = ["Rubber Stamp", "Red Tape"] });
+        RunHistory.Append(new RunSummary { StartedUtc = At(7), EndedUtc = At(8), Seed = 14, Character = "Bureaucrat",
+            Result = "Defeat", Act = 2, Rooms = 30, Health = 0, MaxHealth = 70, Gold = 12, EndedAt = "Sealed Door Ward",
+            Deck = ["Paper Cut"], Relics = [] });
+        var back = RunHistory.Load();
+        var kept = back.Count == 4 && back[0].Deck.Count == 4 && back[0].Deck[3] == "Strong Binder+"
+            && back[2].Relics.Count == 2 && back[0].EndedAt == "Sealed Door Ward" && back[1].Result == "Abandoned";
+        HistoryPanel.Open(this);
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        // Open the victory, the way a player clicks a row.
+        var panel = FindChild(nameof(HistoryPanel), recursive: true, owned: false);
+        var row = panel?.FindChildren("*", nameof(Button), recursive: true, owned: false).OfType<Button>()
+            .FirstOrDefault(b => b.Text.Contains("Victory"));
+        row?.EmitSignal(BaseButton.SignalName.Pressed);
+        GD.Print($"smoke-history: {back.Count} runs read back · fields kept={kept} · panel={panel is not null} "
+            + $"· row opened={row is not null} {(kept && panel is not null && row is not null ? "PASS" : "FAIL")}");
+        if (!DisplayServer.GetName().Contains("headless"))
+        {
+            await ToSignal(GetTree().CreateTimer(0.6), SceneTreeTimer.SignalName.Timeout);
+            GetViewport().GetTexture().GetImage().SavePng("user://smoke-history.png");
+        }
+        DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(RunHistory.Path));
+        GetTree().Quit(kept ? 0 : 1);
+    }
+
     private async System.Threading.Tasks.Task SmokeArchiveShots()
     {
         // The god is DISCOVERED here and not by ReportArchive, so the shelf picture keeps its "???" and the

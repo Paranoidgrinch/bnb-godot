@@ -139,6 +139,8 @@ public partial class GameHost : Godot.Node
 
     private void EmitChanged()
     {
+        // The history first: RunLog.Observe lets go of the recording the history takes its room count from.
+        RunHistory.Observe(Play, RunLog.Current);
         RunLog.Observe(this);
         EmitSignal(SignalName.StateChanged);
     }

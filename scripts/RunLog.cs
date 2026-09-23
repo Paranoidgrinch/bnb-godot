@@ -33,6 +33,9 @@ public static class RunLog
     private static RunRecorder? _recorder;
     private static bool _flushing;
 
+    // The recording of the run in play, if one is being kept — the history reads its room count at the end.
+    public static RunRecording? Current => _recorder?.Recording;
+
     public static bool Enabled =>
         OS.GetCmdlineUserArgs().Length == 0 || OS.GetEnvironment("BNB_RUNLOG_FORCE") == "1";
 
@@ -113,6 +116,7 @@ public static class RunLog
             open.Result = "Abandoned";
             open.EndedUtc = DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
             Enqueue(open);
+            RunHistory.Abandoned(open);
         }
         if (Godot.FileAccess.FileExists(OpenPath))
             DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(OpenPath));
