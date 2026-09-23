@@ -4017,6 +4017,16 @@ public partial class SessionScreen : Control
             energy.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
             box.AddChild(energy);
             spent += 24 + 4;
+
+            // WHAT IS COMING IN, summed, against what is standing in the way. Every enemy's telegraph says its
+            // own number; the question a player actually asks is "how much of that gets through". The engine
+            // plays the enemies' turn out on a fork (Foresee), so it is the real answer with block, strength
+            // and every end-of-turn effect already in it.
+            if (IncomingLine(combat, combatant) is { } incoming)
+            {
+                box.AddChild(incoming);
+                spent += 24 + 4;
+            }
         }
         else if (combatant.IsAlive)
         {
@@ -4062,6 +4072,31 @@ public partial class SessionScreen : Control
             panel.AddChild(overlay);
         }
         return panel;
+    }
+
+    private static Label? IncomingLine(InteractiveCombat combat, CombatantState hero)
+    {
+        if (!combat.IsHeroTurn || combat.Foresee() is not { } foresight)
+            return null;
+        var loss = Math.Max(0, hero.Health.Current - foresight.HeroHealthAfter);
+        var text = foresight.HeroDies ? $"Incoming {foresight.Amount} · ☠ lethal"
+            : loss > 0 && loss < foresight.Amount ? $"Incoming {foresight.Amount} → −{loss} ❤"
+            : loss > 0 ? $"Incoming −{loss} ❤"
+            : foresight.Amount > 0 ? $"Incoming {foresight.Amount} · all blocked"
+            : "Nothing incoming";
+        var line = new Label
+        {
+            Text = text,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            MouseFilter = MouseFilterEnum.Stop,
+            TooltipText = foresight.Blows.Count == 0
+                ? "No enemy is about to hurt you this turn."
+                : "What ending the turn now would cost, after your block:\n" + string.Join("\n",
+                    foresight.Blows.Where(b => b.Amount > 0).Select(b =>
+                        $"{b.Intent?.Label ?? "a blow"}: {b.Amount}" + (b.Guard > 0 ? $" ({b.Guard} blocked)" : ""))),
+        };
+        line.AddThemeColorOverride("font_color", foresight.HeroDies || loss > 0 ? MoonvineTheme.Harm : MoonvineTheme.TextMuted);
+        return line;
     }
 
     // The run's health, on the SAME bar a fight draws. It was a line of text out here and a filled track in
