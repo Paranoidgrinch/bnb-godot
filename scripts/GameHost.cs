@@ -143,7 +143,11 @@ public partial class GameHost : Godot.Node
 
     // The engine invokes onChanged inline (during our own input call) — defer so a burst of session +
     // driver notifications from one answer becomes redraws after the state has fully settled.
-    private void OnPlayChanged() => CallDeferred(nameof(EmitChanged));
+    private void OnPlayChanged()
+    {
+        RunTally.Observe(Play);
+        CallDeferred(nameof(EmitChanged));
+    }
 
     private void EmitChanged()
     {

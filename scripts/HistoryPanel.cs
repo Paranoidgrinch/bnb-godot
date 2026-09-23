@@ -211,6 +211,8 @@ public partial class HistoryPanel : PanelContainer
             };
             if (run.MaxHealth > 0)
                 details.Add($"Ended on {run.Health}/{run.MaxHealth} health and {run.Gold} gold");
+            if (run.Enemies > 0)
+                details.Add($"Felled {run.Enemies} enemies · {run.Elites} elite fights · {run.Bosses} bosses");
             if (run.Relics.Count > 0)
                 details.Add($"Relics ({run.Relics.Count}): {string.Join(", ", run.Relics)}");
             if (run.Deck.Count > 0)

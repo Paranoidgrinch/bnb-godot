@@ -585,6 +585,12 @@ public partial class SessionScreen : Control
             + $"error={session?.Error ?? Play?.Error ?? "none"} stopped because {reason}");
         foreach (var line in byAct)
             GD.Print($"  {line}");
+        // WHAT THE RUN FELLED (RunTally) beside the rooms that should have produced it: at least one boss body per
+        // boss room and one elite body per elite room, or the ranking counts something other than what it says.
+        var tally = RunTally.Counts;
+        GD.Print($"smoke-marathon: felled enemies={tally.GetValueOrDefault(RunTally.Enemies)} "
+            + $"elites={tally.GetValueOrDefault(RunTally.Elites)} bosses={tally.GetValueOrDefault(RunTally.Bosses)} "
+            + $"· elite rooms={rooms.Count(r => r.Split(':')[1] == "elite")} boss rooms={rooms.Count(r => r.Split(':')[1] == "boss")}");
         // THE MUSIC, OVER A WHOLE GAME. The one place the cue policy is asked every question in the order a
         // player would meet them — five acts, every shop, campfire, elite and boss. The number is the point:
         // it should be a few dozen over a hundred rooms. Thousands would mean the music restarts on redraws,

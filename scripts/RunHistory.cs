@@ -34,6 +34,10 @@ public sealed class RunSummary
     public string? EndedAt { get; set; }
     public List<string> Deck { get; set; } = [];
     public List<string> Relics { get; set; } = [];
+    // Bodies felled over the run (RunTally): enemies of any kind, and of those the elites and the bosses.
+    public int Enemies { get; set; }
+    public int Elites { get; set; }
+    public int Bosses { get; set; }
 }
 
 public static class RunHistory
@@ -92,6 +96,9 @@ public static class RunHistory
             EndedAt = run.Result == RunResult.Victory || enemies is not { Count: > 0 } ? null : string.Join(" & ", enemies),
             Deck = [.. run.Deck.Select(card => CardName(play, card.DefinitionId.value) + new string('+', card.UpgradeLevel))],
             Relics = [.. run.Relics.Select(relic => relic.Definition.DisplayName)],
+            Enemies = recording?.Tallies.GetValueOrDefault(RunTally.Enemies) ?? 0,
+            Elites = recording?.Tallies.GetValueOrDefault(RunTally.Elites) ?? 0,
+            Bosses = recording?.Tallies.GetValueOrDefault(RunTally.Bosses) ?? 0,
         });
     }
 
@@ -110,6 +117,9 @@ public static class RunHistory
             Character = character,
             Result = "Abandoned",
             Rooms = recording.Rooms.Count,
+            Enemies = recording.Tallies.GetValueOrDefault(RunTally.Enemies),
+            Elites = recording.Tallies.GetValueOrDefault(RunTally.Elites),
+            Bosses = recording.Tallies.GetValueOrDefault(RunTally.Bosses),
         });
     }
 
