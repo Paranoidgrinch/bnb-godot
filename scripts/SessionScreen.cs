@@ -2267,7 +2267,10 @@ public partial class SessionScreen : Control
             return;
         // Esc closes the topmost thing first. The report window is opened FROM the settings window, so it is
         // the one on top; without this, Esc out of a half-typed report would reopen the settings behind it.
-        if (GetNodeOrNull(PileOverlayName) is { } pile)
+        if (CloseEndTurnAsk())
+        {
+        }
+        else if (GetNodeOrNull(PileOverlayName) is { } pile)
         {
             pile.QueueFree();
         }
@@ -3594,7 +3597,7 @@ public partial class SessionScreen : Control
         controls.AddThemeConstantOverride("separation", 10);
         var endTurn = new Button { Text = "End turn ▸" };
         endTurn.TooltipText = $"End your turn ({Controls.KeyName(Controls.EndTurn)})";
-        endTurn.Pressed += EndTurnNow;
+        endTurn.Pressed += RequestEndTurn;
         controls.AddChild(endTurn);
         AddPileButtons(controls, combat);
         foreach (var consumable in session.Run.Consumables.Where(c => c.CombatUse is not null))

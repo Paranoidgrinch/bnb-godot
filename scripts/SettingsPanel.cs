@@ -99,6 +99,15 @@ public partial class SettingsPanel : PanelContainer
         _vsync.Toggled += _ => Commit();
         column.AddChild(Row("Frames", _vsync));
 
+        var confirm = new CheckBox
+        {
+            Text = "Ask before ending a turn with cards still playable",
+            ButtonPressed = GameplaySettings.ConfirmEndTurn,
+            TooltipText = "End turn asks first while you still have Energy and a card you could play.",
+        };
+        confirm.Toggled += on => GameplaySettings.ConfirmEndTurn = on;
+        column.AddChild(Row("Turns", confirm));
+
         // ⚠ ONE SLIDER, SHOWN TWICE. This panel is the title screen's Settings AND the Esc menu, so there is
         // nothing here to keep in step with anything: both are this control, reading and writing the one
         // stored setting. A player who finds the music too loud finds that out four rooms into a run, which

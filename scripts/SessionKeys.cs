@@ -36,6 +36,14 @@ public partial class SessionScreen
 
     private bool Shortcut(InputEvent @event)
     {
+        // The end-turn question has the keyboard while it is up: End turn (or Confirm) says yes, and every
+        // other key is swallowed rather than played into the fight behind it. Esc is the no, in _UnhandledInput.
+        if (GetNodeOrNull(EndTurnAskName) is not null)
+        {
+            if (@event.IsActionPressed(Controls.EndTurn) || @event.IsActionPressed(Controls.Confirm))
+                ConfirmEndTurn();
+            return !@event.IsActionPressed("ui_cancel");
+        }
         if (@event.IsActionPressed(Controls.Map))
         {
             ToggleMapOverlay();
@@ -61,7 +69,7 @@ public partial class SessionScreen
 
         if (@event.IsActionPressed(Controls.EndTurn))
         {
-            EndTurnNow();
+            RequestEndTurn();
             return true;
         }
         for (var i = 0; i < Controls.CardKeys; i++)
@@ -166,7 +174,18 @@ public partial class SessionScreen
             report.Add("no-targeted-card");
 
         var round = Play.CombatDriver.Current!.Round;
+        var asks = GameplaySettings.ConfirmEndTurn && PlayableCount(Play.CombatDriver.Current!) > 0;
         Press(Controls.EndTurn);
+        report.Add($"asked={GetNodeOrNull(EndTurnAskName) is not null == asks}");
+        if (asks)
+        {
+            if (!DisplayServer.GetName().Contains("headless"))
+            {
+                await ToSignal(GetTree().CreateTimer(0.4), SceneTreeTimer.SignalName.Timeout);
+                GetViewport().GetTexture().GetImage().SavePng("user://smoke-endturn.png");
+            }
+            Press(Controls.EndTurn); // the second press is the yes
+        }
         report.Add($"turn-ended={Play.CombatDriver.Current is not { } now || now.Round > round}");
 
         // And the dialog the keys are chosen in, photographed from the Esc menu.
