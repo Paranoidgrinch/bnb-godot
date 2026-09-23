@@ -153,6 +153,8 @@ public partial class SessionScreen : Control
             _ = SmokePiles();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-keys"))
             _ = SmokeKeys();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-preview"))
+            _ = SmokePreview();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-mapkey"))
             _ = MapKeyShot();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-map"))
@@ -2565,6 +2567,7 @@ public partial class SessionScreen : Control
         if (!inCombat)
             _deckTopNode = null;
         _enemyRow = null;
+        _healthBars.Clear();
         _regionArena = null;
         _regionHand = null;
         if (!inCombat)
@@ -3584,6 +3587,7 @@ public partial class SessionScreen : Control
         bottomBox.AddChild(handRegion);
         _regionHand = handRegion;
         BuildHand(handRegion, combat, hero);
+        RestorePreview();
 
         var controls = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         controls.CustomMinimumSize = new Vector2(0, ControlBand);
@@ -3751,10 +3755,12 @@ public partial class SessionScreen : Control
             // the fan and the deal do not fight over where the card turns.
             face.PivotOffset = new Vector2(CardVisuals.CardW / 2f, CardVisuals.CardH / 2f);
             face.RotationDegrees = fromMiddle * tilt;
+            // The key over the card sits BESIDE it in the row, not on it: a face clips what it holds.
             if (i < Controls.CardKeys)
-                face.AddChild(CardKeyCap(i));
+                inner.AddChild(CardKeyCap(i, face.Position));
             inner.AddChild(face);
             LiftOnHover(face, face.Position, face.RotationDegrees);
+            PreviewOnHover(face, cardId);
             _handFaces.Add(face);
             if (!_shownHandIds.Contains(cardId.value))
                 _cardsToAnimate.Add(face); // newly drawn → fly it in
@@ -3987,7 +3993,7 @@ public partial class SessionScreen : Control
         box.AddChild(figure);
         spent += bodyHeight + 4;
 
-        box.AddChild(HealthBar(combatant, width - 30));
+        box.AddChild(RegisterHealthBar(combatant, HealthBar(combatant, width - 30)));
         spent += HealthBarHeight + 4;
 
         // The phase goes directly above what the body is about to do, because that is the line it corrects.
@@ -4043,6 +4049,12 @@ public partial class SessionScreen : Control
             overlay.SetAnchorsPreset(LayoutPreset.FullRect);
             var targetId = combatant.Id;
             overlay.Pressed += () => PlayArmedCardAt(targetId);
+            overlay.MouseEntered += () =>
+            {
+                if (_armedCard is { } armed)
+                    ShowPreview(combat, armed, targetId);
+            };
+            overlay.MouseExited += RestorePreview;
             panel.AddChild(overlay);
         }
         return panel;

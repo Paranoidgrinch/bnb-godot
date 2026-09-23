@@ -115,14 +115,14 @@ public partial class SessionScreen
     }
 
     // The small key name over each card in hand, so the shortcut is learnt by looking rather than by the menu.
-    private static Control CardKeyCap(int index)
+    private static Control CardKeyCap(int index, Vector2 cardAt)
     {
         var cap = new Label
         {
             Text = Controls.KeyName(Controls.Card(index)),
             HorizontalAlignment = HorizontalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore,
-            Position = new Vector2(0, -18),
+            Position = cardAt + new Vector2(0, -17),
             Size = new Vector2(CardVisuals.CardW, 16),
         };
         cap.AddThemeFontSizeOverride("font_size", 11);
