@@ -221,6 +221,17 @@ public partial class Boot : Control
             SmokeSeed(host);
             return;
         }
+        // Settings ▸ Gameplay, reached the way a player reaches it.
+        if (userArgs.Contains("--smoke-gameplay") && !DisplayServer.GetName().Contains("headless"))
+        {
+            OpenSettings();
+            var page = FindChildren("*", nameof(Button), recursive: true, owned: false).OfType<Button>()
+                .FirstOrDefault(b => b.Text.Contains("Gameplay"));
+            page?.EmitSignal(BaseButton.SignalName.Pressed);
+            GD.Print($"smoke-gameplay: page button={(page is not null)} "
+                + $"open={Descendants(this).OfType<GameplayPanel>().Any()}");
+            _ = CaptureThenQuit("user://smoke-gameplay.png");
+        }
         // The settings dialog, opened the way a player opens it, with a picture of what they get.
         if (userArgs.Contains("--smoke-settings") && !DisplayServer.GetName().Contains("headless"))
         {
@@ -1076,6 +1087,16 @@ public partial class Boot : Control
         }
         DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(RunHistory.Path));
         GetTree().Quit(kept ? 0 : 1);
+    }
+
+    private static IEnumerable<Godot.Node> Descendants(Godot.Node node)
+    {
+        foreach (var child in node.GetChildren())
+        {
+            yield return child;
+            foreach (var below in Descendants(child))
+                yield return below;
+        }
     }
 
     private void SmokeSeed(GameHost host)

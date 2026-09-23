@@ -2306,6 +2306,7 @@ public partial class SessionScreen : Control
         else if (GetNodeOrNull("SettingsOverlay") is { } open)
         {
             open.QueueFree();
+            Rebuild(); // a Gameplay switch changed underneath shows at once, not after the next card
         }
         else if (_armedCard is not null)
         {
@@ -2320,7 +2321,11 @@ public partial class SessionScreen : Control
             // dialog, and a screenshot taken then is a picture of the menu. See BugReport.Remember.
             BugReport.Remember(GetViewport());
             var overlay = SettingsPanel.Overlay(
-                () => GetNodeOrNull("SettingsOverlay")?.QueueFree(),
+                () =>
+                {
+                    GetNodeOrNull("SettingsOverlay")?.QueueFree();
+                    Rebuild();
+                },
                 OpenBugReport,
                 SaveAndQuitToTitle,
                 () => OpenArchive());
@@ -3828,7 +3833,7 @@ public partial class SessionScreen : Control
             face.PivotOffset = new Vector2(CardVisuals.CardW / 2f, CardVisuals.CardH / 2f);
             face.RotationDegrees = fromMiddle * tilt;
             // The key over the card sits BESIDE it in the row, not on it: a face clips what it holds.
-            if (i < Controls.CardKeys)
+            if (i < Controls.CardKeys && GameplaySettings.KeyHints)
                 inner.AddChild(CardKeyCap(i, face.Position));
             inner.AddChild(face);
             LiftOnHover(face, face.Position, face.RotationDegrees);
@@ -4144,7 +4149,7 @@ public partial class SessionScreen : Control
 
     private static Label? IncomingLine(InteractiveCombat combat, CombatantState hero)
     {
-        if (!combat.IsHeroTurn || combat.Foresee() is not { } foresight)
+        if (!GameplaySettings.DamageCalculator || !combat.IsHeroTurn || combat.Foresee() is not { } foresight)
             return null;
         var loss = Math.Max(0, hero.Health.Current - foresight.HeroHealthAfter);
         var text = foresight.HeroDies ? $"Incoming {foresight.Amount} · ☠ lethal"

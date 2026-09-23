@@ -51,7 +51,7 @@ public partial class SessionScreen
     private void ShowPreview(InteractiveCombat combat, CardInstanceId card, CombatantId? target)
     {
         ClearPreview();
-        if (!combat.IsHeroTurn || !combat.CanPlay(card)
+        if (!GameplaySettings.DamageCalculator || !combat.IsHeroTurn || !combat.CanPlay(card)
             || combat.Hand.FirstOrDefault(c => c.Id.value == card.value) is not { } inHand
             || !CanPay(combat.State.GetCombatant(combat.HeroId), inHand.DefinitionId.value))
             return;

@@ -99,15 +99,6 @@ public partial class SettingsPanel : PanelContainer
         _vsync.Toggled += _ => Commit();
         column.AddChild(Row("Frames", _vsync));
 
-        var confirm = new CheckBox
-        {
-            Text = "Ask before ending a turn with cards still playable",
-            ButtonPressed = GameplaySettings.ConfirmEndTurn,
-            TooltipText = "End turn asks first while you still have Energy and a card you could play.",
-        };
-        confirm.Toggled += on => GameplaySettings.ConfirmEndTurn = on;
-        column.AddChild(Row("Turns", confirm));
-
         // ⚠ ONE SLIDER, SHOWN TWICE. This panel is the title screen's Settings AND the Esc menu, so there is
         // nothing here to keep in step with anything: both are this control, reading and writing the one
         // stored setting. A player who finds the music too loud finds that out four rooms into a run, which
@@ -152,7 +143,22 @@ public partial class SettingsPanel : PanelContainer
             TooltipText = "Every shortcut, and the key each one is on.",
         };
         controls.Pressed += ShowControls;
-        column.AddChild(controls);
+
+        // THE HELPS, switchable, on a page of their own beside the keys — the same shape and the same way back.
+        var gameplay = new Button
+        {
+            Text = "🎲  Gameplay",
+            CustomMinimumSize = new Vector2(0, 40),
+            TooltipText = "The end-turn question, the damage calculator and the key names over your cards.",
+        };
+        gameplay.Pressed += () => ShowPage(new GameplayPanel(Restore));
+        var pages = new HBoxContainer();
+        pages.AddThemeConstantOverride("separation", 10);
+        controls.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        gameplay.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        pages.AddChild(controls);
+        pages.AddChild(gameplay);
+        column.AddChild(pages);
 
         // THE BUG BUTTON LIVES WHERE THE PLAYER ALREADY IS. This panel *is* the Esc menu, and Esc is what
         // somebody presses the moment the game does something wrong — so the report is one keystroke and one
@@ -213,16 +219,23 @@ public partial class SettingsPanel : PanelContainer
         RefreshEnabled();
     }
 
-    private void ShowControls()
+    private void ShowControls() => ShowPage(new ControlsPanel(Restore));
+
+    // A page takes this panel's place in the same dialog; its Back frees it and shows this panel again.
+    private Control? _page;
+
+    private void ShowPage(Control page)
     {
-        ControlsPanel? keys = null;
-        keys = new ControlsPanel(() =>
-        {
-            keys!.QueueFree();
-            Visible = true;
-        });
+        _page = page;
         Visible = false;
-        GetParent().AddChild(keys);
+        GetParent().AddChild(page);
+    }
+
+    private void Restore()
+    {
+        _page?.QueueFree();
+        _page = null;
+        Visible = true;
     }
 
     // "Off" and not "0 %": zero is the one value on this slider that is a different KIND of answer.
