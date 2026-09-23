@@ -19,7 +19,11 @@ namespace BnbGodot;
 // ⚠ AND EACH END IS COUNTED ONCE, BY WHERE IT HAPPENED. The run's history is not a ledger: the session rebases on
 // a checkpoint after every room and replays the answers since, so the same fight's end turns up as a new event
 // object on every answer, and the history forgets it at the next room. It is keyed act/room/nth-end-in-that-room.
-// ⚠ A fight resumed half-won does not count again the bodies that were already down when it was saved.
+// ⚠ A fight is counted only when it ENDS, so one saved half-fought was not counted before the save: its end,
+// after the resume, counts every body in it, those felled before the save included — exactly once.
+//
+// And what the hero PLAYED (CombatResolvedRunEvent.CardsPlayed) is added up the same way, per card — by its base
+// id, an improved copy counting for the card it improves — into RunRecording.CardPlays.
 public static class RunTally
 {
     public const string Enemies = "enemies";
@@ -28,14 +32,16 @@ public static class RunTally
 
     private static object? _play;
     private static readonly HashSet<string> Counted = new(StringComparer.Ordinal);
-    private static List<string>? _alreadyDown;
-    private static bool _looked;
+    private static readonly Dictionary<string, int> UnrecordedPlays = new(StringComparer.Ordinal);
     // A run nobody records (a probe, a simulated run) still counts — here, so the end-of-run report has numbers.
     private static readonly Dictionary<string, int> Unrecorded = new(StringComparer.Ordinal);
 
     // WHO THE PLAYER WAS LAST FIGHTING, by name — what the certificate and the history enter as the cause of death.
     // Kept while a fight is on, because a lost fight is gone from the driver by the time the run says it is over.
     public static IReadOnlyList<string> LastFoes { get; private set; } = [];
+
+    // How often each card has been played this run, by base id.
+    public static IReadOnlyDictionary<string, int> Plays => RunLog.Current?.CardPlays ?? UnrecordedPlays;
 
     // The counts of the run in play: the recording's own when there is one.
     public static IReadOnlyDictionary<string, int> Counts => RunLog.Current?.Tallies ?? Unrecorded;
@@ -46,12 +52,13 @@ public static class RunTally
         if (!ReferenceEquals(play, _play))
         {
             _play = play;
-            _alreadyDown = null;
-            _looked = false;
             LastFoes = [];
             Counted.Clear();
             if (RunLog.Current is null)
+            {
                 Unrecorded.Clear();
+                UnrecordedPlays.Clear();
+            }
         }
         if (play?.Session?.Run is not { } run)
             return;
@@ -62,18 +69,6 @@ public static class RunTally
                 .Select(c => play.EnemyNames.GetValueOrDefault(c.Id.value) ?? c.Id.value)
                 .Distinct()
                 .ToList();
-        // The first look at a fresh playback: a fight already under way was saved part-fought.
-        if (!_looked)
-        {
-            _looked = true;
-            if (play.CombatDriver?.Current is { } fight)
-                _alreadyDown = fight.State.Combatants
-                    .Where(c => c.Id != fight.HeroId && c.TeamId == RogueDeck.Core.Combat.StandardCombatIds.EnemyTeam
-                        && !c.IsAlive)
-                    .Select(c => c.DefinitionId.value)
-                    .ToList();
-        }
-
         var nth = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var fought in run.EventHistory.OfType<CombatResolvedRunEvent>())
         {
@@ -81,15 +76,11 @@ public static class RunTally
             var key = $"{room}#{nth[room] = nth.GetValueOrDefault(room) + 1}";
             if (!Counted.Add(key))
                 continue;
-            var fallen = fought.Fallen?.ToList() ?? [];
-            if (_alreadyDown is { } before)
-            {
-                foreach (var id in before)
-                    fallen.Remove(id);
-                _alreadyDown = null;
-            }
-            foreach (var _ in fallen)
+            foreach (var _ in fought.Fallen ?? [])
                 Add(tallies, Enemies);
+            var plays = RunLog.Current?.CardPlays ?? UnrecordedPlays;
+            foreach (var (card, times) in fought.CardsPlayed ?? new Dictionary<string, int>())
+                plays[card.TrimEnd('+')] = plays.GetValueOrDefault(card.TrimEnd('+')) + times;
             if (fought.Result == RogueDeck.Core.Combat.CombatResult.Victory && fought.Tags is { } tags)
             {
                 if (tags.Contains(MapNodeTags.Boss))

@@ -593,6 +593,8 @@ public partial class SessionScreen : Control
         GD.Print($"smoke-marathon: felled enemies={tally.GetValueOrDefault(RunTally.Enemies)} "
             + $"elites={tally.GetValueOrDefault(RunTally.Elites)} bosses={tally.GetValueOrDefault(RunTally.Bosses)} "
             + $"· elite rooms={rooms.Count(r => r.Split(':')[1] == "elite")} boss rooms={rooms.Count(r => r.Split(':')[1] == "boss")}");
+        GD.Print($"smoke-marathon: played {RunTally.Plays.Values.Sum()} cards of {RunTally.Plays.Count} kinds "
+            + "(card picks are written by the recorder, which a probe does not attach)");
         // THE MUSIC, OVER A WHOLE GAME. The one place the cue policy is asked every question in the order a
         // player would meet them — five acts, every shop, campfire, elite and boss. The number is the point:
         // it should be a few dozen over a hundred rooms. Thousands would mean the music restarts on redraws,
