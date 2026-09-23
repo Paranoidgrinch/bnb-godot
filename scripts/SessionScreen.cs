@@ -155,6 +155,8 @@ public partial class SessionScreen : Control
             _ = SmokeKeys();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-preview"))
             _ = SmokePreview();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-report"))
+            _ = SmokeReport();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-mapkey"))
             _ = MapKeyShot();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-map"))
@@ -3388,14 +3390,6 @@ public partial class SessionScreen : Control
             row.AddChild(label);
         }
         return row;
-    }
-
-    private void RenderComplete(InteractiveRunSession session)
-    {
-        var victory = session.Run.Result == RunResult.Victory;
-        Title(victory ? "Victory!" : $"Run over — {session.Run.Result}",
-            victory ? MoonvineTheme.Accent : MoonvineTheme.Harm);
-        AddButton("Back to title", () => GetTree().ChangeSceneToFile("res://scenes/Boot.tscn"));
     }
 
     // ── combat (graphical: hero left, enemies right, hand bottom-center) ──────────

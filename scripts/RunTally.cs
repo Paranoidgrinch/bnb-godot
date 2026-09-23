@@ -33,6 +33,10 @@ public static class RunTally
     // A run nobody records (a probe, a simulated run) still counts — here, so the end-of-run report has numbers.
     private static readonly Dictionary<string, int> Unrecorded = new(StringComparer.Ordinal);
 
+    // WHO THE PLAYER WAS LAST FIGHTING, by name — what the certificate and the history enter as the cause of death.
+    // Kept while a fight is on, because a lost fight is gone from the driver by the time the run says it is over.
+    public static IReadOnlyList<string> LastFoes { get; private set; } = [];
+
     // The counts of the run in play: the recording's own when there is one.
     public static IReadOnlyDictionary<string, int> Counts => RunLog.Current?.Tallies ?? Unrecorded;
 
@@ -44,12 +48,20 @@ public static class RunTally
             _play = play;
             _alreadyDown = null;
             _looked = false;
+            LastFoes = [];
             Counted.Clear();
             if (RunLog.Current is null)
                 Unrecorded.Clear();
         }
         if (play?.Session?.Run is not { } run)
             return;
+        if (play.CombatDriver?.Current is { IsOver: false } live)
+            LastFoes = live.State.Combatants
+                .Where(c => c.Id != live.HeroId && c.TeamId == RogueDeck.Core.Combat.StandardCombatIds.EnemyTeam
+                    && c.IsAlive)
+                .Select(c => play.EnemyNames.GetValueOrDefault(c.Id.value) ?? c.Id.value)
+                .Distinct()
+                .ToList();
         // The first look at a fresh playback: a fight already under way was saved part-fought.
         if (!_looked)
         {

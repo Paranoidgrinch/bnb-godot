@@ -75,12 +75,7 @@ public static class RunHistory
             return;
         _recorded = play;
         var run = session.Run;
-        var fight = play.CombatDriver?.Current;
-        var enemies = fight?.State.Combatants
-            .Where(c => c.Id != fight.HeroId && c.TeamId == RogueDeck.Core.Combat.StandardCombatIds.EnemyTeam)
-            .Select(c => play.EnemyNames.GetValueOrDefault(c.Id.value) ?? c.Id.value)
-            .Distinct()
-            .ToList();
+        var enemies = RunTally.LastFoes;
         Append(new RunSummary
         {
             StartedUtc = recording?.StartedUtc,

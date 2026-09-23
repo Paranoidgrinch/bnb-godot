@@ -159,7 +159,7 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover" or "--smoke-mapkey" or "--smoke-piles" or "--smoke-keys" or "--smoke-preview"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover" or "--smoke-mapkey" or "--smoke-piles" or "--smoke-keys" or "--smoke-preview" or "--smoke-report"))
         {
             host.StartNewRun(seed: 7,
                 // ⚠ A PROBE THAT HAS TO WALK SOMEWHERE MUST SURVIVE THE WALK. The greedy walker plays badly on
@@ -173,7 +173,8 @@ public partial class Boot : Control
                     or "--smoke-screens"
                     or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade"
                     or "--smoke-ambush" or "--smoke-elite" or "--smoke-reward"
-                    or "--smoke-archive-run") ? SessionScreen.ProbeBody : null,
+                    or "--smoke-archive-run") ? SessionScreen.ProbeBody
+                    : userArgs.Contains("--smoke-report") ? 3 : null,
                 // Every session probe walks the DESIGN, which since the map rework is v0.0.1 — and `--legacy`
                 // walks the same probe over the old maps instead. A probe that cannot name its generator is a
                 // probe that cannot say whether what it found is about the map or about the game.
