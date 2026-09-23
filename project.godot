@@ -11,6 +11,8 @@ config/name="Bureaucrats & Broomsticks"
 ; says which build a player was holding — raise it when a build goes to anyone who is not sitting here.
 config/version="0.1.0"
 run/main_scene="res://scenes/Boot.tscn"
+config/icon="res://assets/brand/icon.png"
+config/windows_native_icon="res://assets/brand/icon.ico"
 config/features=PackedStringArray("4.7", "C#")
 
 ; ⚠ NO BOOT SPLASH. Godot's default draws ITS logo on a coloured ground, scaled to fill the window, and that
