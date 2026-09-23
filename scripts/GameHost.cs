@@ -34,6 +34,7 @@ public partial class GameHost : Godot.Node
     public override void _Ready()
     {
         Instance = this;
+        Controls.Install();
         // The window the player last chose, before anything is drawn in it. An interface scale applies even
         // under a probe (it is a canvas property); the window itself is left alone there — see DisplaySettings.
         DisplaySettings.Apply(GetTree(),

@@ -134,6 +134,17 @@ public partial class SettingsPanel : PanelContainer
         music.AddChild(_musicValue);
         column.AddChild(Row("Music volume", music));
 
+        // THE KEYS take this panel's place in the same dialog rather than opening a second window on top of it:
+        // Esc then closes one thing, and "Back" is the only way between the two.
+        var controls = new Button
+        {
+            Text = "🎮  Controls",
+            CustomMinimumSize = new Vector2(0, 40),
+            TooltipText = "Every shortcut, and the key each one is on.",
+        };
+        controls.Pressed += ShowControls;
+        column.AddChild(controls);
+
         // THE BUG BUTTON LIVES WHERE THE PLAYER ALREADY IS. This panel *is* the Esc menu, and Esc is what
         // somebody presses the moment the game does something wrong — so the report is one keystroke and one
         // click away from the wrongness, with the screen already captured (BugReport.Remember) from before this
@@ -191,6 +202,18 @@ public partial class SettingsPanel : PanelContainer
         column.AddChild(close);
 
         RefreshEnabled();
+    }
+
+    private void ShowControls()
+    {
+        ControlsPanel? keys = null;
+        keys = new ControlsPanel(() =>
+        {
+            keys!.QueueFree();
+            Visible = true;
+        });
+        Visible = false;
+        GetParent().AddChild(keys);
     }
 
     // "Off" and not "0 %": zero is the one value on this slider that is a different KIND of answer.

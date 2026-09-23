@@ -151,6 +151,8 @@ public partial class SessionScreen : Control
             _ = SmokeDraw();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-piles"))
             _ = SmokePiles();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-keys"))
+            _ = SmokeKeys();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-mapkey"))
             _ = MapKeyShot();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-map"))
@@ -2259,11 +2261,6 @@ public partial class SessionScreen : Control
     // underneath it (an enemy acting while it is open) redraws the game behind the dialog and leaves it alone.
     public override void _UnhandledInput(InputEvent @event)
     {
-        if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.M })
-        {
-            ToggleMapOverlay();
-            return;
-        }
         if (@event is null || !@event.IsActionPressed("ui_cancel"))
             return;
         // Esc closes the topmost thing first. The report window is opened FROM the settings window, so it is
@@ -2287,6 +2284,12 @@ public partial class SessionScreen : Control
         else if (GetNodeOrNull("SettingsOverlay") is { } open)
         {
             open.QueueFree();
+        }
+        else if (_armedCard is not null)
+        {
+            // A picked card is put back before anything opens: Esc is the first key a player reaches for when
+            // they picked the wrong card, and a menu in answer to that is a second mistake on top of the first.
+            PutArmedCardBack();
         }
         else
         {
@@ -2327,6 +2330,7 @@ public partial class SessionScreen : Control
             || GetNodeOrNull(ArchivePanel.OverlayName) is not null)
             return;
 
+        GetNodeOrNull(PileOverlayName)?.QueueFree();
         // Its own canvas layer, above everything the fight draws — part of the table sits on layers of its own,
         // and a map drawn beneath them had the fight showing through it.
         var layer = new CanvasLayer { Name = MapOverlayName, Layer = 50 };
@@ -3555,7 +3559,11 @@ public partial class SessionScreen : Control
 
         var hint = new Label
         {
-            Text = _armedCard is not null ? "Click an enemy to play it — or the card again to cancel." : " ",
+            Text = _armedCard is not null
+                ? $"Click an enemy to play it — or aim with {Controls.KeyName(Controls.TargetPrevious)} "
+                    + $"{Controls.KeyName(Controls.TargetNext)} and press {Controls.KeyName(Controls.Confirm)}. "
+                    + "Esc or right-click puts it back."
+                : " ",
             HorizontalAlignment = HorizontalAlignment.Center,
         };
         hint.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
@@ -3581,13 +3589,8 @@ public partial class SessionScreen : Control
         controls.CustomMinimumSize = new Vector2(0, ControlBand);
         controls.AddThemeConstantOverride("separation", 10);
         var endTurn = new Button { Text = "End turn ▸" };
-        endTurn.Pressed += () =>
-        {
-            _armedCard = null;
-            play.CombatDriver.EndTurn();
-            SurfaceNewProblems();
-            GameHost.Instance.AutoSave();
-        };
+        endTurn.TooltipText = $"End your turn ({Controls.KeyName(Controls.EndTurn)})";
+        endTurn.Pressed += EndTurnNow;
         controls.AddChild(endTurn);
         AddPileButtons(controls, combat);
         foreach (var consumable in session.Run.Consumables.Where(c => c.CombatUse is not null))
@@ -3598,6 +3601,16 @@ public partial class SessionScreen : Control
             controls.AddChild(use);
         }
         bottomBox.AddChild(controls);
+    }
+
+    private void EndTurnNow()
+    {
+        if (Play?.CombatDriver is not { } driver)
+            return;
+        _armedCard = null;
+        driver.EndTurn();
+        SurfaceNewProblems();
+        GameHost.Instance.AutoSave();
     }
 
     // The draw pile in the bottom-left corner: a few offset card backs (the top one animated), plus a count.
@@ -3738,6 +3751,8 @@ public partial class SessionScreen : Control
             // the fan and the deal do not fight over where the card turns.
             face.PivotOffset = new Vector2(CardVisuals.CardW / 2f, CardVisuals.CardH / 2f);
             face.RotationDegrees = fromMiddle * tilt;
+            if (i < Controls.CardKeys)
+                face.AddChild(CardKeyCap(i));
             inner.AddChild(face);
             LiftOnHover(face, face.Position, face.RotationDegrees);
             _handFaces.Add(face);
@@ -4015,9 +4030,11 @@ public partial class SessionScreen : Control
         // A framed panel around the column; enemies highlight + become clickable when a card is armed.
         var panel = new PanelContainer();
         var targetable = !isHero && combatant.IsAlive && _armedCard is not null;
+        // The body the keys are aiming at wears the signal colour; the others the ordinary "can be targeted".
+        var aimed = targetable && AimedEnemy(combat)?.value == combatant.Id.value;
         panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
             isHero ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
-            targetable ? MoonvineTheme.AccentLight : null));
+            aimed ? MoonvineTheme.Signal : targetable ? MoonvineTheme.AccentLight : null));
         panel.AddChild(box);
 
         if (targetable)
