@@ -101,6 +101,12 @@ public partial class Boot : Control
         // question about the DISK, and it is asked THROUGH THE FILE — an in-memory round trip proves nothing
         // about a save (see the ValueTuple that ate a combat snapshot). The picture comes last, and it is
         // taken with the gods still unmet on purpose: "???" is the state the player starts in.
+        if (userArgs.Contains("--smoke-ranking"))
+        {
+            BuildTitle(host);
+            _ = SmokeRanking();
+            return;
+        }
         if (userArgs.Contains("--smoke-history"))
         {
             BuildTitle(host);
@@ -778,6 +784,16 @@ public partial class Boot : Control
             stats.OffsetTop = -196;
             stats.OffsetBottom = -166;
         }
+        // THE CLOSED-ALPHA RANKING, in the top-right corner beside the title — beside, not in the way: the menu is
+        // what a player came for, the board is what they read on the way.
+        GetNodeOrNull("AlphaRanking")?.QueueFree();
+        var ranking = new AlphaRanking { Name = "AlphaRanking" };
+        ranking.SetAnchorsPreset(LayoutPreset.TopRight);
+        ranking.OffsetLeft = -262 - 16;
+        ranking.OffsetRight = -16;
+        ranking.OffsetTop = 16;
+        AddChild(ranking);
+
         var root = new VBoxContainer { Name = "TitleBody" };
         root.SetAnchorsPreset(LayoutPreset.Center);
         root.CustomMinimumSize = new Vector2(960, 0);
@@ -1098,6 +1114,20 @@ public partial class Boot : Control
             foreach (var below in Descendants(child))
                 yield return below;
         }
+    }
+
+    // `--smoke-ranking`: the title screen's board, given ten seconds to fetch from bnb-runs.
+    private async System.Threading.Tasks.Task SmokeRanking()
+    {
+        var board = GetNodeOrNull<AlphaRanking>("AlphaRanking");
+        for (var i = 0; i < 40 && board is not null && !board.Status.StartsWith("updated", StringComparison.Ordinal); i++)
+            await ToSignal(GetTree().CreateTimer(0.25), SceneTreeTimer.SignalName.Timeout);
+        var ok = board is not null && board.Status.StartsWith("updated", StringComparison.Ordinal) && board.Players > 0;
+        GD.Print($"smoke-ranking: status=\"{board?.Status}\" players={board?.Players} {(ok ? "PASS" : "FAIL")}");
+        if (DisplayServer.GetName().Contains("headless"))
+            GetTree().Quit(ok ? 0 : 1);
+        else
+            _ = CaptureThenQuit("user://smoke-ranking.png");
     }
 
     private void SmokeSeed(GameHost host)
