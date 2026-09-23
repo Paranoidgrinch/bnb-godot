@@ -1763,7 +1763,8 @@ public partial class SessionScreen : Control
             else break;
         }
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-        _UnhandledInput(new InputEventKey { Keycode = Key.M, Pressed = true });
+        // Through _Input, where the shortcuts are read, and on whatever key the map is bound to.
+        _Input(new InputEventKey { Keycode = Controls.KeyOf(Controls.Map), Pressed = true });
         GD.Print($"smoke-mapkey: overlay open={GetNodeOrNull(MapOverlayName) is not null}"
             + $" · in a fight={play?.CombatDriver?.Current is not null}");
         await CaptureThenQuit("smoke-mapkey.png");
