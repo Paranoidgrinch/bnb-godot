@@ -36,6 +36,14 @@ public static class RunLog
     // The recording of the run in play, if one is being kept — the history reads its room count at the end.
     public static RunRecording? Current => _recorder?.Recording;
 
+    // THE RUN JUST FINISHED, kept until the player leaves its report: the report reads its counts, and the
+    // player's word on it (Feedback) is written into it before it is sent. Its upload waits for Release.
+    private static RunRecording? _finished;
+    private static string? _finishedPath;
+
+    // The run in play, or the one just finished — what the end screen and the tallies read.
+    public static RunRecording? Latest => _recorder?.Recording ?? _finished;
+
     public static bool Enabled =>
         OS.GetCmdlineUserArgs().Length == 0 || OS.GetEnvironment("BNB_RUNLOG_FORCE") == "1";
 
@@ -45,6 +53,8 @@ public static class RunLog
     {
         if (!Enabled)
             return;
+        _finished = null;
+        _finishedPath = null;
         Abandon();
         var recording = RunRecorder.Begin(
             seed, character, mapGenerator, meta,
@@ -100,8 +110,29 @@ public static class RunLog
         recorder.Detach();
         _recorder = null;
         recorder.Recording.EndedUtc = DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
-        Enqueue(recorder.Recording);
+        _finished = recorder.Recording;
+        _finishedPath = Enqueue(recorder.Recording);
         DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(OpenPath));
+        // ⚠ NOT SENT YET: the player is looking at the report, and may still say something about the run. It
+        // goes when they leave the report (Release) — or, if they close the game on it, at the next start,
+        // which flushes the queue anyway.
+    }
+
+    // The player's word on the run just finished, written into its queued file before that file is sent.
+    public static void Feedback(int rating, string? comment)
+    {
+        if (_finished is null || _finishedPath is null || !Godot.FileAccess.FileExists(_finishedPath))
+            return;
+        _finished.Feedback = new RunRecordingFeedback(Math.Clamp(rating, 1, 5),
+            string.IsNullOrWhiteSpace(comment) ? null : comment.Trim()[..Math.Min(comment.Trim().Length, 500)]);
+        Write(_finishedPath, _finished);
+    }
+
+    // The player has left the report: send what is queued.
+    public static void Release(Godot.Node host)
+    {
+        _finished = null;
+        _finishedPath = null;
         _ = Flush(host);
     }
 
@@ -122,11 +153,13 @@ public static class RunLog
             DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(OpenPath));
     }
 
-    private static void Enqueue(RunRecording recording)
+    private static string Enqueue(RunRecording recording)
     {
         DirAccess.MakeDirRecursiveAbsolute(QueueFolder);
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
-        Write($"{QueueFolder}/{stamp}-{recording.Start.Seed}.bnbrun.json", recording);
+        var path = $"{QueueFolder}/{stamp}-{recording.Start.Seed}.bnbrun.json";
+        Write(path, recording);
+        return path;
     }
 
     // Post every queued recording, oldest first. Stops at the first that does not land (no network, no webhook,

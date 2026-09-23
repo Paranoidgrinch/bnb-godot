@@ -41,10 +41,10 @@ public static class RunTally
     public static IReadOnlyList<string> LastFoes { get; private set; } = [];
 
     // How often each card has been played this run, by base id.
-    public static IReadOnlyDictionary<string, int> Plays => RunLog.Current?.CardPlays ?? UnrecordedPlays;
+    public static IReadOnlyDictionary<string, int> Plays => RunLog.Latest?.CardPlays ?? UnrecordedPlays;
 
     // The counts of the run in play: the recording's own when there is one.
-    public static IReadOnlyDictionary<string, int> Counts => RunLog.Current?.Tallies ?? Unrecorded;
+    public static IReadOnlyDictionary<string, int> Counts => RunLog.Latest?.Tallies ?? Unrecorded;
 
     public static void Observe(RunPlayback? play)
     {

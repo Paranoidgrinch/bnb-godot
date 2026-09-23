@@ -17,7 +17,7 @@ public partial class SessionScreen
         var victory = run.Result == RunResult.Victory;
         var tally = RunTally.Counts;
         var cause = victory ? null : CauseOfDeath();
-        var rooms = RunLog.Current?.Rooms.Count;
+        var rooms = RunLog.Latest?.Rooms.Count;
 
         var sheet = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ShrinkCenter, CustomMinimumSize = new Vector2(760, 0) };
         sheet.AddThemeStyleboxOverride("panel", MoonvineTheme.WoodPanel(rim: true));
@@ -121,10 +121,17 @@ public partial class SessionScreen
         centre.AddChild(sheet);
         _main.AddChild(centre);
 
+        _main.AddChild(ComplaintForm(victory));
+
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         buttons.AddThemeConstantOverride("separation", 12);
         var back = new Button { Text = "Back to title", CustomMinimumSize = new Vector2(180, 44) };
-        back.Pressed += () => GetTree().ChangeSceneToFile("res://scenes/Boot.tscn");
+        back.Pressed += () =>
+        {
+            // Leaving the report is what sends the run home — with the player's word in it, if they gave one.
+            RunLog.Release(GameHost.Instance);
+            GetTree().ChangeSceneToFile("res://scenes/Boot.tscn");
+        };
         buttons.AddChild(back);
         var copy = new Button { Text = $"Copy seed {run.RandomSeed}", CustomMinimumSize = new Vector2(180, 44) };
         copy.Pressed += () =>
@@ -134,6 +141,107 @@ public partial class SessionScreen
         };
         buttons.AddChild(copy);
         _main.AddChild(buttons);
+    }
+
+    // ── FORM B-7: COMPLAINTS AND COMMENDATIONS ───────────────────────────────────
+    // One question, the same after a win and a death so the answers can be compared: how fair did it feel? A
+    // rating of 1–5 and an optional line, written into the run's recording before it is sent (RunLog.Feedback),
+    // so every rating in bnb-runs sits beside the run it is about. Filing is optional and filed once.
+    private int _rating;
+    private string _remark = "";
+    private bool _filed;
+
+    private Control ComplaintForm(bool victory)
+    {
+        var panel = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ShrinkCenter, CustomMinimumSize = new Vector2(760, 0) };
+        panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.BgPanel, MoonvineTheme.Hairline));
+        var margin = new MarginContainer();
+        foreach (var side in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })
+            margin.AddThemeConstantOverride(side, 14);
+        panel.AddChild(margin);
+        var column = new VBoxContainer();
+        column.AddThemeConstantOverride("separation", 8);
+        margin.AddChild(column);
+
+        var head = new Label { Text = "FORM B-7 · COMPLAINTS AND COMMENDATIONS" };
+        head.AddThemeFontSizeOverride("font_size", 12);
+        head.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+        column.AddChild(head);
+
+        if (_filed)
+        {
+            var thanks = new Label
+            {
+                Text = "Filed. Your submission has been received and will be read, eventually, by someone.",
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            };
+            thanks.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
+            column.AddChild(thanks);
+            return Centred(panel);
+        }
+
+        var question = new Label { Text = victory ? "How fair did this run feel?" : "Was this death fair?" };
+        column.AddChild(question);
+        var scale = new HBoxContainer();
+        scale.AddThemeConstantOverride("separation", 6);
+        string[] words = ["1 · rigged", "2", "3", "4", "5 · entirely fair"];
+        var group = new ButtonGroup();
+        for (var i = 0; i < words.Length; i++)
+        {
+            var value = i + 1;
+            var button = new Button
+            {
+                Text = words[i],
+                ToggleMode = true,
+                ButtonGroup = group,
+                ButtonPressed = _rating == value,
+                CustomMinimumSize = new Vector2(i is 0 or 4 ? 150 : 56, 36),
+                Name = $"Rating{value}",
+            };
+            button.Toggled += on =>
+            {
+                if (on)
+                    _rating = value;
+            };
+            scale.AddChild(button);
+        }
+        column.AddChild(scale);
+
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 8);
+        var comment = new LineEdit
+        {
+            PlaceholderText = "Remarks (optional) — what made it so?",
+            MaxLength = 500,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            Name = "Remarks",
+            // ⚠ The screen can be redrawn under the player's typing; what they wrote is kept here, not in the box.
+            Text = _remark,
+        };
+        comment.TextChanged += text => _remark = text;
+        row.AddChild(comment);
+        var file = new Button { Text = "File it", CustomMinimumSize = new Vector2(110, 0), Name = "FileIt" };
+        file.Pressed += () =>
+        {
+            if (_rating == 0)
+            {
+                Toast("Please tick a box. The form cannot be filed without one.");
+                return;
+            }
+            RunLog.Feedback(_rating, _remark);
+            _filed = true;
+            Rebuild();
+        };
+        row.AddChild(file);
+        column.AddChild(row);
+        return Centred(panel);
+    }
+
+    private static Control Centred(Control control)
+    {
+        var centre = new CenterContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        centre.AddChild(control);
+        return centre;
     }
 
     // What ended the run: the enemies still standing in the last fight, by name (RunTally.LastFoes).
@@ -151,8 +259,29 @@ public partial class SessionScreen
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         Rebuild();
         var over = Session is { IsComplete: true };
+
+        // Fill Form B-7 the way a player does: tick 2, write a line, and photograph it before filing.
+        // The LAST of each name: a redraw queues the old form for freeing, and it is still in the tree this frame.
+        T? Newest<T>(string name) where T : Godot.Node =>
+            FindChildren(name, "", recursive: true, owned: false).OfType<T>().LastOrDefault();
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        if (Newest<Button>("Rating2") is { } two)
+            two.ButtonPressed = true;
+        if (Newest<LineEdit>("Remarks") is { } remarks)
+        {
+            remarks.Text = "the ward hit harder than it said";
+            remarks.EmitSignal(LineEdit.SignalName.TextChanged, remarks.Text);
+        }
+        var ticked = _rating == 2;
+        if (!DisplayServer.GetName().Contains("headless"))
+        {
+            await ToSignal(GetTree().CreateTimer(1.2), SceneTreeTimer.SignalName.Timeout);
+            GetViewport().GetTexture().GetImage().SavePng("user://smoke-report.png");
+        }
+        Newest<Button>("FileIt")?.EmitSignal(BaseButton.SignalName.Pressed);
+        var ok = over && ticked && _filed && _remark.Length > 0;
         GD.Print($"smoke-report: fight={(combat is not null)} run over={over} result={Session?.Run.Result} "
-            + $"cause={CauseOfDeath() ?? "—"} {(over ? "PASS" : "FAIL")}");
-        await CaptureThenQuit("smoke-report.png", over ? 0 : 1);
+            + $"cause={CauseOfDeath() ?? "—"} ticked={ticked} filed={_filed} {(ok ? "PASS" : "FAIL")}");
+        await CaptureThenQuit("smoke-report-filed.png", ok ? 0 : 1);
     }
 }
