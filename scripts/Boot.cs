@@ -794,6 +794,23 @@ public partial class Boot : Control
         ranking.OffsetTop = 16;
         AddChild(ranking);
 
+        // THE BUILD, bottom-left and quiet: the first thing to ask a tester who reports something is which build
+        // they are holding, and the answer should be on the screen they see first.
+        GetNodeOrNull("BuildVersion")?.QueueFree();
+        var build = new Label
+        {
+            Name = "BuildVersion",
+            Text = $"closed alpha · v{ProjectSettings.GetSetting("application/config/version", "").AsString()}",
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        build.SetAnchorsPreset(LayoutPreset.BottomLeft);
+        build.OffsetLeft = 16;
+        build.OffsetTop = -34;
+        build.OffsetBottom = -12;
+        build.AddThemeFontSizeOverride("font_size", 13);
+        build.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+        AddChild(build);
+
         var root = new VBoxContainer { Name = "TitleBody" };
         root.SetAnchorsPreset(LayoutPreset.Center);
         root.CustomMinimumSize = new Vector2(960, 0);
