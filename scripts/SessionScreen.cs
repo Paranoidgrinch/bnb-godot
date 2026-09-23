@@ -1511,7 +1511,17 @@ public partial class SessionScreen : Control
             var branch = session.PendingChoices
                 .FirstOrDefault(c => Say(c.TextKey ?? c.Id).Contains(andThen, StringComparison.OrdinalIgnoreCase));
             if (branch is not null)
+            {
                 session.Pick(branch.Id);
+                // An improvement pick is photographed with a card chosen, so the before-and-after is in the
+                // picture — the thing that screen is for.
+                if (session is { IsAwaitingEntities: true, PendingEntities: { } pick } && IsImprovement(pick))
+                {
+                    _selectedEntities.Clear();
+                    _selectedEntities.Add(0);
+                    GD.Print($"smoke-room {role}: improvement pick \"{pick.Purpose}\" — card 0 chosen for the preview");
+                }
+            }
             else
                 GD.Print($"smoke-room {role}: no branch named \"{andThen}\" — "
                     + string.Join(" | ", session.PendingChoices.Select(c => Say(c.TextKey ?? c.Id))));
@@ -2986,6 +2996,8 @@ public partial class SessionScreen : Control
                     break;
             }
         }
+        if (IsImprovement(entities))
+            AddImprovementPreview(entities);
         var confirm = AddButton("Confirm", () =>
         {
             var picks = _selectedEntities.ToList();
@@ -3089,6 +3101,43 @@ public partial class SessionScreen : Control
             label.AddThemeColorOverride("font_color", new Color(MoonvineTheme.TextMuted, 0.6f));
         column.AddChild(label);
         return column;
+    }
+
+    // ── BEFORE AND AFTER ─────────────────────────────────────────────────────────
+    // A pick that improves a card says so only in its purpose ("upgrade a card", "improve one card,
+    // permanently" — the document's own words), so that is what is read. When one is open and a card is chosen,
+    // the card is shown twice under the gallery: as it is, and as it will be.
+    private static bool IsImprovement(EntitySelectionRequest entities) =>
+        entities.Intent == RunChoiceIntent.Keep
+        && (entities.Purpose.Contains("upgrade", StringComparison.OrdinalIgnoreCase)
+            || entities.Purpose.Contains("improve", StringComparison.OrdinalIgnoreCase));
+
+    private void AddImprovementPreview(EntitySelectionRequest entities)
+    {
+        var chosen = _selectedEntities
+            .Select(index => entities.ArtAt(index))
+            .OfType<EntityArt>()
+            .Where(art => art.Kind == EntityArt.Card)
+            .ToList();
+        if (chosen.Count == 0)
+        {
+            Muted("Pick a card to see what improving it does.");
+            return;
+        }
+        foreach (var card in chosen)
+        {
+            var row = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+            row.AddThemeConstantOverride("separation", 18);
+            row.AddChild(CardPick(card.Id, card.UpgradeLevel, selected: false, caption: "now", onClick: null));
+            var arrow = new Label { Text = "→", VerticalAlignment = VerticalAlignment.Center };
+            arrow.AddThemeFontSizeOverride("font_size", 36);
+            arrow.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
+            row.AddChild(arrow);
+            var same = ShownDefinition(card.Id, card.UpgradeLevel) == ShownDefinition(card.Id, card.UpgradeLevel + 1);
+            row.AddChild(CardPick(card.Id, card.UpgradeLevel + 1, selected: true,
+                caption: same ? "no stronger form" : "improved", onClick: null));
+            _main.AddChild(row);
+        }
     }
 
     // The definition a run card copy fights as: "<id>+" once improved, when the document has that card.
