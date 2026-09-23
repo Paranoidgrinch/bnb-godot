@@ -746,11 +746,24 @@ public partial class Boot : Control
     private void BuildTitle(GameHost host)
     {
         GetNodeOrNull("TitleBody")?.QueueFree();
+        // ⚠ THE MENU HAS TO FIT A 1280 × 720 CANVAS. Hung 90 px below the centre, the quiet row (report a bug,
+        // credits) and the player's name lay below the bottom edge, and a sixth main button (History) ran off
+        // the right one. So the title and its numbers move up, and the body is as wide as its widest row.
+        if (GetNodeOrNull<Label>("Title") is { } heading)
+        {
+            heading.OffsetTop = -250;
+            heading.OffsetBottom = -210;
+        }
+        if (GetNodeOrNull<Label>("Stats") is { } stats)
+        {
+            stats.OffsetTop = -196;
+            stats.OffsetBottom = -166;
+        }
         var root = new VBoxContainer { Name = "TitleBody" };
         root.SetAnchorsPreset(LayoutPreset.Center);
-        root.CustomMinimumSize = new Vector2(720, 0);
+        root.CustomMinimumSize = new Vector2(960, 0);
         root.AddThemeConstantOverride("separation", 16);
-        root.Position += new Vector2(-360, 90); // below the scene's Title/Stats labels
+        root.Position += new Vector2(-480, -140); // below the scene's Title/Stats labels
         AddChild(root);
 
         // ── character roster (unlock-gated) ──────────────────────────────────────
