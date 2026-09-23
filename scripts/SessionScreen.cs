@@ -149,6 +149,8 @@ public partial class SessionScreen : Control
             SmokeTarget();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-draw"))
             _ = SmokeDraw();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-piles"))
+            _ = SmokePiles();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-mapkey"))
             _ = MapKeyShot();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-map"))
@@ -2266,7 +2268,11 @@ public partial class SessionScreen : Control
             return;
         // Esc closes the topmost thing first. The report window is opened FROM the settings window, so it is
         // the one on top; without this, Esc out of a half-typed report would reopen the settings behind it.
-        if (GetNodeOrNull(MapOverlayName) is { } looking)
+        if (GetNodeOrNull(PileOverlayName) is { } pile)
+        {
+            pile.QueueFree();
+        }
+        else if (GetNodeOrNull(MapOverlayName) is { } looking)
         {
             looking.QueueFree();
         }
@@ -3583,6 +3589,7 @@ public partial class SessionScreen : Control
             GameHost.Instance.AutoSave();
         };
         controls.AddChild(endTurn);
+        AddPileButtons(controls, combat);
         foreach (var consumable in session.Run.Consumables.Where(c => c.CombatUse is not null))
         {
             var id = consumable.Id;
@@ -3650,6 +3657,7 @@ public partial class SessionScreen : Control
             };
             _deckCount.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
             holder.AddChild(_deckCount);
+            MakeDeckPileClickable(holder);
         }
 
         // The pile draws FIRST, on every render including the one that made it: a card flying out of the deck
@@ -4760,7 +4768,15 @@ public partial class SessionScreen : Control
             _sidebar.AddChild(shelf);
         }
 
-        _sidebar.AddChild(new Label { Text = $"Deck ({run.Deck.Count})" });
+        var deckHeading = new Button
+        {
+            Text = $"Deck ({run.Deck.Count})  ▸",
+            Flat = true,
+            Alignment = HorizontalAlignment.Left,
+            TooltipText = "Show every card you own.",
+        };
+        deckHeading.Pressed += () => TogglePile(Pile.Deck);
+        _sidebar.AddChild(deckHeading);
         foreach (var group in run.Deck
             .GroupBy(card => (Name: CardName(card.DefinitionId.value) + new string('+', card.UpgradeLevel),
                 Definition: card.DefinitionId.value))
