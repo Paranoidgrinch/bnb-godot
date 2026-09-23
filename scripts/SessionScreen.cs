@@ -4756,6 +4756,23 @@ public partial class SessionScreen : Control
             _sidebar.AddChild(MutedLabel(
                 $"{Play?.ResourceNames.GetValueOrDefault(resource.Value) ?? Humanized(resource.Value)}: {amount}"));
 
+        // THE SEED, to share: a click puts it on the clipboard. It is the whole of the run's luck — a friend who
+        // types it in plays these same maps.
+        var seed = new Button
+        {
+            Text = $"Seed {run.RandomSeed}",
+            Flat = true,
+            Alignment = HorizontalAlignment.Left,
+            TooltipText = "Click to copy. The same seed gives the same maps, rewards and shops.",
+        };
+        seed.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+        seed.Pressed += () =>
+        {
+            DisplayServer.ClipboardSet(run.RandomSeed.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Toast("Seed copied.");
+        };
+        _sidebar.AddChild(seed);
+
         // ── the shelf ────────────────────────────────────────────────────────────
         // What is worn is drawn as objects, not spelled out as a list. A relic strip only works if the eye
         // can take the whole of it in at once, and the words are one hover away — the same words the list

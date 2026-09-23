@@ -211,8 +211,15 @@ public partial class Boot : Control
         // window has to get right is not arithmetic — it is whether two sentences make the choice clear.
         if (userArgs.Contains("--smoke-newrun") && !DisplayServer.GetName().Contains("headless"))
         {
-            NewRunPanel.Open(this, _ => { });
+            NewRunPanel.Open(this, (_, _) => { });
             _ = CaptureThenQuit("user://smoke-newrun.png");
+        }
+        // Seeds: typed, hashed and daily ones are stable, the same seed lays out the same act, and the daily
+        // button fills the field in the open dialog. The run is started and dropped here and never saved.
+        if (userArgs.Contains("--smoke-seed"))
+        {
+            SmokeSeed(host);
+            return;
         }
         // The settings dialog, opened the way a player opens it, with a picture of what they get.
         if (userArgs.Contains("--smoke-settings") && !DisplayServer.GetName().Contains("headless"))
@@ -789,12 +796,7 @@ public partial class Boot : Control
         // The one question a new run asks: which map generator lays it out. Both ship and they make different
         // games, so the answer cannot be a build-time constant — and it is asked HERE rather than in Settings
         // because it belongs to the run being started, not to the machine (see NewRunPanel).
-        start.Pressed += () => NewRunPanel.Open(this, generator =>
-        {
-            host.StartNewRun(seed: (int)(Time.GetUnixTimeFromSystem() % int.MaxValue), _selectedCharacter,
-                mapGenerator: generator);
-            GoToSession();
-        });
+        start.Pressed += () => OpenNewRun(host);
         actions.AddChild(start);
 
         if (host.HasSave)
@@ -819,7 +821,11 @@ public partial class Boot : Control
         // holds, this is what the player did with it.
         var history = new Button { Text = "History", CustomMinimumSize = new Vector2(140, 44) };
         history.TooltipText = "Every run you have played, and the numbers across them.";
-        history.Pressed += () => HistoryPanel.Open(this);
+        history.Pressed += () => HistoryPanel.Open(this, seed =>
+        {
+            GetNodeOrNull(HistoryPanel.OverlayName)?.QueueFree();
+            OpenNewRun(host, seed);
+        });
         actions.AddChild(history);
 
         var settings = new Button { Text = "Settings", CustomMinimumSize = new Vector2(140, 44) };
@@ -964,6 +970,14 @@ public partial class Boot : Control
 
     private ArchivePanel? OpenArchive() => ArchivePanel.Open(this);
 
+    // "New run ▸", and "Play this seed again" from the history, which is the same dialog with the seed filled in.
+    private void OpenNewRun(GameHost host, int? seed = null) =>
+        NewRunPanel.Open(this, (generator, chosen) =>
+        {
+            host.StartNewRun(seed: chosen ?? RunSeeds.Random(), _selectedCharacter, mapGenerator: generator);
+            GoToSession();
+        }, seed);
+
     // WHO ARE YOU — asked once per machine (PlayerIdentity). Modal on purpose: the name goes on every run this
     // machine records, and a run started before it was given would be a run nobody played.
     private void OpenNamePrompt()
@@ -1046,7 +1060,7 @@ public partial class Boot : Control
         var back = RunHistory.Load();
         var kept = back.Count == 4 && back[0].Deck.Count == 4 && back[0].Deck[3] == "Strong Binder+"
             && back[2].Relics.Count == 2 && back[0].EndedAt == "Sealed Door Ward" && back[1].Result == "Abandoned";
-        HistoryPanel.Open(this);
+        HistoryPanel.Open(this, null);
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         // Open the victory, the way a player clicks a row.
         var panel = FindChild(nameof(HistoryPanel), recursive: true, owned: false);
@@ -1062,6 +1076,41 @@ public partial class Boot : Control
         }
         DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(RunHistory.Path));
         GetTree().Quit(kept ? 0 : 1);
+    }
+
+    private void SmokeSeed(GameHost host)
+    {
+        var today = new DateTime(2026, 9, 23, 12, 0, 0, DateTimeKind.Utc);
+        var parsed = RunSeeds.Parse(" 12345 ") == 12345 && RunSeeds.Parse("") is null
+            && RunSeeds.Parse("dragon") is { } word && word == RunSeeds.Parse("dragon") && word != RunSeeds.Parse("Dragon");
+        var daily = RunSeeds.Daily(today) == RunSeeds.Daily(today.AddHours(11))
+            && RunSeeds.Daily(today) != RunSeeds.Daily(today.AddDays(1));
+
+        string Layout(int seed)
+        {
+            host.StartNewRun(seed, mapGenerator: MapGenerators.Strategic);
+            var map = host.Play?.Session?.Run.Map;
+            return map is null ? "none" : string.Join(",", map.Nodes.Select(n => $"{n.Id.Value}:{n.Type}"));
+        }
+        var first = Layout(4242);
+        var same = first != "none" && first == Layout(4242);
+        var different = first != Layout(4243);
+        host.AbandonRunInMemory();
+
+        NewRunPanel.Open(this, (_, _) => { });
+        var panel = FindChild(nameof(NewRunPanel), recursive: true, owned: false);
+        var button = panel?.FindChild("DailyButton", recursive: true, owned: false) as Button;
+        button?.EmitSignal(BaseButton.SignalName.Pressed);
+        var field = panel?.FindChild("SeedField", recursive: true, owned: false) as LineEdit;
+        var filled = field?.Text == RunSeeds.Daily(DateTime.UtcNow).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        var ok = parsed && daily && same && different && filled;
+        GD.Print($"smoke-seed: parse={parsed} daily={daily} same-seed-same-act={same} other-seed-other-act={different} "
+            + $"daily-button={filled} {(ok ? "PASS" : "FAIL")}");
+        if (DisplayServer.GetName().Contains("headless"))
+            GetTree().Quit(ok ? 0 : 1);
+        else
+            _ = CaptureThenQuit("user://smoke-seed.png");
     }
 
     private async System.Threading.Tasks.Task SmokeArchiveShots()

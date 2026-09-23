@@ -125,6 +125,14 @@ public partial class GameHost : Godot.Node
         return Play.Error is null;
     }
 
+    // Drops the run in play without a word to the run log or the history — for a probe that started one only to
+    // look at it.
+    public void AbandonRunInMemory()
+    {
+        Play?.Dispose();
+        Play = null;
+    }
+
     public void AbandonRun()
     {
         RunLog.Abandon();

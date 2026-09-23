@@ -14,13 +14,19 @@ public partial class HistoryPanel : PanelContainer
     public const string OverlayName = "HistoryOverlay";
 
     private readonly Action _onClose;
+    private readonly Action<int>? _onPlaySeed;
     private readonly HashSet<int> _open = [];
     private VBoxContainer _list = null!;
     private List<RunSummary> _runs = [];
 
-    public HistoryPanel(Action onClose) => _onClose = onClose;
+    public HistoryPanel(Action onClose, Action<int>? onPlaySeed = null)
+    {
+        _onClose = onClose;
+        _onPlaySeed = onPlaySeed;
+    }
 
-    public static void Open(Control screen)
+    // `onPlaySeed` opens a new run on a past run's seed; null where no run can be started from.
+    public static void Open(Control screen, Action<int>? onPlaySeed)
     {
         if (screen.GetNodeOrNull(OverlayName) is not null)
             return;
@@ -31,7 +37,7 @@ public partial class HistoryPanel : PanelContainer
         veil.AddChild(dim);
         var center = new CenterContainer();
         center.SetAnchorsPreset(LayoutPreset.FullRect);
-        center.AddChild(new HistoryPanel(() => screen.GetNodeOrNull(OverlayName)?.QueueFree())
+        center.AddChild(new HistoryPanel(() => screen.GetNodeOrNull(OverlayName)?.QueueFree(), onPlaySeed)
             { Name = nameof(HistoryPanel) });
         veil.AddChild(center);
         screen.AddChild(veil);
@@ -221,7 +227,21 @@ public partial class HistoryPanel : PanelContainer
             var inset = new MarginContainer();
             inset.AddThemeConstantOverride("margin_left", 28);
             inset.AddThemeConstantOverride("margin_bottom", 6);
-            inset.AddChild(text);
+            var inner = new VBoxContainer();
+            inner.AddThemeConstantOverride("separation", 6);
+            inner.AddChild(text);
+            if (_onPlaySeed is { } play)
+            {
+                var again = new Button
+                {
+                    Text = $"Play seed {run.Seed} again ▸",
+                    SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+                    TooltipText = "A new run on the same seed: the same maps, rewards and shops.",
+                };
+                again.Pressed += () => play(run.Seed);
+                inner.AddChild(again);
+            }
+            inset.AddChild(inner);
             box.AddChild(inset);
         }
         return panel;
