@@ -32,6 +32,9 @@ GameHost="*res://scripts/GameHost.cs"
 ; a director owned by a screen would stop the moment that screen was freed, which is the moment a run
 ; starts. Listed after GameHost so the game document is loaded before anything asks what act it is in.
 MusicDirector="*res://scripts/MusicDirector.cs"
+; The one tooltip: Godot's own draws a paragraph as one unwrapped line, so it is switched off below
+; (gui/timers/tooltip_delay_sec) and this draws the same TooltipText wrapped and kept inside the window.
+Tooltips="*res://scripts/Tooltips.cs"
 
 [display]
 
@@ -56,3 +59,7 @@ window/stretch/aspect="expand"
 texture={
 "mipmaps/generate": true
 }
+
+[gui]
+
+timers/tooltip_delay_sec=100000.0
