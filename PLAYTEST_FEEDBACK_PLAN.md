@@ -1,6 +1,8 @@
 # Playtest Feedback Plan — the first alpha, answered
 
-**Status:** proposed 2026-09-26, after the first public alpha (0.2.0). Source: the user's collected player
+**Status:** proposed 2026-09-26, after the first public alpha (0.2.0). **Built the same day:** P0-1, P0-2, P0-3,
+P1-1, P1-2, P1-3, P2-1…P2-5, P3-1…P3-4, P4-1, P4-2. **Open:** P0-4 (narrowed, tooling built), P0-3b, P5 (waits
+for the user's word on the proposal below). Source: the user's collected player
 feedback (19 points, quoted per phase) plus what the 11 recorded runs in `Paranoidgrinch/bnb-runs` show when
 they are replayed.
 
@@ -50,7 +52,17 @@ pool (the Normal relics on the same shelf are the comparison the player makes). 
 - Godot: a disabled choice renders greyed; clicking it toasts the reason. Probe `--smoke-rest` with an
   all-upgraded deck.
 
-**P0-4 The two diverging replays.** Find why gold differs by +4/−5 on replay (`roguedeck-bot --replay-run`
+**P0-3b "Upgradable" includes cards with no "+" form.** `RunSelectors.Upgradable()` is `UpgradeLevel < 1`, so a
+Junk card or a curse is offered at the campfire and "improving" it does nothing. The engine has no card
+definitions in a run expression; a fix wants either a content-side id list or a run-level "has an improved form"
+fact. Not built.
+
+**P0-4 The two diverging replays.** ⏸ NARROWED, NOT SOLVED (2026-09-26). Both recordings agree with their replay on
+every card offer up to ONE fight's victory; in that room the run RNG differs (spoils gold and the card offer),
+while the fight itself is identical (same HP). Ruled out by experiment: previews (`Foresee`, card-preview forks),
+autosave, save→resume at every interlude, and checkpoints (the replay without any is the same). The live host
+drew or skipped something the recording does not carry. Tooling for the next look: `--replay-run … --log-from A`
+and `--resume-every N` (Core `2a4dba4`). Original text: Find why gold differs by +4/−5 on replay (`roguedeck-bot --replay-run`
 over the two files; bisect the room where `gold=` first differs). Likely a host-side gold source the recording
 does not carry, or an unordered iteration. Fix in Core; both recordings must then REPRODUCE.
 
@@ -152,6 +164,28 @@ unten versteckt"* `MapLegend()` moves above the map.
 ---
 
 ## Phase P5 — cards (content design, bnb-content)
+
+**P5-1 — THE PROPOSAL (waiting for the user).** The audit (134 cards with a "+"): 29 multi-effect cards move at most
+one number and not their cost; these are the ones where the number that moves is not what the card is about:
+
+| card | now → + | proposed + |
+|---|---|---|
+| Cursed Addendum | 6 dmg, 2 Paperwork → 8 dmg, 2 PW | 7 dmg, **3 Paperwork** |
+| Waxing Authority | 5 dmg, 1 Seal → 7 dmg, 1 Seal | 6 dmg, **2 Seal** |
+| Hex Circular | 7 AoE, 1 Doubt → 9 AoE, 1 Doubt | 8 AoE, **2 Doubt** |
+| Petty Objection | 5 Block, 1 Doubt → 7 Block, 1 Doubt | 6 Block, **2 Doubt** |
+| Rebuttal | 9 dmg, 4 Block/Doubt (max 12) → 12 dmg | 10 dmg, **5 Block/Doubt (max 15)** |
+| Certified Kindling | 4 Block (+4 if Junk) → 6 (+4) | 5 Block **(+6 if Junk)** |
+| Archive Pyre | 9 AoE + 5/Junk → 12 + 5/Junk | 10 AoE **+ 7/Junk** |
+| Backlog Charge | 6 + 3/Queued → 8 + 3 | 7 **+ 4/Queued** |
+| Monumental Writ | 24 + 12/Queued → 30 + 12 | 26 **+ 15/Queued** |
+| Smudged Index | Archive 1 from draw pile, 4 Block → 6 Block | **Archive up to 2**, 5 Block |
+| Deskward | 8 Block + Red Tape → 11 Block + Red Tape | 10 Block, **Red Tape into the exhaust pile** |
+| Skeleton Staff | ⚠ the "+" is IDENTICAL to the base (a bug) | **costs 1** (the design sheet's Rite version queues a card of cost ≤ 3) |
+
+Deliberately left: single-payload cards (Deferred Hex, Protective Adjournment, Stone Levy, Errata Furnace), the
+ones whose "+" already changes a second thing (Formal Dissent, Privy Seal, Tallow Budget, Candle Allowance), and the
+drawback cards whose junk is the price (Cauldron Copy, Cinder Warrant).
 
 **P5-1 Upgrades that are not one-dimensional.** *"wenn es zb damage und paperwork verteilt, wird beim upgrade
 nur damage erhoeht"*
