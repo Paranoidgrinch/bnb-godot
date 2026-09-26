@@ -4104,7 +4104,13 @@ public partial class SessionScreen : Control
         // edges. The room it has is its REGION: the bottom band minus the draw pile's corner.
         const int gap = 12;
         const int fanned = 5; // beyond this many, the row starts closing up
-        var available = Math.Max(CardVisuals.CardW, PaneWidth - DeckBand - PaneInset * 2);
+        // THE HAND IS CENTRED ON THE SCREEN, not on what is left beside the pile. With the sidebar gone the pane
+        // is the whole width, and a row centred on "the pane minus the pile's corner" sat visibly right of the
+        // middle (playtest 2026-09-26). The room it may use is symmetric — the pile's corner kept clear on BOTH
+        // sides — so a full fan is centred too, and only a row too wide for that is pushed off the pile.
+        var regionWidth = PaneWidth - PaneInset * 2;
+        var pileClear = DeckBand - PaneInset;
+        var available = Math.Max(CardVisuals.CardW, regionWidth - pileClear * 2);
         var step = (float)(CardVisuals.CardW + gap);
         if (cards.Count > fanned)
             step = Math.Min(step, Math.Max(36f, (available - CardVisuals.CardW) / (cards.Count - 1)));
@@ -4127,7 +4133,7 @@ public partial class SessionScreen : Control
             AnchorTop = 1f, AnchorBottom = 1f, AnchorLeft = 0f, AnchorRight = 0f,
             OffsetTop = -(CardVisuals.CardH + 8 + arc * middle + 12),
             OffsetBottom = 0f,
-            OffsetLeft = DeckBand - PaneInset + Math.Max(0f, (available - totalWidth) / 2f),
+            OffsetLeft = Math.Max(pileClear, (regionWidth - totalWidth) / 2f),
         };
         inner.OffsetRight = inner.OffsetLeft + Math.Max(totalWidth, 1);
         region.AddChild(inner);
