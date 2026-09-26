@@ -852,6 +852,10 @@ public partial class SessionScreen : Control
         // …and how far into a boss's future the screen is actually showing. Nanshe's tablet promises three
         // days at once, and until this step the screen drew one whatever the player had been granted.
         GD.Print($"  forecast: {ForecastOnScreen()}");
+        // What the worn relics have DONE this fight, as the engine counted it — what the grid lights up by.
+        if (Play?.CombatDriver?.Current is { } fought)
+            GD.Print($"  relic activity: {string.Join(", ", _relicTiles.Keys.Select(relic => $"{relic}={fought.State.TriggerActivity.Where(t => t.Key.value.StartsWith(relic, StringComparison.Ordinal)).Sum(t => t.Value)}"))}"
+                + $" · flares so far {_flares}");
         if (combat is not null)
             foreach (var body in combat.State.Combatants)
                 GD.Print($"  [{Name(body, combat)}] {StatusLine(combat, body)}");
@@ -2697,6 +2701,7 @@ public partial class SessionScreen : Control
             _shownHandIds.Clear(); // a fresh fight re-deals; its opening hand animates in
             _chipsSeen.Clear();    // …and its statuses are all new, none of them has acted yet
             _chipsSeenAny = false;
+            _relicFired.Clear();
         }
 
         if (Play is null || session is null)
@@ -3733,6 +3738,7 @@ public partial class SessionScreen : Control
         var hero = combat.State.GetCombatant(combat.HeroId);
         var enemies = combat.State.Combatants
             .Where(c => c.Id != combat.HeroId && c.TeamId == StandardCombatIds.EnemyTeam).ToList();
+        DecideRules(combat, hero, enemies);
 
         // THE HEADING, in its own band at the top.
         var head = TopRegion(PaneInset, HeadlineBand);
@@ -3771,6 +3777,7 @@ public partial class SessionScreen : Control
             }
             band.AddChild(grid);
             arenaTop = Math.Max(arenaTop, PaneInset + rows * (CombatRelicTile + 3) + 8);
+            LightRelics(combat, hero);
         }
 
         if (DivineRuleArea() is { } divine)
@@ -3814,6 +3821,15 @@ public partial class SessionScreen : Control
         enemyRow.AddThemeConstantOverride("v_separation", CrowdGap);
         foreach (var enemy in enemies)
             enemyRow.AddChild(CombatantBox(combat, enemy, isHero: false, column, nameBand, bodyHeight, arenaHeight));
+        // THE FIGHT'S OWN RULES, IN THE MIDDLE OF THE ROOM. An elite's or a boss's mechanic used to be one more
+        // chip under its body, beside Doubt ×2 — and the playtest said so: "die spezialmechaniken der bosse und
+        // elites … gehen sehr leicht verloren". With room between the hero and the enemies, they stand there as
+        // plates of their own; a plate flares when its rule fires or its count moves.
+        if (_ruled.Count > 0 && FightRules(combat, enemies) is { } rules)
+        {
+            enemyRow.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
+            arena.AddChild(rules);
+        }
         arena.AddChild(enemyRow);
         _enemyRow = enemyRow;
 
@@ -5728,6 +5744,153 @@ public partial class SessionScreen : Control
     // The definitions come from the live fight's registry, which knows the engine's own statuses as well as the
     // game's. A status the registry cannot resolve falls back to a readable form of its id rather than to
     // nothing: an unnamed status is a content gap, not a reason to hide state from the player.
+    // WHICH STATUSES ARE A FIGHT'S OWN RULES. A status an elite or a boss carries is its mechanic when the game
+    // nowhere else speaks of it: no card names it and the compendium does not explain it as a common term. Doubt,
+    // Strength and Paperwork are the vocabulary of every fight; "The Keys" is this one's.
+    private static HashSet<string>? _commonStatuses;
+
+    private static bool IsMechanic(StatusInstance status, StatusDefinition? definition)
+    {
+        if (_commonStatuses is null)
+        {
+            var blueprint = GameHost.Instance.Blueprint;
+            var cardText = string.Join(" ", blueprint.Presentation.Cards.Values.Select(c => c.FlavorText ?? ""));
+            var extra = blueprint.Presentation.Game?.Extra ?? new Dictionary<string, string>();
+            _commonStatuses = blueprint.Statuses
+                .Where(s => extra.ContainsKey($"compendium:{s.Id}")
+                    || (s.NameKey is { Length: > 0 } name
+                        && System.Text.RegularExpressions.Regex.IsMatch(cardText, $@"\b{System.Text.RegularExpressions.Regex.Escape(name)}\b")))
+                .Select(s => s.Id)
+                .ToHashSet(StringComparer.Ordinal);
+        }
+        return status.Visibility == StatusVisibility.Visible && !IsPhase(status)
+            && !_commonStatuses.Contains(status.DefinitionId.value)
+            && !string.IsNullOrWhiteSpace(definition?.DescriptionKey);
+    }
+
+    private static bool IsEliteOrBoss(CombatantState combatant) =>
+        GameHost.Instance.Blueprint.Presentation.Enemies.GetValueOrDefault(combatant.DefinitionId.value)?.Frame
+            is "elite" or "boss";
+
+    // What gets a plate in the middle of the room, decided ONCE per drawing, before any column is built — so a
+    // status on a plate is never also a chip under a body. The enemies' mechanics (an elite's or a boss's), and
+    // the hero's own when an elite or a boss put them there: "Order: Pay the Fee" is the demand the whole turn
+    // is about. Only when there is a middle to put them in (two enemies or fewer).
+    private readonly List<(CombatantState Owner, StatusInstance Status, StatusDefinition Definition)> _ruled = [];
+    private static HashSet<string>? _everyFightStatuses;
+
+    private void DecideRules(InteractiveCombat combat, CombatantState hero, IReadOnlyList<CombatantState> enemies)
+    {
+        _ruled.Clear();
+        if (enemies.Count > 2 || !enemies.Any(e => e.IsAlive && IsEliteOrBoss(e)))
+            return;
+        // A status the hero starts EVERY fight with is the character, not this fight (the Bureaucrat's own
+        // passive) — it stays a chip.
+        _everyFightStatuses ??= GameHost.Instance.Blueprint.Encounters.Count == 0 ? [] :
+            GameHost.Instance.Blueprint.Encounters
+                .SelectMany(e => e.HeroStartingStatuses.Select(h => h.Status.value).Distinct())
+                .GroupBy(id => id)
+                .Where(g => g.Count() == GameHost.Instance.Blueprint.Encounters.Count)
+                .Select(g => g.Key)
+                .ToHashSet(StringComparer.Ordinal);
+        var worn = Session?.Run.Relics.Select(r => r.Id.Value).ToHashSet(StringComparer.Ordinal) ?? [];
+        var registry = combat.State.DefinitionRegistry;
+        foreach (var owner in enemies.Where(e => e.IsAlive && IsEliteOrBoss(e)).Append(hero))
+            foreach (var status in owner.Statuses)
+            {
+                StatusDefinition? definition = null;
+                registry?.TryGetStatus(status.DefinitionId, out definition);
+                if (!IsMechanic(status, definition) || OfAWornRelic(status.DefinitionId.value, worn)
+                    || (owner == hero && _everyFightStatuses.Contains(status.DefinitionId.value)))
+                    continue;
+                _ruled.Add((owner, status, definition!));
+            }
+    }
+
+    private bool OnAPlate(CombatantState owner, StatusInstance status) =>
+        _ruled.Any(r => r.Owner.Id == owner.Id && r.Status.DefinitionId == status.DefinitionId);
+
+    private Control? FightRules(InteractiveCombat combat, IReadOnlyList<CombatantState> enemies)
+    {
+        var plates = _ruled.Take(5).Select(r => RulePlate(combat, r.Owner, r.Status, r.Definition,
+            onHero: r.Owner.Id == combat.HeroId)).ToList();
+        if (plates.Count == 0)
+            return null;
+
+        var column = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ShrinkBegin,
+            Alignment = BoxContainer.AlignmentMode.Begin,
+        };
+        column.AddThemeConstantOverride("separation", 6);
+        var head = new Label { Text = "THIS FIGHT'S RULES", HorizontalAlignment = HorizontalAlignment.Center };
+        head.AddThemeFontSizeOverride("font_size", 12);
+        head.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
+        column.AddChild(head);
+        foreach (var plate in plates)
+            column.AddChild(plate);
+        var margin = new MarginContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        margin.AddThemeConstantOverride("margin_left", 24);
+        margin.AddThemeConstantOverride("margin_right", 24);
+        margin.AddChild(column);
+        return margin;
+    }
+
+    private Control RulePlate(
+        InteractiveCombat combat, CombatantState owner, StatusInstance status, StatusDefinition definition, bool onHero)
+    {
+        var plate = new PanelContainer { MouseFilter = MouseFilterEnum.Pass, TooltipText = definition.DescriptionKey };
+        var box = MoonvineTheme.Panel(MoonvineTheme.BgRaised, MoonvineTheme.Arcane, radius: 6);
+        box.BorderWidthLeft = 4;
+        box.ContentMarginLeft = 12;
+        box.ContentMarginRight = box.ContentMarginTop = box.ContentMarginBottom = 8;
+        plate.AddThemeStyleboxOverride("panel", box);
+
+        var column = new VBoxContainer { MouseFilter = MouseFilterEnum.Pass };
+        column.AddThemeConstantOverride("separation", 2);
+        var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Pass };
+        var (name, magnitude) = StatusParts(status, definition);
+        var title = new Label
+        {
+            Text = onHero ? $"On you: {name}" : name,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Pass,
+        };
+        title.AddThemeFontSizeOverride("font_size", 16);
+        title.AddThemeColorOverride("font_color", MoonvineTheme.Arcane);
+        row.AddChild(title);
+        if (magnitude.Length > 0)
+        {
+            var count = new Label { Text = magnitude, MouseFilter = MouseFilterEnum.Pass };
+            count.AddThemeFontSizeOverride("font_size", 20);
+            count.AddThemeColorOverride("font_color", MoonvineTheme.Text);
+            row.AddChild(count);
+        }
+        column.AddChild(row);
+        var rule = new Label
+        {
+            Text = definition.DescriptionKey,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            MouseFilter = MouseFilterEnum.Pass,
+        };
+        rule.AddThemeFontSizeOverride("font_size", 13);
+        rule.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
+        column.AddChild(rule);
+        plate.AddChild(column);
+
+        // It flares when its count moved (the chip memory) or one of its triggers paid out.
+        var key = $"rule/{owner.Id.value}/{status.DefinitionId.value}";
+        var fired = combat.State.TriggerActivity
+            .Where(t => t.Key.value.StartsWith(status.DefinitionId.value + "_trigger", StringComparison.Ordinal))
+            .Sum(t => t.Value);
+        var now = $"{StatusText(status, definition)}#{fired}";
+        if (_chipsSeen.TryGetValue(key, out var before) ? before != now : false)
+            Flare(plate);
+        _chipsNow[key] = now;
+        return plate;
+    }
+
     private Control? StatusChips(InteractiveCombat combat, CombatantState combatant)
     {
         var registry = combat.State.DefinitionRegistry;
@@ -5738,6 +5901,8 @@ public partial class SessionScreen : Control
         var worn = Session?.Run.Relics.Select(r => r.Id.Value).ToHashSet(StringComparer.Ordinal) ?? [];
         var shown = combatant.Statuses
             .Where(s => s.Visibility == StatusVisibility.Visible && !IsPhase(s) && !OfAWornRelic(s.DefinitionId.value, worn))
+            // A mechanic that has its own plate in the middle of the room is not repeated under the body.
+            .Where(s => !OnAPlate(combatant, s))
             .ToList();
         if (shown.Count == 0)
             return null;
@@ -5767,7 +5932,14 @@ public partial class SessionScreen : Control
                 MouseFilter = Control.MouseFilterEnum.Pass, // let the targeting overlay keep the click
                 TooltipText = hover,
             };
-            var box = MoonvineTheme.Panel(MoonvineTheme.BgRaised, new Color(colour, 0.45f), radius: 4);
+            // A mechanic that has no plate of its own (a crowded fight) at least looks like one: the rules' colour,
+            // a heavier rim.
+            var mechanic = IsEliteOrBoss(combatant) && IsMechanic(status, definition);
+            if (mechanic)
+                colour = MoonvineTheme.Arcane;
+            var box = MoonvineTheme.Panel(MoonvineTheme.BgRaised, new Color(colour, mechanic ? 1f : 0.45f), radius: 4);
+            if (mechanic)
+                box.BorderWidthTop = box.BorderWidthBottom = box.BorderWidthLeft = box.BorderWidthRight = 2;
             box.ContentMarginLeft = box.ContentMarginRight = 6;
             box.ContentMarginTop = box.ContentMarginBottom = 2;
             chip.AddThemeStyleboxOverride("panel", box);
@@ -5805,6 +5977,60 @@ public partial class SessionScreen : Control
         return flow;
     }
 
+    // A RELIC THAT ACTS IS SEEN ACTING (playtest 2026-09-26: "wenn ein relic triggert, sollte der rahmen kurz
+    // aufleuchten … wenn es permanent wirkt sollte der rahmen permanent aufleuchten").
+    //   • FIRES: every trigger its status owns ("<status>_trigger<n>") is counted by the engine each time it runs
+    //     AND pays (CombatState.TriggerActivity). A tile whose count rose since the last drawing flares.
+    //   • ALWAYS ON: a relic whose status only bends numbers (a passive modifier, no trigger) is acting the whole
+    //     fight; its frame glows steadily.
+    // The count is not in a snapshot, so a state rebuilt from a checkpoint starts again from nothing; a count
+    // that went DOWN is a fresh baseline, not a firing.
+    private readonly Dictionary<string, int> _relicFired = new(StringComparer.Ordinal);
+
+    private void LightRelics(InteractiveCombat combat, CombatantState hero)
+    {
+        var worn = _relicTiles.Keys.ToHashSet(StringComparer.Ordinal);
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var (trigger, times) in combat.State.TriggerActivity)
+        {
+            var at = trigger.value.LastIndexOf("_trigger", StringComparison.Ordinal);
+            if (at <= 0)
+                continue;
+            var status = trigger.value[..at];
+            if (worn.FirstOrDefault(relic => status == relic || status.StartsWith(relic + "_", StringComparison.Ordinal))
+                is { } owner)
+                counts[owner] = counts.GetValueOrDefault(owner) + times;
+        }
+
+        var statuses = GameHost.Instance.Blueprint.Statuses;
+        var carried = hero.Statuses.Select(s => s.DefinitionId.value).ToHashSet(StringComparer.Ordinal);
+        foreach (var (relic, tile) in _relicTiles)
+        {
+            var now = counts.GetValueOrDefault(relic);
+            if (_relicFired.TryGetValue(relic, out var before) && now > before)
+                Flare(tile);
+            _relicFired[relic] = now;
+
+            var own = statuses.Where(s => (s.Id == relic || s.Id.StartsWith(relic + "_", StringComparison.Ordinal))
+                && carried.Contains(s.Id)).ToList();
+            if (own.Count > 0 && own.All(s => s.Triggers.Count == 0) && own.Any(s => s.PassiveModifiers.Count > 0))
+                Glow(tile);
+        }
+    }
+
+    private static void Glow(Control tile)
+    {
+        var ring = new Panel { MouseFilter = MouseFilterEnum.Ignore };
+        var box = MoonvineTheme.Panel(new Color(0, 0, 0, 0), MoonvineTheme.Signal, radius: 3);
+        box.BorderWidthTop = box.BorderWidthBottom = box.BorderWidthLeft = box.BorderWidthRight = 2;
+        box.ShadowColor = new Color(MoonvineTheme.Signal, 0.55f);
+        box.ShadowSize = 5;
+        ring.AddThemeStyleboxOverride("panel", box);
+        ring.SetAnchorsPreset(LayoutPreset.FullRect);
+        tile.AddChild(ring);
+        tile.TooltipText = $"{tile.TooltipText}\n(always in effect)";
+    }
+
     // A relic's status is named after it: the relic's own id, or that id plus a suffix ("_rule", "_boon", "_spent").
     private static bool OfAWornRelic(string status, HashSet<string> worn) =>
         worn.Contains(status) || worn.Any(relic => status.StartsWith(relic + "_", StringComparison.Ordinal));
@@ -5815,8 +6041,11 @@ public partial class SessionScreen : Control
     private Dictionary<string, string> _chipsNow = new(StringComparer.Ordinal);
     private bool _chipsSeenAny;
 
+    private int _flares;
+
     private void Flare(Control target)
     {
+        _flares++;
         if (_fastForward)
             return;
         target.PivotOffset = target.Size / 2;
