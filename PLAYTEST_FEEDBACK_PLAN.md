@@ -1,8 +1,8 @@
 # Playtest Feedback Plan — the first alpha, answered
 
 **Status:** proposed 2026-09-26, after the first public alpha (0.2.0). **Built the same day:** P0-1, P0-2, P0-3,
-P1-1, P1-2, P1-3, P2-1…P2-5, P3-1…P3-4, P4-1, P4-2. **Open:** P0-4 (narrowed, tooling built), P0-3b, P5 (waits
-for the user's word on the proposal below). Source: the user's collected player
+P1-1, P1-2, P1-3, P2-1…P2-5, P3-1…P3-4, P4-1, P4-2. **Open:** P0-4 (narrowed, tooling built), P0-3b. P5-1 and P5-3 built
+the same day on the user's word. Source: the user's collected player
 feedback (19 points, quoted per phase) plus what the 11 recorded runs in `Paranoidgrinch/bnb-runs` show when
 they are replayed.
 
@@ -165,7 +165,11 @@ unten versteckt"* `MapLegend()` moves above the map.
 
 ## Phase P5 — cards (content design, bnb-content)
 
-**P5-1 — THE PROPOSAL (waiting for the user).** The audit (134 cards with a "+"): 29 multi-effect cards move at most
+**P5-1 — BUILT 2026-09-26 as proposed**, with two differences: Smudged Index+ is "Archive 1, 5 Block, draw 1"
+(an optional second pick is not expressible), and a second identical "+" turned up — **Marginalia+** (the design's
+saving is a surcharge the port never built) — which now costs 0. A test fails for any "+" that is its base again.
+
+The proposal as it stood: The audit (134 cards with a "+"): 29 multi-effect cards move at most
 one number and not their cost; these are the ones where the number that moves is not what the card is about:
 
 | card | now → + | proposed + |
@@ -197,7 +201,11 @@ compiled in; the suite's golden numbers are re-taken afterwards.
 
 **P5-2 Rite upgrades** follow P0-1: an exhausting Rite is worth more per play, so the audit re-checks Rite costs.
 
-**P5-3 Card pools — DECISION NEEDED.** The measurement above says the pools behave as designed (cumulative).
+**P5-3 — DECIDED AND BUILT 2026-09-26.** The user: earlier acts' cards keep appearing, "but less and less the
+further you get". The act a card is gated at is a class like its rarity (`ConversionPools.ActShare`): the current
+act takes 50 / 60 / 70 % of a draw in Acts II / III / IV, older acts share the rest, each half the next younger.
+All older cards: 50 → 40 → 30 %; Act I alone: 50 → ~13 → ~4 %. The rarity curve still holds exactly. Applies to
+card rewards, rarity rewards and the shop's shelves. Was: The measurement above says the pools behave as designed (cumulative).
 If the feel is "the same cards everywhere", the options are: (a) keep cumulative; (b) **weight the current
 act's own cards** (e.g. 60 % of an offer from the act's new cards); (c) make act pools exclusive. The
 recommendation is (b).
