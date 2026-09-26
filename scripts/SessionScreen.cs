@@ -17,9 +17,12 @@ public partial class SessionScreen : Control
     private VBoxContainer _main = null!;
     private ScrollContainer _mainScroll = null!;
     private Control _combatRoot = null!;
-    private VBoxContainer _sidebar = null!;
-    private const int SidebarWidth = 320;
+    private HBoxContainer _topBar = null!;
+    private const int TopBarHeight = 44;
+    // The reading column every non-fight screen stands in, centred on the page.
+    private const int ColumnWidth = 820;
     private RichTextLabel _log = null!;
+    private PanelContainer _logPanel = null!;
 
     // Transient pick state owned by the view (mirrors RunSessionView's _selected/_cardPicks/_combatTarget).
     private readonly HashSet<int> _selectedEntities = [];
@@ -81,29 +84,57 @@ public partial class SessionScreen : Control
         AddChild(background);
 
 
-        var split = new HBoxContainer();
-        split.SetAnchorsPreset(LayoutPreset.FullRect);
-        split.AddThemeConstantOverride("separation", 16);
-        AddChild(split);
+        // ── the page: a slim bar across the top, and the room under it at the full width ──────────────────
+        // There was a 320-wide sidebar on the right (hero, gold, seed, relics, the deck as a list, the log).
+        // The first alpha's players called it obsolete — the deck is on D, the piles have their own views — and
+        // its width is exactly what the arena needed to stand four enemies side by side (playtest 2026-09-26).
+        // What it still said lives on: the numbers in the top bar, the relics over the hero, the log on L.
+        var page = new VBoxContainer();
+        page.SetAnchorsPreset(LayoutPreset.FullRect);
+        page.AddThemeConstantOverride("separation", 0);
+        AddChild(page);
 
-        var mainPanel = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        var barPanel = new PanelContainer { CustomMinimumSize = new Vector2(0, TopBarHeight) };
+        barPanel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.BgRaised, MoonvineTheme.Hairline));
+        _topBar = new HBoxContainer();
+        _topBar.AddThemeConstantOverride("separation", 14);
+        barPanel.AddChild(_topBar);
+        page.AddChild(barPanel);
+
+        var mainPanel = new PanelContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+        };
         // ⚠⚠ THE PAGE IS NOT A TABLET, AND A WALL IS NOT FURNITURE. Making PanelContainer wear wood put the
-        // material on this container too — 940 x 700 of it, half the screen, where the tile's repeat is
-        // plainly visible and the grain competes with everything standing on it. In the reference the wood is
-        // the DOORWAY and the CABINET; what they are set into is dark stone. So the page keeps the near-black
-        // ground it has had since D0 — and it is also the surface the act's own picture arrives on in D8-3,
-        // which is the second reason nothing decorative belongs here.
+        // material on this container too, where the tile's repeat is plainly visible and the grain competes
+        // with everything standing on it. So the page keeps the near-black ground it has had since D0 — and it
+        // is also the surface the act's own picture arrives on in D8-3.
         mainPanel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.Bg, MoonvineTheme.Hairline));
         var mainHolder = new Control();
-        _mainScroll = new ScrollContainer();
+        _mainScroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         _mainScroll.SetAnchorsPreset(LayoutPreset.FullRect);
-        _main = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        // EVERY ROOM THAT IS NOT A FIGHT STANDS IN THE MIDDLE OF THE PAGE. An event's words used to start in
+        // the top-left corner and its buttons ran the full width under them, which on a wide window is a line
+        // of text and an empty screen (playtest 2026-09-26). The frame fills the scroll (it EXPANDS, so the
+        // ScrollContainer hands it its whole size), centres its one child vertically, and the column in it is
+        // a reading width wide; a map taller than the window simply makes the frame taller and scrolls.
+        var frame = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            Alignment = BoxContainer.AlignmentMode.Center,
+        };
+        _main = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
+            CustomMinimumSize = new Vector2(ColumnWidth, 0),
+        };
         _main.AddThemeConstantOverride("separation", 10);
-        _mainScroll.AddChild(_main);
-        // ⚠⚠ THE PICTURE GOES INSIDE THE PANE, NOT BEHIND IT. Hung on the screen's root it was drawn, loaded
-        // and paid for, and invisible: since D8-1 the main pane wears an OPAQUE stylebox, and the only trace
-        // of an entire act's background was one letter showing in the gap beside the sidebar. It belongs in
-        // the pane anyway — the sidebar is furniture, not the room.
+        frame.AddChild(_main);
+        _mainScroll.AddChild(frame);
+        // ⚠⚠ THE PICTURE GOES INSIDE THE PANE, NOT BEHIND IT: the main pane wears an OPAQUE stylebox, so a
+        // backdrop hung on the screen's root is drawn, loaded and paid for, and invisible.
         (_actPicture, _actScrim) = BuildActBackdrop(mainHolder);
 
         mainHolder.AddChild(_mainScroll);
@@ -112,24 +143,17 @@ public partial class SessionScreen : Control
         _combatRoot.SetAnchorsPreset(LayoutPreset.FullRect);
         mainHolder.AddChild(_combatRoot);
         mainPanel.AddChild(mainHolder);
-        split.AddChild(mainPanel);
+        page.AddChild(mainPanel);
 
-        var side = new VBoxContainer { CustomMinimumSize = new Vector2(SidebarWidth, 0) };
-        side.AddThemeConstantOverride("separation", 10);
-        var sidePanel = new PanelContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
-        // ⚠ NO SIDEWAYS SCROLL IN THE SIDEBAR. A ScrollContainer that may scroll horizontally gives its child
-        // the child's MINIMUM width; with it off, the child is stretched to the panel. That is the difference
-        // between a relic shelf that wraps into rows and one that is a single column of squares.
-        var sideScroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
-        _sidebar = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        sideScroll.AddChild(_sidebar);
-        sidePanel.AddChild(sideScroll);
-        side.AddChild(sidePanel);
-        var logPanel = new PanelContainer { CustomMinimumSize = new Vector2(SidebarWidth, 200) };
+        // The run's log: what happened, in the engine's words. It had a permanent 200-point box; it is read
+        // rarely and only when something needs explaining, so it is an overlay on L (and in the Esc menu).
+        _logPanel = new PanelContainer { Visible = false, ZIndex = 50 };
+        _logPanel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.BgRaised, MoonvineTheme.Accent));
+        _logPanel.AnchorLeft = 1f; _logPanel.AnchorRight = 1f; _logPanel.AnchorTop = 0f; _logPanel.AnchorBottom = 1f;
+        _logPanel.OffsetLeft = -420; _logPanel.OffsetRight = -12; _logPanel.OffsetTop = TopBarHeight + 12; _logPanel.OffsetBottom = -12;
         _log = new RichTextLabel { FitContent = false, ScrollFollowing = true, BbcodeEnabled = false };
-        logPanel.AddChild(_log);
-        side.AddChild(logPanel);
-        split.AddChild(side);
+        _logPanel.AddChild(_log);
+        AddChild(_logPanel);
 
         _drawing = ShouldDraw;
         if (_drawing)
@@ -209,6 +233,30 @@ public partial class SessionScreen : Control
             _ = SmokeArchiveRun();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-hover"))
             _ = SmokeHover();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-summaries"))
+            SmokeSummaries();
+    }
+
+    // EVERY EVENT BRANCH, SAID IN PLAIN WORDS: the line EffectSummary reads off each choice of each event in the
+    // document, and a count of the branches it could only shrug at ("Something …") or had nothing to say about.
+    private void SmokeSummaries()
+    {
+        var blueprint = GameHost.Instance.Blueprint;
+        int total = 0, silent = 0, shrug = 0;
+        foreach (var (id, script) in blueprint.Events.OrderBy(e => e.Key, StringComparer.Ordinal))
+            foreach (var situation in script.Situations.Values)
+                foreach (var choice in situation.Choices)
+                {
+                    total++;
+                    var plain = EffectSummary.Of(choice, Play);
+                    if (plain.Length == 0) silent++;
+                    if (plain.Contains("Something", StringComparison.Ordinal)) shrug++;
+                    if (OS.GetCmdlineUserArgs().Contains("--all") || plain.Contains("Something", StringComparison.Ordinal))
+                        GD.Print($"  {id}/{situation.Id}/{choice.Id}: {Say(choice.TextKey ?? choice.Id)} ⟶ {(plain.Length == 0 ? "(nothing)" : plain)}");
+                }
+        GD.Print($"smoke-summaries: {total} branches · {total - silent} described · {silent} say nothing (a plain "
+            + $"continue or bookkeeping) · {shrug} only half-described");
+        GetTree().Quit();
     }
 
     // Walk the screen the way a mouse would and report what is EXPLAINED and what is not: every piece of text
@@ -269,7 +317,7 @@ public partial class SessionScreen : Control
         // draws nothing at all would still report a relic, and the number would stop meaning "this screen draws
         // what it is offering", which is the only thing it is for.
         GD.Print($"smoke-pictures [{screen}]: pane {Census(_main)}{Census(_combatRoot, add: true)} · "
-            + $"worn {Census(_sidebar)}");
+            + $"worn {Census(_topBar)}");
     }
 
     private static string Census(Godot.Node? root, bool add = false)
@@ -1555,7 +1603,28 @@ public partial class SessionScreen : Control
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         ReportPictures(role);
         ReportTooltips(role);
+        // `--tip`: hold the pointer over the control with the LONGEST hover text on the screen — the case the
+        // wrapped tooltip exists for — so the picture shows whether it stays readable and inside the window.
+        if (OS.GetCmdlineUserArgs().Contains("--tip") && LongestTip(this) is { } tipped)
+        {
+            GD.Print($"smoke-tip: {tipped.TooltipText.Length} chars on a {tipped.GetClass()} ⟨{tipped.TooltipText.Replace("\n", " ⏎ ")[..Math.Min(90, tipped.TooltipText.Length)]}…⟩");
+            await PointAt(tipped.GetGlobalRect().GetCenter());
+        }
         await CaptureThenQuit(file, arrived ? 0 : 1);
+    }
+
+    private static Control? LongestTip(Godot.Node root)
+    {
+        Control? best = null;
+        foreach (var child in root.GetChildren())
+        {
+            if (child is Control { Visible: true } control && control.IsVisibleInTree()
+                && control.TooltipText.Length > (best?.TooltipText.Length ?? 0))
+                best = control;
+            if (LongestTip(child) is { } deeper && deeper.TooltipText.Length > (best?.TooltipText.Length ?? 0))
+                best = deeper;
+        }
+        return best;
     }
 
     // How many rooms from `from` — itself included — until one tagged `role`, or null if this branch never
@@ -1969,7 +2038,18 @@ public partial class SessionScreen : Control
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         ReportPictures("reward");
         ReportTooltips("reward");
-        await CaptureThenQuit("smoke-reward.png");
+        // `--flip`: right-click the first card the way a player does, and say what it turned into.
+        if (OS.GetCmdlineUserArgs().Contains("--flip") && _cardFlips.Keys.FirstOrDefault(IsInstanceValid) is { } flipCard)
+        {
+            await PointAt(flipCard.GetGlobalRect().GetCenter());
+            Input.ParseInputEvent(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Right, Pressed = true, Position = flipCard.GetGlobalRect().GetCenter(),
+            });
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            GD.Print($"smoke-flip: the right-clicked card was {(IsInstanceValid(flipCard) && !flipCard.IsQueuedForDeletion() ? "NOT replaced" : "replaced by its improved face")}");
+        }
+        await CaptureThenQuit(OS.GetCmdlineUserArgs().Contains("--flip") ? "smoke-flip.png" : "smoke-reward.png");
     }
 
     // Measure per-action latency (a card play under the replay model re-executes the whole run — is that
@@ -2569,6 +2649,9 @@ public partial class SessionScreen : Control
 
         foreach (var child in _main.GetChildren())
             child.QueueFree();
+        // The faces just freed were drawn in the page; the pile overlay's are not, and stay flippable.
+        foreach (var gone in _cardFlips.Keys.Where(c => !IsInstanceValid(c) || _main.IsAncestorOf(c)).ToList())
+            _cardFlips.Remove(gone);
         foreach (var child in _combatRoot.GetChildren())
         {
             // ⚠ A CLIP THAT IS REBUILT NEVER PLAYS. Every state change in a fight — a card played, an enemy
@@ -2581,7 +2664,7 @@ public partial class SessionScreen : Control
                 continue;
             child.QueueFree();
         }
-        foreach (var child in _sidebar.GetChildren())
+        foreach (var child in _topBar.GetChildren())
             child.QueueFree();
 
         if (!inCombat && _deckHolder is { } stale)
@@ -2600,7 +2683,11 @@ public partial class SessionScreen : Control
         _regionArena = null;
         _regionHand = null;
         if (!inCombat)
+        {
             _shownHandIds.Clear(); // a fresh fight re-deals; its opening hand animates in
+            _chipsSeen.Clear();    // …and its statuses are all new, none of them has acted yet
+            _chipsSeenAny = false;
+        }
 
         if (Play is null || session is null)
         {
@@ -2629,13 +2716,19 @@ public partial class SessionScreen : Control
             return;
         }
         else if (Play.CombatDriver?.Current is { } combat)
+        {
             RenderCombatGraphical(session, combat);
+            // What the chips said this time is what the next drawing compares against.
+            (_chipsSeen, _chipsNow) = (_chipsNow, _chipsSeen);
+            _chipsNow.Clear();
+            _chipsSeenAny = true;
+        }
         else if (session.IsComplete)
             RenderComplete(session);
         else
             Title("…");
 
-        RenderSidebar(session);
+        RenderTopBar(session);
         _log.Text = string.Join("\n", session.Run.Log.TakeLast(60).Select(entry => entry.Message));
         AnnounceAct(session);
         SetMusic(session);
@@ -2760,8 +2853,23 @@ public partial class SessionScreen : Control
         // there, so what a branch GIVES is knowable without the engine being asked anything new. The branch is
         // still a button (its words are the offer, and most branches give nothing a picture can hold); the
         // thing it gives stands under it.
-        foreach (var choice in session.PendingChoices)
+        var offeredIds = session.PendingChoices.Select(c => c.Id).ToHashSet();
+        foreach (var choice in situation.Choices)
         {
+            // A choice the resolver did not offer is normally not drawn at all. One that carries a reason is: it
+            // stands where it always stands, greyed, and pressing it says why ("There's nothing to improve.")
+            // instead of the door silently not being there.
+            if (!offeredIds.Contains(choice.Id))
+            {
+                if (choice.ShownDisabledReason(session.Run) is { } reason)
+                {
+                    var shut = new Button { Text = Say(choice.TextKey ?? choice.Id), TooltipText = reason };
+                    shut.Modulate = new Color(1, 1, 1, 0.45f);
+                    shut.Pressed += () => Toast(reason);
+                    _main.AddChild(shut);
+                }
+                continue;
+            }
             var id = choice.Id;
             var text = Say(choice.TextKey ?? id);
             var offer = RunEntityLabeler.ArtForGrant(choice.Effects);
@@ -2769,7 +2877,10 @@ public partial class SessionScreen : Control
             // ⚠ THE OFFER MUST BELONG TO ITS BRANCH. Three buttons and one picture loose beneath them is a
             // picture that belongs to whichever door the eye happens to be nearest — so the branch and what it
             // hands over are ONE block, tight, and the next branch starts a new one.
-            var block = offer is null ? null : new VBoxContainer();
+            // …AND SAYS WHAT IT DOES. The button keeps the game's voice; under it, in plain words, what taking it
+            // changes — read off the branch's own effects (EffectSummary), so it cannot drift from what happens.
+            var plain = EffectSummary.Of(choice, Play);
+            var block = offer is null && plain.Length == 0 ? null : new VBoxContainer();
             block?.AddThemeConstantOverride("separation", 2);
 
             var button = new Button { Text = text, TooltipText = Glossary.Explain(null, text) };
@@ -2777,6 +2888,25 @@ public partial class SessionScreen : Control
             (block ?? (Container)_main).AddChild(button);
             if (block is null)
                 continue;
+            if (plain.Length > 0)
+            {
+                var says = new Label
+                {
+                    Text = plain,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                    MouseFilter = MouseFilterEnum.Stop,
+                    TooltipText = Glossary.Explain(null, plain),
+                };
+                says.AddThemeFontSizeOverride("font_size", 13);
+                says.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
+                block.AddChild(says);
+            }
+            if (offer is null)
+            {
+                _main.AddChild(block);
+                continue;
+            }
 
             switch (offer)
             {
@@ -2973,7 +3103,23 @@ public partial class SessionScreen : Control
     private void RenderEntityPick(InteractiveRunSession session, EntitySelectionRequest entities)
     {
         Title(Say(entities.Purpose));
-        Muted(entities.Displays.Count <= entities.Count ? "Yours:" : $"Pick {entities.Count}");
+        // ONE CLICK TAKES THE CARD. A card reward was: click a card, then Confirm, with Skip under it — three
+        // controls for one decision (playtest 2026-09-26: "man bekommt direkt das gold und kann eine von 3
+        // karten waehlen oder skip"). A reward that keeps ONE card now takes the card that is clicked. A pick
+        // that strikes, improves or changes a card you already own keeps its Confirm: that one should not be
+        // one slip of the mouse away.
+        var oneClick = entities.Count == 1 && entities.Intent == RunChoiceIntent.Keep && !IsImprovement(entities)
+            && entities.Purpose.StartsWith("reward", StringComparison.Ordinal)
+            && Enumerable.Range(0, entities.Displays.Count).All(i => entities.ArtAt(i) is { Kind: EntityArt.Card });
+        if (oneClick && GoldJustWon(session.Run) is { } gold && gold > 0)
+        {
+            var won = new Label { Text = $"+{gold} gold", HorizontalAlignment = HorizontalAlignment.Center };
+            won.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
+            won.AddThemeFontSizeOverride("font_size", 18);
+            _main.AddChild(won);
+        }
+        Muted(oneClick ? "Choose one card for your deck — or skip."
+            : entities.Displays.Count <= entities.Count ? "Yours:" : $"Pick {entities.Count}");
         HFlowContainer? gallery = null;
         for (var i = 0; i < entities.Displays.Count; i++)
         {
@@ -2982,6 +3128,12 @@ public partial class SessionScreen : Control
             var selected = _selectedEntities.Contains(index);
             void Toggle()
             {
+                if (oneClick)
+                {
+                    _selectedEntities.Clear();
+                    session.PickEntities([index]);
+                    return;
+                }
                 if (!_selectedEntities.Remove(index))
                 {
                     if (entities.Count == 1)
@@ -3013,13 +3165,16 @@ public partial class SessionScreen : Control
         }
         if (IsImprovement(entities))
             AddImprovementPreview(entities);
-        var confirm = AddButton("Confirm", () =>
+        if (!oneClick)
         {
-            var picks = _selectedEntities.ToList();
-            _selectedEntities.Clear();
-            session.PickEntities(picks);
-        });
-        confirm.Disabled = _selectedEntities.Count != entities.Count;
+            var confirm = AddButton("Confirm", () =>
+            {
+                var picks = _selectedEntities.ToList();
+                _selectedEntities.Clear();
+                session.PickEntities(picks);
+            });
+            confirm.Disabled = _selectedEntities.Count != entities.Count;
+        }
 
         // A declinable pick: a reward the player may take nothing of, or a removal the player may call off
         // (the shop's — which is then not charged and stays on offer).
@@ -3029,6 +3184,23 @@ public partial class SessionScreen : Control
                 _selectedEntities.Clear();
                 session.PickEntities([]);
             });
+    }
+
+    // The gold this room just paid, read back out of the run's own log: every gain since the run last entered
+    // a room ("gold 0 -> 37 (+37)"). The spoils are taken without a question, so this is the only place the
+    // player is told what they were.
+    private static int? GoldJustWon(RunState run)
+    {
+        var total = 0;
+        foreach (var entry in run.Log.Reverse())
+        {
+            if (entry.Message.StartsWith("Entered node", StringComparison.Ordinal))
+                break;
+            var m = System.Text.RegularExpressions.Regex.Match(entry.Message, @"^gold \d+ -> \d+ \(\+(\d+)\)");
+            if (m.Success)
+                total += int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        return total;
     }
 
     // ── D5: A CHOICE YOU CAN SEE ─────────────────────────────────────────────────
@@ -3073,7 +3245,53 @@ public partial class SessionScreen : Control
     // `caption` is a SHORT line under the card (a price). It is short on purpose — a column is as wide as its
     // widest child, so a sentence here would push the cards apart; what a card does belongs in its plaque and
     // its hover, where the hand already puts it.
+    // RIGHT-CLICK SHOWS THE IMPROVED CARD (playtest 2026-09-26). In a shop, on a reward and in every deck or pile
+    // view, a card that has a "+" form turns into it on a right-click and back on the next; a card that is
+    // already improved does nothing. Every one of those screens draws its cards through CardPick, so the flip is
+    // wired here once: each face remembers how to draw itself the other way round.
+    private readonly Dictionary<Control, Func<Control>> _cardFlips = [];
+
+    private bool FlipHoveredCard()
+    {
+        for (Godot.Node? node = GetViewport().GuiGetHoveredControl(); node is Control control; node = control.GetParent())
+        {
+            if (!_cardFlips.TryGetValue(control, out var other))
+                continue;
+            _cardFlips.Remove(control);
+            if (!IsInstanceValid(control) || control.GetParent() is not { } parent)
+                return false;
+            var index = control.GetIndex();
+            var flipped = other();
+            parent.AddChild(flipped);
+            parent.MoveChild(flipped, index);
+            control.QueueFree();
+            return true;
+        }
+        return false;
+    }
+
     private Control CardPick(
+        string definitionId, int upgradeLevel, bool selected, string? caption, Action? onClick, bool dimmed = false)
+    {
+        var drawn = DrawCardPick(definitionId, upgradeLevel, selected, caption, onClick, dimmed);
+        // Only a card that is not improved yet, and has an improved form to show.
+        if (upgradeLevel == 0 && ShownDefinition(definitionId, 1) != definitionId)
+            Flippable(drawn, definitionId, selected, caption, onClick, dimmed, showingPlus: false);
+        return drawn;
+    }
+
+    private void Flippable(
+        Control drawn, string definitionId, bool selected, string? caption, Action? onClick, bool dimmed, bool showingPlus)
+    {
+        _cardFlips[drawn] = () =>
+        {
+            var other = DrawCardPick(definitionId, showingPlus ? 0 : 1, selected, caption, onClick, dimmed);
+            Flippable(other, definitionId, selected, caption, onClick, dimmed, !showingPlus);
+            return other;
+        };
+    }
+
+    private Control DrawCardPick(
         string definitionId, int upgradeLevel, bool selected, string? caption, Action? onClick, bool dimmed = false)
     {
         // ⚠ AN IMPROVED COPY SAYS WHAT THE IMPROVED CARD SAYS. It fights as "<id>+" (RunDeckMappers.UpgradeSuffix),
@@ -3360,8 +3578,10 @@ public partial class SessionScreen : Control
         var mount = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
         mount.AddThemeStyleboxOverride("panel", MoonvineTheme.StoneFrame(padH: 14, padV: 12));
         mount.AddChild(map);
-        _main.AddChild(mount);
+        // The legend stands ABOVE the map: it is what the symbols mean, read before the map is, and under an
+        // act's map it sat below the fold where nobody scrolled to it (playtest 2026-09-26).
         _main.AddChild(MapLegend());
+        _main.AddChild(mount);
         // Keep the room the run stands in on screen — an act's map is taller than the window.
         CallDeferred(nameof(ScrollToCurrentRoom), map);
     }
@@ -3447,9 +3667,15 @@ public partial class SessionScreen : Control
     }
 
     // What a region is worth in width right now — last frame's pane, which does not change between rounds.
+    // The pane's own size, not the window's: the top bar takes a strip off the height. Last frame's measurement
+    // when there is one (the pane does not resize between rounds), else the window less the bar.
     private float PaneWidth => _combatRoot is { } root && root.Size.X > 100
         ? root.Size.X
-        : GetViewportRect().Size.X * 0.72f;
+        : GetViewportRect().Size.X - 2;
+
+    private float PaneHeight => _combatRoot is { } root && root.Size.Y > 100
+        ? root.Size.Y
+        : GetViewportRect().Size.Y - TopBarHeight - 2;
 
     private void RenderCombatGraphical(InteractiveRunSession session, InteractiveCombat combat)
     {
@@ -3470,6 +3696,33 @@ public partial class SessionScreen : Control
         // the player must be able to look at one spot and read what reality currently means here. It is a band
         // of its OWN, so a long decree scrolls inside its own panel instead of eating the arena's height.
         var arenaTop = PaneInset + HeadlineBand + 8;
+
+        // THE RELICS STAND OVER THE HERO, as small tiles in rows of fifteen. They used to be a shelf in the
+        // sidebar and, in a fight, a list of rules under the hero's body; the player asked for the pictures,
+        // together, where a relic that fires can be SEEN firing (playtest 2026-09-26). The band grows by a row
+        // per fifteen relics and pushes the arena down by exactly that much.
+        _relicTiles.Clear();
+        if (session.Run.Relics.Count > 0)
+        {
+            var rows = (session.Run.Relics.Count + CombatRelicsPerRow - 1) / CombatRelicsPerRow;
+            var band = TopRegion(PaneInset, rows * (CombatRelicTile + 3), right: PaneInset);
+            var grid = new GridContainer
+            {
+                Name = RelicGridName,
+                Columns = Math.Min(CombatRelicsPerRow, session.Run.Relics.Count),
+            };
+            grid.AddThemeConstantOverride("h_separation", 3);
+            grid.AddThemeConstantOverride("v_separation", 3);
+            foreach (var relic in session.Run.Relics)
+            {
+                var tile = RelicTile(relic, CombatRelicTile);
+                _relicTiles[relic.Id.Value] = tile;
+                grid.AddChild(tile);
+            }
+            band.AddChild(grid);
+            arenaTop = Math.Max(arenaTop, PaneInset + rows * (CombatRelicTile + 3) + 8);
+        }
+
         if (DivineRuleArea() is { } divine)
         {
             var rule = TopRegion(arenaTop, DivineBand);
@@ -3487,7 +3740,7 @@ public partial class SessionScreen : Control
         var nameBand = NameBandFor(
             enemies.Select(e => (Name(e, combat), column)).Append((Name(hero, combat), HeroColumn)));
         // The arena is what is left of the canvas between the bands above it and the hand below.
-        var arenaHeight = GetViewportRect().Size.Y - arenaTop - BottomBand;
+        var arenaHeight = PaneHeight - arenaTop - BottomBand - PaneInset;
         var bodyHeight = BodyHeightFor(arenaHeight, nameBand);
 
         var heroBox = CombatantBox(combat, hero, isHero: true, HeroColumn, nameBand, bodyHeight, arenaHeight);
@@ -3940,11 +4193,15 @@ public partial class SessionScreen : Control
     }
 
     private const int HeroColumn = 200;
+    private const int CombatRelicTile = 24;
+    private const int CombatRelicsPerRow = 15;
+    // The relic tiles of the fight on screen, by relic id — what a relic that fires lights up.
+    private readonly Dictionary<string, Control> _relicTiles = new(StringComparer.Ordinal);
     private const int NarrowestColumn = 110;
     private const int ColumnGap = 24;
     private const int CrowdGap = 12;   // a crowd spends its room on the columns, not on the air between them
     private const int BodyHeight = 150; // the most room a body may stand in, whatever it is a picture of
-    private const int ShortBody = 90;   // …and the least, when the arena has to buy back room — see BodyHeightFor
+    private const int ShortBody = 70;   // …and the least, when the arena has to buy back room — see BodyHeightFor
 
     // What the fixed parts of a column cost, so the chips at its foot can be told what is left. Estimates, and
     // named as such: a Label's height is not knowable before it is laid out. They are checked by measurement
@@ -3952,7 +4209,7 @@ public partial class SessionScreen : Control
     // tallest column, and that number is what says whether these are still true.
     private const int HealthBarHeight = 22;
     private const int PhaseLine = 22;      // one phase, at 15 pt
-    private const int PromisePlate = 74;   // the first telegraph: a head line, two wrapped lines, its margins
+    private const int PromisePlate = 62;   // the first telegraph: the move's name, its effect chips, its margins
     private const int ForecastPlate = 50;  // a later day, quieter and usually one line
     private const int NameSize = 16;    // the name over a body
 
@@ -3989,8 +4246,10 @@ public partial class SessionScreen : Control
     // ordinary fight with room to spare is untouched at the full 150.
     private static int BodyHeightFor(float arenaHeight, int nameBand)
     {
-        // The health bar, one telegraph plate, one row of chips, and the separations between all of them.
-        const int MustBeLegible = 22 + 74 + 26 + 24;
+        // The health bar, one telegraph plate, one row of chips, the separations between all of them — and the
+        // column's own panel padding, which this sum used to leave out: at 1280 × 720 with the top bar in, it was
+        // exactly the difference between an enemy's statuses showing and being cut off at the arena's floor.
+        const int MustBeLegible = HealthBarHeight + PromisePlate + 30 + 24 + 20;
         return Mathf.Clamp(
             Mathf.FloorToInt(arenaHeight - nameBand - MustBeLegible), ShortBody, BodyHeight);
     }
@@ -4686,7 +4945,8 @@ public partial class SessionScreen : Control
         // "the tooltip was set" is not "the tooltip says the name and the rules" — so one is printed whole.
         if (tiles.FirstOrDefault(t => !string.IsNullOrEmpty(t.TooltipText)) is { } sample)
             GD.Print($"  hover ⟨{sample.TooltipText.Replace("\n", " ⏎ ")}⟩");
-        if (rows <= 1 && tiles.Count > 1)
+        var columns = (shelf as GridContainer)?.Columns ?? 0;
+        if (rows <= 1 && columns > 0 && tiles.Count > columns)
             GD.Print("  ⚠ ONE ROW — the shelf is not wrapping");
         if (perRow <= 1 && tiles.Count > 1)
             GD.Print("  ⚠ ONE COLUMN — the shelf was handed its minimum width, not the panel's");
@@ -4695,11 +4955,12 @@ public partial class SessionScreen : Control
         await CaptureThenQuit("smoke-shelf.png");
     }
 
-    private static HFlowContainer? FindShelf(Godot.Node node)
+    private static Container? FindShelf(Godot.Node node)
     {
-        if (node is HFlowContainer flow) return flow;
+        if (node is GridContainer { Name: var name } grid && name == RelicGridName) return grid;
         foreach (var child in node.GetChildren())
-            if (FindShelf(child) is { } found) return found;
+            if (FindShelf(child) is { } found)
+                return found;
         return null;
     }
 
@@ -4843,23 +5104,56 @@ public partial class SessionScreen : Control
 
     // ── sidebar + widgets ────────────────────────────────────────────────────────
 
-    private void RenderSidebar(InteractiveRunSession session)
+    // THE TOP BAR — what the sidebar used to say, on one line: who, how healthy, how rich, the deck, what is
+    // worn, the seed and the log. Every screen has it, so nothing the player used to glance at went away.
+    private void RenderTopBar(InteractiveRunSession session)
     {
         var run = session.Run;
-        _sidebar.AddChild(new Label { Text = Play?.HeroName ?? "You" });
+        var name = new Label { Text = Play?.HeroName ?? "You", VerticalAlignment = VerticalAlignment.Center };
+        _topBar.AddChild(name);
 
-        // HEALTH IS THE SAME BAR IT IS IN A FIGHT. It was a line of text here and a filled track three inches
-        // to the left, for the same number — and this is the one the player reads between rooms, when deciding
-        // whether to take the elite. A magnitude that is drawn as a magnitude in one place and spelled out in
-        // the other is two facts as far as the eye is concerned.
-        _sidebar.AddChild(RunHealthBar(run, SidebarWidth - PaneInset * 2));
+        // HEALTH IS THE SAME BAR IT IS IN A FIGHT: the one the player reads between rooms, deciding whether to
+        // take the elite, is drawn as the magnitude it is.
+        var health = new CenterContainer();
+        health.AddChild(RunHealthBar(run, 170));
+        _topBar.AddChild(health);
 
-        // ⚠ AND THE RESOURCES BY THEIR NAMES. "gold: 276" printed the resource's ID, which is the same fault
-        // the way-screen's "Use standard.scheduled_the_collapse" was — the document names these things and the
-        // run playback already holds the table.
+        // …and the resources by the names the document gives them.
         foreach (var (resource, amount) in run.Resources.OrderBy(r => r.Key.Value, StringComparer.Ordinal))
-            _sidebar.AddChild(MutedLabel(
-                $"{Play?.ResourceNames.GetValueOrDefault(resource.Value) ?? Humanized(resource.Value)}: {amount}"));
+            _topBar.AddChild(new Label
+            {
+                Text = $"{Play?.ResourceNames.GetValueOrDefault(resource.Value) ?? Humanized(resource.Value)}: {amount}",
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+
+        var deck = new Button
+        {
+            Text = $"Deck ({run.Deck.Count})",
+            Flat = true,
+            TooltipText = "Show every card you own. (D)",
+        };
+        deck.Pressed += () => TogglePile(Pile.Deck);
+        _topBar.AddChild(deck);
+
+        // A consumable is spent rather than kept, so it stands apart from the relics, same tile, no pool.
+        foreach (var consumable in run.Consumables)
+        {
+            var id = consumable.DefinitionId.Value;
+            var look = GameHost.Instance.Blueprint.Presentation.Consumables.GetValueOrDefault(id);
+            _topBar.AddChild(Centered(CardVisuals.Tile(new CardVisuals.RelicFace(
+                Id: id,
+                Title: ConsumableName(id),
+                Pool: look?.Frame,
+                Tooltip: $"{ConsumableName(id)}\n{Glossary.Explain(look?.FlavorText)}",
+                Off: false), BarTileSize)));
+        }
+
+        _topBar.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+
+        // The relics, outside a fight. In a fight they stand over the hero, where the ones that fire are seen
+        // firing (RelicGrid) — the bar would be the wrong place to look for a flash.
+        if (run.Relics.Count > 0 && _combatRoot.Visible is false)
+            _topBar.AddChild(Centered(RelicStrip(run, BarTileSize, perRow: 24)));
 
         // THE SEED, to share: a click puts it on the clipboard. It is the whole of the run's luck — a friend who
         // types it in plays these same maps.
@@ -4867,7 +5161,6 @@ public partial class SessionScreen : Control
         {
             Text = $"Seed {run.RandomSeed}",
             Flat = true,
-            Alignment = HorizontalAlignment.Left,
             TooltipText = "Click to copy. The same seed gives the same maps, rewards and shops.",
         };
         seed.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
@@ -4876,72 +5169,49 @@ public partial class SessionScreen : Control
             DisplayServer.ClipboardSet(run.RandomSeed.ToString(System.Globalization.CultureInfo.InvariantCulture));
             Toast("Seed copied.");
         };
-        _sidebar.AddChild(seed);
+        _topBar.AddChild(seed);
 
-        // ── the shelf ────────────────────────────────────────────────────────────
-        // What is worn is drawn as objects, not spelled out as a list. A relic strip only works if the eye
-        // can take the whole of it in at once, and the words are one hover away — the same words the list
-        // used to print, through the same glossary.
-        if (run.Relics.Count > 0)
-        {
-            _sidebar.AddChild(new Label { Text = $"Relics ({run.Relics.Count})" });
-            var shelf = Shelf();
-            foreach (var relic in run.Relics)
-            {
-                var look = GameHost.Instance.Blueprint.Presentation.Relics.GetValueOrDefault(relic.Id.Value);
-                shelf.AddChild(CardVisuals.Tile(new CardVisuals.RelicFace(
-                    Id: relic.Id.Value,
-                    Title: relic.Definition.DisplayName,
-                    // The pool the relic was won from, which the document names for exactly this reason: the
-                    // visual canon gives every pool its own frame, so the shelf is read by rank before a
-                    // single object on it is recognised. A relic without one gets the quiet frame.
-                    Pool: look?.Frame,
-                    Tooltip: $"{relic.Definition.DisplayName}{(relic.Enabled ? "" : " (off)")}\n"
-                        + Glossary.Explain(look?.FlavorText),
-                    Off: !relic.Enabled)));
-            }
-            _sidebar.AddChild(shelf);
-        }
-        // A consumable is worn the same way and is spent rather than kept, so it earns its own shelf under
-        // its own heading — same tile, no pool, because it was never drawn from one.
-        if (run.Consumables.Count > 0)
-        {
-            _sidebar.AddChild(new Label { Text = $"Consumables ({run.Consumables.Count})" });
-            var shelf = Shelf();
-            foreach (var consumable in run.Consumables)
-            {
-                var id = consumable.DefinitionId.Value;
-                var look = GameHost.Instance.Blueprint.Presentation.Consumables.GetValueOrDefault(id);
-                shelf.AddChild(CardVisuals.Tile(new CardVisuals.RelicFace(
-                    Id: id,
-                    Title: ConsumableName(id),
-                    Pool: look?.Frame,
-                    Tooltip: $"{ConsumableName(id)}\n{Glossary.Explain(look?.FlavorText)}",
-                    Off: false)));
-            }
-            _sidebar.AddChild(shelf);
-        }
+        var log = new Button { Text = "Log", Flat = true, TooltipText = "What has happened this run. (L)" };
+        log.Pressed += ToggleLog;
+        _topBar.AddChild(log);
+    }
 
-        var deckHeading = new Button
-        {
-            Text = $"Deck ({run.Deck.Count})  ▸",
-            Flat = true,
-            Alignment = HorizontalAlignment.Left,
-            TooltipText = "Show every card you own.",
-        };
-        deckHeading.Pressed += () => TogglePile(Pile.Deck);
-        _sidebar.AddChild(deckHeading);
-        foreach (var group in run.Deck
-            .GroupBy(card => (Name: CardName(card.DefinitionId.value) + new string('+', card.UpgradeLevel),
-                Definition: card.DefinitionId.value))
-            .OrderBy(g => g.Key.Name, StringComparer.Ordinal))
-        {
-            var label = MutedLabel(group.Count() > 1 ? $"{group.Key.Name} ×{group.Count()}" : group.Key.Name);
-            label.MouseFilter = MouseFilterEnum.Stop;
-            label.TooltipText = Glossary.Explain(GameHost.Instance.Blueprint.Presentation.Cards
-                .GetValueOrDefault(group.Key.Definition)?.FlavorText);
-            _sidebar.AddChild(label);
-        }
+    private const int BarTileSize = 24;
+    private const string RelicGridName = "RelicGrid";
+
+    private static CenterContainer Centered(Control child)
+    {
+        var holder = new CenterContainer();
+        holder.AddChild(child);
+        return holder;
+    }
+
+    private void ToggleLog() => _logPanel.Visible = !_logPanel.Visible;
+
+    // THE RELICS AS A GRID OF SMALL TILES, `perRow` to a row and then the next — the same tile the archive and
+    // the shop draw, at whatever size the place asks for. Hover is the relic's rules through the glossary.
+    private static GridContainer RelicStrip(RunState run, float size, int perRow)
+    {
+        var grid = new GridContainer { Name = RelicGridName, Columns = Math.Max(1, Math.Min(perRow, run.Relics.Count)) };
+        grid.AddThemeConstantOverride("h_separation", 3);
+        grid.AddThemeConstantOverride("v_separation", 3);
+        foreach (var relic in run.Relics)
+            grid.AddChild(RelicTile(relic, size));
+        return grid;
+    }
+
+    private static Control RelicTile(RelicInstance relic, float size)
+    {
+        var look = GameHost.Instance.Blueprint.Presentation.Relics.GetValueOrDefault(relic.Id.Value);
+        return CardVisuals.Tile(new CardVisuals.RelicFace(
+            Id: relic.Id.Value,
+            Title: relic.Definition.DisplayName,
+            // The pool the relic was won from: the visual canon gives every pool its own frame, so the shelf is
+            // read by rank before a single object on it is recognised.
+            Pool: look?.Frame,
+            Tooltip: $"{relic.Definition.DisplayName}{(relic.Enabled ? "" : " (off)")}\n"
+                + Glossary.Explain(look?.FlavorText),
+            Off: !relic.Enabled), size);
     }
 
     private void Title(string text, Color? color = null)
@@ -5290,33 +5560,79 @@ public partial class SessionScreen : Control
         var column = new VBoxContainer { MouseFilter = MouseFilterEnum.Pass };
         column.AddThemeConstantOverride("separation", 1);
 
+        // TWO LINES, TWO JOBS (playtest 2026-09-26: "es sollte klar angeordnet sein, was der attack name ist und
+        // was die attack wirkung"). The document writes every telegraph as "Name · effect, effect" — 1 027 of
+        // them, all in that one shape. The NAME is the enemy's own words and says what kind of move it is; the
+        // EFFECTS are the numbers that decide the turn, so they are drawn as chips the eye can count.
+        var dot = intent.Label.IndexOf(" · ", StringComparison.Ordinal);
+        var name = dot > 0 ? intent.Label[..dot] : intent.Label;
+        var effects = dot > 0 ? intent.Label[(dot + 3)..] : "";
+
         var head = new Label
         {
-            Text = promise
-                ? $"{RogueDeck.Scenario.Authoring.IntentDisplay.Glyph(intent.Kind)} "
-                    + RogueDeck.Scenario.Authoring.IntentDisplay.KindWord(intent.Kind)
-                : $"then {new string('I', ahead + 1)}",
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-        head.AddThemeFontSizeOverride("font_size", promise ? 15 : 12);
-        head.AddThemeColorOverride("font_color", colour);
-        column.AddChild(head);
-
-        var says = new Label
-        {
-            Text = intent.Label,
+            Text = promise ? name : $"then {new string('I', ahead + 1)} · {name}",
             HorizontalAlignment = HorizontalAlignment.Center,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             // ⚠ The plate is inside a column of a FIXED width and a Label's minimum is its longest word; without
             // a ceiling a body whose intent says "Reconsideration" widens every column in the arena.
             CustomMinimumSize = new Vector2(width - 34, 0),
         };
-        says.AddThemeFontSizeOverride("font_size", promise ? 14 : 12);
-        says.AddThemeColorOverride("font_color", promise ? MoonvineTheme.TextSoft : MoonvineTheme.TextMuted);
-        column.AddChild(says);
+        head.AddThemeFontSizeOverride("font_size", promise ? 13 : 11);
+        head.AddThemeColorOverride("font_color", promise ? MoonvineTheme.TextSoft : MoonvineTheme.TextMuted);
+        column.AddChild(head);
+
+        var chips = new HFlowContainer { Alignment = FlowContainer.AlignmentMode.Center, MouseFilter = MouseFilterEnum.Pass };
+        chips.AddThemeConstantOverride("h_separation", 6);
+        chips.AddThemeConstantOverride("v_separation", 2);
+        if (effects.Length == 0)
+            chips.AddChild(IntentChip(
+                $"{RogueDeck.Scenario.Authoring.IntentDisplay.Glyph(intent.Kind)} "
+                    + RogueDeck.Scenario.Authoring.IntentDisplay.KindWord(intent.Kind),
+                colour, promise, null));
+        else
+            foreach (var effect in effects.Split(", "))
+                chips.AddChild(EffectChip(effect.Trim(), promise ? null : MoonvineTheme.TextMuted, promise));
+        column.AddChild(chips);
 
         plate.AddChild(column);
         return plate;
+    }
+
+    // One effect of a telegraph as a chip: "11 dmg" → ⚔ 11, "8 block" → 🛡 8, "heal 5" → ✚ 5, "Doubt +1" → Doubt +1.
+    // A scaling rider ("+2 per Doubt (max +6)") stays in words after the number, smaller. Anything else is shown
+    // as written — the chip never invents a meaning the document did not give it.
+    private static Control EffectChip(string effect, Color? forecast, bool promise)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(effect, @"^(\d+) (dmg|block)(.*)$");
+        if (m.Success)
+        {
+            var attack = m.Groups[2].Value == "dmg";
+            var text = $"{(attack ? "⚔" : "🛡")} {m.Groups[1].Value}";
+            var rider = m.Groups[3].Value.Trim();
+            return IntentChip(rider.Length > 0 ? $"{text}  {rider}" : text,
+                forecast ?? (attack ? MoonvineTheme.Harm : MoonvineTheme.Steel), promise,
+                attack ? $"Attacks for {m.Groups[1].Value} damage{(rider.Length > 0 ? $" ({rider})" : "")}."
+                       : $"Gains {m.Groups[1].Value} Block{(rider.Length > 0 ? $" ({rider})" : "")}.",
+                bigNumber: rider.Length == 0);
+        }
+        var heal = System.Text.RegularExpressions.Regex.Match(effect, @"^heal (\d+)$");
+        if (heal.Success)
+            return IntentChip($"✚ {heal.Groups[1].Value}", forecast ?? MoonvineTheme.Steel, promise,
+                $"Heals {heal.Groups[1].Value} HP.", bigNumber: true);
+        return IntentChip(effect, forecast ?? MoonvineTheme.Arcane, promise, Glossary.Explain(null, effect));
+    }
+
+    private static Control IntentChip(string text, Color colour, bool promise, string? tooltip, bool bigNumber = false)
+    {
+        var label = new Label
+        {
+            Text = text,
+            MouseFilter = MouseFilterEnum.Pass,
+            TooltipText = tooltip ?? "",
+        };
+        label.AddThemeFontSizeOverride("font_size", promise ? (bigNumber ? 19 : 14) : 12);
+        label.AddThemeColorOverride("font_color", colour);
+        return label;
     }
 
     private static Control? PhaseBanner(InteractiveCombat combat, CombatantState combatant)
@@ -5362,13 +5678,16 @@ public partial class SessionScreen : Control
     // The definitions come from the live fight's registry, which knows the engine's own statuses as well as the
     // game's. A status the registry cannot resolve falls back to a readable form of its id rather than to
     // nothing: an unnamed status is a content gap, not a reason to hide state from the player.
-    private static Control? StatusChips(InteractiveCombat combat, CombatantState combatant)
+    private Control? StatusChips(InteractiveCombat combat, CombatantState combatant)
     {
         var registry = combat.State.DefinitionRegistry;
         // …minus the phase, which is not one fact among the others: it says what all of them are FOR, and it
-        // is drawn above the intent instead.
+        // is drawn above the intent instead — and minus a worn RELIC's own status. A relic carries its combat
+        // rule as a status of the same id, and those used to stand here as a list of rules under the hero, one
+        // per relic; the relic is now a picture over the hero (the grid), so its status says nothing new.
+        var worn = Session?.Run.Relics.Select(r => r.Id.Value).ToHashSet(StringComparer.Ordinal) ?? [];
         var shown = combatant.Statuses
-            .Where(s => s.Visibility == StatusVisibility.Visible && !IsPhase(s))
+            .Where(s => s.Visibility == StatusVisibility.Visible && !IsPhase(s) && !OfAWornRelic(s.DefinitionId.value, worn))
             .ToList();
         if (shown.Count == 0)
             return null;
@@ -5403,18 +5722,71 @@ public partial class SessionScreen : Control
             box.ContentMarginTop = box.ContentMarginBottom = 2;
             chip.AddThemeStyleboxOverride("panel", box);
 
-            var text = new Label
-            {
-                Text = StatusText(status, definition),
-                MouseFilter = Control.MouseFilterEnum.Pass,
-                TooltipText = hover,
-            };
-            text.AddThemeFontSizeOverride("font_size", 13);
+            // THE NUMBER IS THE CHIP. "Paperwork ×3 (in 1)" was a phrase; a player counting what a body carries
+            // wants the count, so the name is set small and the magnitude large beside it.
+            var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+            row.AddThemeConstantOverride("separation", 4);
+            var (label, magnitude) = StatusParts(status, definition);
+            var text = new Label { Text = label, MouseFilter = Control.MouseFilterEnum.Pass, TooltipText = hover };
+            text.AddThemeFontSizeOverride("font_size", 11);
             text.AddThemeColorOverride("font_color", colour);
-            chip.AddChild(text);
+            text.VerticalAlignment = VerticalAlignment.Center;
+            row.AddChild(text);
+            if (magnitude.Length > 0)
+            {
+                var number = new Label { Text = magnitude, MouseFilter = Control.MouseFilterEnum.Pass, TooltipText = hover };
+                number.AddThemeFontSizeOverride("font_size", 15);
+                number.AddThemeColorOverride("font_color", MoonvineTheme.Text);
+                row.AddChild(number);
+            }
+            chip.AddChild(row);
             flow.AddChild(chip);
+
+            // A STATUS THAT JUST DID SOMETHING LIGHTS UP. What a player can see of a status acting is its number
+            // moving — a poison ticking down, a stack added, a fresh one arriving — so a chip whose magnitude
+            // is not what it was on the last drawing flares and settles (playtest 2026-09-26: "aktivierung durch
+            // leuchten").
+            var key = $"{combatant.Id.value}/{status.DefinitionId.value}";
+            var now = StatusText(status, definition);
+            if (_chipsSeen.TryGetValue(key, out var before) ? before != now : _chipsSeenAny)
+                Flare(chip);
+            _chipsNow[key] = now;
         }
         return flow;
+    }
+
+    // A relic's status is named after it: the relic's own id, or that id plus a suffix ("_rule", "_boon", "_spent").
+    private static bool OfAWornRelic(string status, HashSet<string> worn) =>
+        worn.Contains(status) || worn.Any(relic => status.StartsWith(relic + "_", StringComparison.Ordinal));
+
+    // What each chip said on the last drawing, so a change can be seen; `_chipsSeenAny` is false for the first
+    // drawing of a fight, when every chip is "new" and none of them has done anything yet.
+    private Dictionary<string, string> _chipsSeen = new(StringComparer.Ordinal);
+    private Dictionary<string, string> _chipsNow = new(StringComparer.Ordinal);
+    private bool _chipsSeenAny;
+
+    private void Flare(Control target)
+    {
+        if (_fastForward)
+            return;
+        target.PivotOffset = target.Size / 2;
+        target.Modulate = new Color(1.9f, 1.7f, 1.1f);
+        target.Scale = new Vector2(1.18f, 1.18f);
+        var tween = target.CreateTween().SetParallel();
+        tween.TweenProperty(target, "modulate", Colors.White, 0.7).SetTrans(Tween.TransitionType.Sine);
+        tween.TweenProperty(target, "scale", Vector2.One, 0.45).SetTrans(Tween.TransitionType.Back);
+    }
+
+    private static (string Label, string Magnitude) StatusParts(StatusInstance status, StatusDefinition? definition)
+    {
+        var name = definition is not null && !string.IsNullOrWhiteSpace(definition.DisplayNameKey)
+            ? definition.DisplayNameKey
+            : Humanized(status.DefinitionId.value);
+        var magnitude = status.Stacks > 0 && (definition?.UsesStacks ?? true) ? $"{status.Stacks}"
+            : status.DurationTurns > 0 && (definition?.UsesDuration ?? true) ? $"{status.DurationTurns}t"
+            : status.Charges > 0 && (definition?.UsesCharges ?? true) ? $"{status.Charges}c" : "";
+        var pending = status.PendingTurns > 0 ? $" (in {status.PendingTurns})" : "";
+        return ($"{name}{pending}", magnitude);
     }
 
     // The chips as one line of text — what the headless checks read, and what a log line would say.

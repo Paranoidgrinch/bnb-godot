@@ -34,6 +34,7 @@ public static class Controls
     public const string ViewExhaust = "bnb_view_exhaust";
     public const string ViewDeck = "bnb_view_deck";
     public const string Map = "bnb_map";
+    public const string Log = "bnb_log";
 
     public const int CardKeys = 10;
     public static string Card(int index) => $"bnb_card_{index + 1}";
@@ -55,6 +56,7 @@ public static class Controls
         new(ViewExhaust, "Look at the exhausted cards", Key.X),
         new(ViewDeck, "Look at your deck", Key.D),
         new(Map, "Show the map", Key.M),
+        new(Log, "Show the run's log", Key.L),
     ];
 
     // Shown in the dialog, never rebindable (see above).

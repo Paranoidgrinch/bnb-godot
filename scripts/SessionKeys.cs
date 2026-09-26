@@ -27,6 +27,11 @@ public partial class SessionScreen
             GetViewport().SetInputAsHandled();
             return;
         }
+        if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right } && FlipHoveredCard())
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (@event is not InputEventKey { Pressed: true, Echo: false } || AnyMenuOpen
             || GetViewport().GuiGetFocusOwner() is LineEdit or TextEdit)
             return;
@@ -47,6 +52,11 @@ public partial class SessionScreen
         if (@event.IsActionPressed(Controls.Map))
         {
             ToggleMapOverlay();
+            return true;
+        }
+        if (@event.IsActionPressed(Controls.Log))
+        {
+            ToggleLog();
             return true;
         }
         foreach (var (action, pile) in new[]
