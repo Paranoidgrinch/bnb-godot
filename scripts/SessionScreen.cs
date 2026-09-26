@@ -235,6 +235,8 @@ public partial class SessionScreen : Control
             _ = SmokeHover();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-summaries"))
             SmokeSummaries();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-tutorial"))
+            _ = SmokeTutorial();
     }
 
     // EVERY EVENT BRANCH, SAID IN PLAIN WORDS: the line EffectSummary reads off each choice of each event in the
@@ -2753,6 +2755,7 @@ public partial class SessionScreen : Control
         // added next year. It walks a deck and a shelf and adds to a set; the FILE is only touched when the
         // set actually grew (Archive.Observe), which over a whole run is a few dozen times.
         Archive.Observe(session, Play);
+        CoachAfterDraw(session);
     }
 
     // WHERE THE PLAYER IS, told to the music. Asked on every redraw and not on transitions, because a
@@ -3984,7 +3987,7 @@ public partial class SessionScreen : Control
         var controls = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         controls.CustomMinimumSize = new Vector2(0, ControlBand);
         controls.AddThemeConstantOverride("separation", 10);
-        var endTurn = new Button { Text = "End turn ▸" };
+        var endTurn = new Button { Text = "End turn ▸", Name = "EndTurnButton" };
         endTurn.TooltipText = $"End your turn ({Controls.KeyName(Controls.EndTurn)})";
         endTurn.Pressed += RequestEndTurn;
         controls.AddChild(endTurn);
@@ -4411,6 +4414,7 @@ public partial class SessionScreen : Control
         {
             var energy = new Label
             {
+                Name = "EnergyLine",
                 Text = ResourcePoolsLine(combatant),
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
@@ -4424,6 +4428,7 @@ public partial class SessionScreen : Control
             // and every end-of-turn effect already in it.
             if (IncomingLine(combat, combatant) is { } incoming)
             {
+                incoming.Name = "Incoming";
                 box.AddChild(incoming);
                 spent += 24 + 4;
             }
@@ -5617,6 +5622,7 @@ public partial class SessionScreen : Control
 
         var plate = new PanelContainer
         {
+            Name = "IntentPlate",
             MouseFilter = MouseFilterEnum.Pass, // the targeting overlay keeps the click
             // What it is about to do names things; hovering says what they are.
             TooltipText = Glossary.Explain(null, intent.Label),
@@ -5836,7 +5842,7 @@ public partial class SessionScreen : Control
         column.AddChild(head);
         foreach (var plate in plates)
             column.AddChild(plate);
-        var margin = new MarginContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        var margin = new MarginContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, Name = "FightRules" };
         margin.AddThemeConstantOverride("margin_left", 24);
         margin.AddThemeConstantOverride("margin_right", 24);
         margin.AddChild(column);
@@ -5913,7 +5919,7 @@ public partial class SessionScreen : Control
         if (shown.Count == 0)
             return null;
 
-        var flow = new HFlowContainer { Alignment = FlowContainer.AlignmentMode.Center };
+        var flow = new HFlowContainer { Alignment = FlowContainer.AlignmentMode.Center, Name = "StatusChips" };
         flow.AddThemeConstantOverride("h_separation", 4);
         flow.AddThemeConstantOverride("v_separation", 4);
 

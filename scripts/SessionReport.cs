@@ -13,6 +13,11 @@ public partial class SessionScreen
 {
     private void RenderComplete(InteractiveRunSession session)
     {
+        if (GameHost.Instance.IsTutorial)
+        {
+            RenderTutorialEnd(session);
+            return;
+        }
         var run = session.Run;
         var victory = run.Result == RunResult.Victory;
         var tally = RunTally.Counts;
@@ -283,5 +288,33 @@ public partial class SessionScreen
         GD.Print($"smoke-report: fight={(combat is not null)} run over={over} result={Session?.Run.Result} "
             + $"cause={CauseOfDeath() ?? "—"} ticked={ticked} filed={_filed} {(ok ? "PASS" : "FAIL")}");
         await CaptureThenQuit("smoke-report-filed.png", ok ? 0 : 1);
+    }
+
+    // The end of a lesson is not a report: no form, no upload, no ranking — a word, and the two ways on.
+    private void RenderTutorialEnd(InteractiveRunSession session)
+    {
+        var won = session.Run.Result == RunResult.Victory;
+        Title(won ? "Tutorial complete" : "The tutorial ended early");
+        Muted(won
+            ? "You have seen every kind of room. A real run is five acts of this, with a new map every time."
+            : "Even a lesson can go wrong. You have still seen how it all works — try it again, or start for real.");
+        var row = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        row.AddThemeConstantOverride("separation", 12);
+        var again = new Button { Text = "Play the tutorial again", CustomMinimumSize = new Vector2(220, 44) };
+        again.Pressed += () =>
+        {
+            _coachSeen.Clear();
+            _coachSilenced = false;
+            GameHost.Instance.StartTutorial();
+        };
+        var title = new Button { Text = "Back to the title", CustomMinimumSize = new Vector2(220, 44) };
+        title.Pressed += () =>
+        {
+            GameHost.Instance.AbandonRunInMemory();
+            GetTree().ChangeSceneToFile("res://scenes/Boot.tscn");
+        };
+        row.AddChild(again);
+        row.AddChild(title);
+        _main.AddChild(row);
     }
 }

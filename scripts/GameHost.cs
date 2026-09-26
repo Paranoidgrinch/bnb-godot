@@ -62,8 +62,25 @@ public partial class GameHost : Godot.Node
     // `mapGenerator` is MapGenerators.RuleBased or .Strategic; null means the player's remembered preference.
     // It is passed HERE and nowhere else: from this moment it belongs to the run, travels in its save, and a
     // resume reads it back out of the save rather than out of the menu (see RunPreferences).
+    // THE TUTORIAL: the game's own fixed walk (RunBlueprint.ForTutorial) — same content, six city rooms. It is a
+    // lesson, not a run: never saved (it must not overwrite the player's real save), never recorded or uploaded,
+    // never in the history. The coach reads IsTutorial to know it is on.
+    public bool IsTutorial { get; private set; }
+
+    public bool HasTutorial => Blueprint?.Tutorial is not null;
+
+    public void StartTutorial()
+    {
+        Play?.Dispose();
+        Play = new RunPlayback(OnPlayChanged, _metaStore);
+        IsTutorial = true;
+        Play.Start(Blueprint.ForTutorial(), seed: 1, interactive: true);
+        EmitChanged();
+    }
+
     public void StartNewRun(int seed, string? characterId = null, int? health = null, string? mapGenerator = null)
     {
+        IsTutorial = false;
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
         var generator = mapGenerator ?? RunPreferences.MapGenerator;
@@ -102,6 +119,8 @@ public partial class GameHost : Godot.Node
 
     public string? SaveRun()
     {
+        if (IsTutorial)
+            return null; // a lesson is not a run: the player's real save stays where it is
         var json = Play?.SaveJson();
         if (json is null)
             return Play?.Error ?? "No run to save.";
@@ -116,6 +135,7 @@ public partial class GameHost : Godot.Node
         if (!HasSave)
             return false;
         var save = RunSaveJson.FromJson(Godot.FileAccess.GetFileAsString(SavePath));
+        IsTutorial = false;
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
         Play.Resume(Blueprint, save, interactive: true);
@@ -152,8 +172,12 @@ public partial class GameHost : Godot.Node
     private void EmitChanged()
     {
         // The history first: RunLog.Observe lets go of the recording the history takes its room count from.
-        RunHistory.Observe(Play, RunLog.Current);
-        RunLog.Observe(this);
+        // A tutorial is neither history nor a recording.
+        if (!IsTutorial)
+        {
+            RunHistory.Observe(Play, RunLog.Current);
+            RunLog.Observe(this);
+        }
         EmitSignal(SignalName.StateChanged);
     }
 }

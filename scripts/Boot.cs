@@ -165,6 +165,13 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
+        // The tutorial, walked by its probe the way a player starts it.
+        if (userArgs.Contains("--smoke-tutorial"))
+        {
+            host.StartTutorial();
+            CallDeferred(nameof(GoToSession));
+            return;
+        }
         if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover" or "--smoke-mapkey" or "--smoke-piles" or "--smoke-keys" or "--smoke-preview" or "--smoke-report" or "--smoke-summaries" or "--smoke-tip-flip"))
         {
             host.StartNewRun(seed: 7,
@@ -862,6 +869,21 @@ public partial class Boot : Control
         // because it belongs to the run being started, not to the machine (see NewRunPanel).
         start.Pressed += () => OpenNewRun(host);
         actions.AddChild(start);
+
+        // THE TUTORIAL: six rooms of the city with a coach beside them. First on the row for a player who has
+        // never played; a veteran simply walks past it.
+        if (host.HasTutorial)
+        {
+            var tutorial = new Button { Text = "Tutorial", CustomMinimumSize = new Vector2(140, 44) };
+            tutorial.TooltipText = "A short guided run: everything in the game, shown once and explained.";
+            tutorial.Pressed += () =>
+            {
+                host.StartTutorial();
+                if (host.Play?.Error is null)
+                    GoToSession();
+            };
+            actions.AddChild(tutorial);
+        }
 
         if (host.HasSave)
         {
