@@ -228,6 +228,25 @@ public partial class Boot : Control
             SmokeSeed(host);
             return;
         }
+        // The compendium, opened from its title-screen button the way a player opens it, on Paperwork.
+        if (userArgs.Contains("--smoke-compendium"))
+        {
+            var button = FindChildren("*", nameof(Button), recursive: true, owned: false).OfType<Button>()
+                .FirstOrDefault(b => b.Text == "Compendium");
+            button?.EmitSignal(BaseButton.SignalName.Pressed);
+            var panel = Descendants(this).OfType<CompendiumPanel>().FirstOrDefault();
+            if (panel is not null)
+            {
+                var (entries, explained, concepts) = panel.Census();
+                panel.Pick("paperwork");
+                GD.Print($"smoke-compendium: button={(button is not null)} entries={entries} "
+                    + $"with plain words={explained} basics={concepts}");
+            }
+            else
+                GD.Print($"smoke-compendium: button={(button is not null)} — THE COMPENDIUM DID NOT OPEN");
+            _ = CaptureThenQuit("user://smoke-compendium.png");
+            return;
+        }
         // Settings ▸ Gameplay, reached the way a player reaches it.
         if (userArgs.Contains("--smoke-gameplay") && !DisplayServer.GetName().Contains("headless"))
         {
@@ -861,6 +880,12 @@ public partial class Boot : Control
         archive.TooltipText = "Everything you have met, kept between runs.";
         archive.Pressed += () => OpenArchive();
         actions.AddChild(archive);
+
+        // THE COMPENDIUM beside it: the rules of the game, which a new player needs before the first fight.
+        var compendium = new Button { Text = "Compendium", CustomMinimumSize = new Vector2(140, 44) };
+        compendium.TooltipText = "Every effect and status in the game, in plain words with an example.";
+        compendium.Pressed += () => CompendiumPanel.Open(this);
+        actions.AddChild(compendium);
 
         // THE PLAYER'S OWN RUNS, a main-menu item of its own beside the archive: the archive is what the game
         // holds, this is what the player did with it.

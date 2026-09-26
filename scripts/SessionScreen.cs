@@ -2387,6 +2387,10 @@ public partial class SessionScreen : Control
         {
             archive.QueueFree();
         }
+        else if (GetNodeOrNull(CompendiumPanel.OverlayName) is { } compendium)
+        {
+            compendium.QueueFree();
+        }
         else if (GetNodeOrNull("SettingsOverlay") is { } open)
         {
             open.QueueFree();
@@ -2412,7 +2416,12 @@ public partial class SessionScreen : Control
                 },
                 OpenBugReport,
                 SaveAndQuitToTitle,
-                () => OpenArchive());
+                () => OpenArchive(),
+                () =>
+                {
+                    GetNodeOrNull("SettingsOverlay")?.QueueFree();
+                    CompendiumPanel.Open(this);
+                });
             overlay.Name = "SettingsOverlay";
             AddChild(overlay);
         }
@@ -2438,7 +2447,8 @@ public partial class SessionScreen : Control
         if (Session is not { Run.Map.Nodes.Count: > 0 } session
             || GetNodeOrNull("SettingsOverlay") is not null
             || GetNodeOrNull(BugReportPanel.OverlayName) is not null
-            || GetNodeOrNull(ArchivePanel.OverlayName) is not null)
+            || GetNodeOrNull(ArchivePanel.OverlayName) is not null
+            || GetNodeOrNull(CompendiumPanel.OverlayName) is not null)
             return;
 
         GetNodeOrNull(PileOverlayName)?.QueueFree();
@@ -2939,6 +2949,19 @@ public partial class SessionScreen : Control
         Title("The shop");
         Muted($"Gold: {gold}");
 
+        // TWO COLUMNS, NO SCROLL (playtest 2026-09-26: "viele probleme mit der vertikalen"). The shop was one stack
+        // — two card shelves, four relic rows, the services — twice the height of the window. The cards stand on
+        // the left, where they compare side by side; the relics and the services on the right.
+        var columns = new HBoxContainer { CustomMinimumSize = new Vector2(ShopWidth, 0) };
+        columns.AddThemeConstantOverride("separation", 28);
+        var left = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsStretchRatio = 1.25f };
+        var right = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        left.AddThemeConstantOverride("separation", 6);
+        right.AddThemeConstantOverride("separation", 6);
+        columns.AddChild(left);
+        columns.AddChild(right);
+        _main.AddChild(columns);
+
         // THE STOCK, AS OBJECTS ON A SHELF. A shop is the one screen in the game that is nothing but a choice,
         // and the thing it was asking the player to choose between was a stack of labelled buttons. Every slot
         // knows what it grants (its payload), so every slot can be drawn as the thing it grants: a card as a
@@ -2946,36 +2969,62 @@ public partial class SessionScreen : Control
         // object — the card-removal service, the restock — stays a row, because it is a service and not a thing.
         foreach (var group in shelf.Slots.GroupBy(slot => slot.GroupId))
         {
-            _main.AddChild(MutedLabel(Say(group.Key)));
-            HFlowContainer? gallery = null;
-            foreach (var slot in group)
+            var cards = group.All(slot => RunEntityLabeler.ArtForGrant(slot.Entry.Payload) is { Kind: EntityArt.Card });
+            Into(cards ? left : right, () =>
             {
-                var entry = slot.Entry;
-                var name = Say(entry.TextKey ?? entry.Id);
-                switch (RunEntityLabeler.ArtForGrant(entry.Payload))
+                _main.AddChild(MutedLabel(Say(group.Key)));
+                HFlowContainer? gallery = null;
+                foreach (var slot in group)
                 {
-                    case EntityArt { Kind: EntityArt.Card } card:
-                        gallery ??= AddGallery();
-                        gallery.AddChild(ShopCard(session, affordable, entry.Id, card.Id, slot.Price));
-                        break;
-                    case EntityArt { Kind: EntityArt.Relic } relic:
-                        AddShopRow(session, affordable, entry.Id, name, slot.Price,
-                            WhatItDoes(entry.Payload), RelicIcon(relic.Id));
-                        break;
-                    default:
-                        AddShopRow(session, affordable, entry.Id, name, slot.Price, WhatItDoes(entry.Payload));
-                        break;
+                    var entry = slot.Entry;
+                    var name = Say(entry.TextKey ?? entry.Id);
+                    switch (RunEntityLabeler.ArtForGrant(entry.Payload))
+                    {
+                        case EntityArt { Kind: EntityArt.Card } card:
+                            gallery ??= AddGallery();
+                            gallery.AddChild(ShopCard(session, affordable, entry.Id, card.Id, slot.Price));
+                            break;
+                        case EntityArt { Kind: EntityArt.Relic } relic:
+                            AddShopRow(session, affordable, entry.Id, name, slot.Price,
+                                WhatItDoes(entry.Payload), RelicIcon(relic.Id, ShopRelicSize));
+                            break;
+                        default:
+                            AddShopRow(session, affordable, entry.Id, name, slot.Price, WhatItDoes(entry.Payload));
+                            break;
+                    }
                 }
-            }
+            });
         }
 
-        foreach (var service in shelf.Services.Where(s => !shelf.IsServiceUsed(s)))
-            AddShopRow(session, affordable, service.Id, Say(service.TextKey ?? service.Id), shelf.PriceOf(service));
+        Into(right, () =>
+        {
+            _main.AddChild(MutedLabel("Services"));
+            foreach (var service in shelf.Services.Where(s => !shelf.IsServiceUsed(s)))
+                AddShopRow(session, affordable, service.Id, Say(service.TextKey ?? service.Id), shelf.PriceOf(service));
 
-        if (ShopHere() is { Reroll: { } reroll })
-            AddShopRow(session, affordable, ShopNodeResolver.RerollChoiceId, "Restock the shelves", reroll.Price);
+            if (ShopHere() is { Reroll: { } reroll })
+                AddShopRow(session, affordable, ShopNodeResolver.RerollChoiceId, "Restock the shelves", reroll.Price);
 
-        AddButton("Leave", () => session.Pick(ShopNodeResolver.LeaveChoiceId));
+            AddButton("Leave", () => session.Pick(ShopNodeResolver.LeaveChoiceId));
+        });
+    }
+
+    private const int ShopWidth = 1180;
+    private const int ShopRelicSize = 48;
+
+    // Build into another column: every Add* helper writes to `_main`, so the column stands in for it meanwhile.
+    private void Into(VBoxContainer column, Action build)
+    {
+        var page = _main;
+        _main = column;
+        try
+        {
+            build();
+        }
+        finally
+        {
+            _main = page;
+        }
     }
 
     // The shop definition the run is standing in, read off the map node it entered (for the prices of things
@@ -3042,6 +3091,7 @@ public partial class SessionScreen : Control
             withIcon.AddThemeConstantOverride("separation", 8);
             if (!canBuy)
                 icon.Modulate = new Color(1, 1, 1, 0.45f); // out of reach, and the object says so as one object
+            icon.SizeFlagsVertical = SizeFlags.ShrinkCenter; // a square, not stretched to the row's height
             withIcon.AddChild(icon);
             column.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             withIcon.AddChild(column);

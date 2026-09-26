@@ -15,6 +15,7 @@ public partial class SettingsPanel : PanelContainer
     private readonly Action? _onReportBug;
     private readonly Action? _onSaveAndQuit;
     private readonly Action? _onArchive;
+    private readonly Action? _onCompendium;
     private OptionButton _mode = null!;
     private OptionButton _size = null!;
     private OptionButton _scale = null!;
@@ -24,12 +25,13 @@ public partial class SettingsPanel : PanelContainer
 
     public SettingsPanel(
         Action? onClose = null, Action? onReportBug = null, Action? onSaveAndQuit = null,
-        Action? onArchive = null)
+        Action? onArchive = null, Action? onCompendium = null)
     {
         _onClose = onClose;
         _onReportBug = onReportBug;
         _onSaveAndQuit = onSaveAndQuit;
         _onArchive = onArchive;
+        _onCompendium = onCompendium;
     }
 
     public override void _Ready()
@@ -182,6 +184,21 @@ public partial class SettingsPanel : PanelContainer
         // screen, and until now the only way to look was to stop playing. Like the way out below, it belongs
         // to the run rather than to the window, so the caller supplies it and the title screen (which has its
         // own Archive button two feet away) passes nothing.
+        // THE COMPENDIUM: what every effect and status means, in plain words with an example. A rule is needed
+        // mid-fight far more often than on the title screen, so it is here as well as there.
+        if (_onCompendium is { } compendium)
+        {
+            var read = new Button
+            {
+                Text = "📜  Compendium",
+                CustomMinimumSize = new Vector2(0, 40),
+                TooltipText = "Every effect and status in the game, in plain words with an example.",
+            };
+            read.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
+            read.Pressed += () => compendium();
+            column.AddChild(read);
+        }
+
         if (_onArchive is { } archive)
         {
             var open = new Button
@@ -275,7 +292,8 @@ public partial class SettingsPanel : PanelContainer
 
     // The dialog as a full-screen overlay: a dimmed sheet with the panel centred on it. `onClose` frees it.
     public static Control Overlay(
-        Action onClose, Action? onReportBug = null, Action? onSaveAndQuit = null, Action? onArchive = null)
+        Action onClose, Action? onReportBug = null, Action? onSaveAndQuit = null, Action? onArchive = null,
+        Action? onCompendium = null)
     {
         var veil = new Control { MouseFilter = MouseFilterEnum.Stop };
         veil.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -285,7 +303,7 @@ public partial class SettingsPanel : PanelContainer
 
         var center = new CenterContainer();
         center.SetAnchorsPreset(LayoutPreset.FullRect);
-        center.AddChild(new SettingsPanel(onClose, onReportBug, onSaveAndQuit, onArchive));
+        center.AddChild(new SettingsPanel(onClose, onReportBug, onSaveAndQuit, onArchive, onCompendium));
         veil.AddChild(center);
         return veil;
     }

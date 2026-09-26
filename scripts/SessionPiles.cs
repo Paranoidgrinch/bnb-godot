@@ -25,7 +25,8 @@ public partial class SessionScreen
     private bool AnyMenuOpen =>
         GetNodeOrNull("SettingsOverlay") is not null
         || GetNodeOrNull(BugReportPanel.OverlayName) is not null
-        || GetNodeOrNull(ArchivePanel.OverlayName) is not null;
+        || GetNodeOrNull(ArchivePanel.OverlayName) is not null
+        || GetNodeOrNull(CompendiumPanel.OverlayName) is not null;
 
     // Opening the pile that is already open closes it, so the same key or click is on and off.
     private void TogglePile(Pile pile)
