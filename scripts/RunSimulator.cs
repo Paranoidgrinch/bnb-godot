@@ -14,8 +14,7 @@ namespace BnbGodot;
 // frame every twenty answers so the scene tree can collect what the last redraw freed, folding in the screen
 // faults R2a made countable, and the exit code.
 //
-//   godot --headless -- --sim [--sim-seed N] [--sim-immortal] [--sim-steps N] [--sim-ui] [--sim-policy f]
-//                            [--sim-champion]
+//   godot --headless -- --sim [--sim-seed N] [--sim-immortal] [--sim-steps N] [--sim-ui]
 public partial class SessionScreen : Control
 {
     public static string? SimCharacter;   // whoever Boot rolled for this run, for the log header
@@ -29,16 +28,6 @@ public partial class SessionScreen : Control
         return at >= 0 && at + 1 < args.Length && int.TryParse(args[at + 1], out var value) ? value : fallback;
     }
 
-    // A flag that is either there or not — no value follows it.
-    private static bool SimFlag(string name) => Array.IndexOf(OS.GetCmdlineUserArgs(), name) >= 0;
-
-    private static string? SimStringArg(string name)
-    {
-        var args = OS.GetCmdlineUserArgs();
-        var at = Array.IndexOf(args, name);
-        return at >= 0 && at + 1 < args.Length ? args[at + 1] : null;
-    }
-
     private async System.Threading.Tasks.Task SimulateRun()
     {
         if (Play is not { } play)
@@ -46,18 +35,6 @@ public partial class SessionScreen : Control
             GD.Print("sim: there is no run to walk");
             GetTree().Quit(2);
             return;
-        }
-
-        BotPolicy? policy = null;
-        if (SimStringArg("--sim-policy") is { } policyPath)
-        {
-            policy = ReadPolicy(policyPath);
-            if (policy is null)
-            {
-                GD.Print($"sim: could not read the policy at {policyPath}");
-                GetTree().Quit(2);
-                return;
-            }
         }
 
         var options = new BotOptions
@@ -68,14 +45,6 @@ public partial class SessionScreen : Control
             // its own, because two runs of the same seed on two generators are two different games.
             Maps = MapGenerators.Name(Session?.Run.GeneratedMapGenerator),
             Character = SimCharacter,
-            Policy = policy,
-            // ⚠ THE CHAMPION DECIDES WHAT TO PLAY BY PLAYING IT (B5) — it forks the fight, plays the card on
-            // the copy, lets the enemies answer and looks at what is left. What it TAKES is still scored,
-            // so it wants the card features exactly as much as any other policy runner does.
-            Champion = SimFlag("--sim-champion"),
-            // Only a policy runner scores cards, and only then is the document worth re-reading for it.
-            Features = policy is null ? null
-                : CardFeatures.FromDocument(Godot.FileAccess.GetFileAsString(GameDocument)),
         };
 
         // One frame every twenty answers: the screen rebuilds into fresh nodes per answer and frees the old
@@ -99,24 +68,5 @@ public partial class SessionScreen : Control
         // A lost run is a NORMAL outcome and exits clean; only something the run could not answer for —
         // an engine error, a refused play, a wall, a thrown exception — is worth the batch's attention.
         GetTree().Quit(result.Clean ? 0 : 1);
-    }
-
-    internal const string GameDocument = "res://content/game.roguedeck.json";
-
-    // A policy may sit anywhere the trainer put it — `res://`, `user://`, or an ordinary path on disk — so it
-    // is read through Godot's FileAccess, which understands all three.
-    private static BotPolicy? ReadPolicy(string path)
-    {
-        var json = Godot.FileAccess.GetFileAsString(path);
-        if (string.IsNullOrWhiteSpace(json))
-            return null;
-        try
-        {
-            return BotPolicy.FromJson(json);
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            return null;
-        }
     }
 }

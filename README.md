@@ -281,28 +281,10 @@ A run is flagged when something could not be answered for: an engine error, a st
 never ended, a wall, an exception. NOT flagged (they are the engine working): a card the rules refuse — a
 random player will try a curse — and a card that parks to ask its own question.
 
-## Training a runner for balance
-The same simulator can be given a POLICY — 17 weights that decide which card is worth playing, when a turn
-is over, which enemy to hit, which room to walk into and what to buy (`SimPolicy` in `RunSimulator.cs`).
-`tools/train.py` breeds them against the balance question itself: starting at 9999 hp, **how much damage does
-the game take off a runner on the way to a named act's boss?** Which act is `--target-act`, and it defaults
-to the last one the game has (`LAST_ACT` in `train.py`, Act V since V-0 — and since V-6 that act is the six
-authored gods and no longer placeholders, so the default IS the real question); the simulator's own fitness line names
-no act, only the per-act table (`actBossDamage`). Least taken wins; never arriving is worse than any arrival. Damage ADDED UP, not health remaining: no act heals you at its end, but the content heals
-plenty (one act-II door heals to full), and remaining health would credit a runner for the door it happened
-to walk through — on seed 1000 that reads 540 lost where 1075 was actually taken.
-```
-tools/train.py                                    # 5 generations × 8 runners × 2 seeds
-tools/train.py --generations 10 --population 12 --seeds 3 --jobs 8
-tools/train.py --target-act 3                     # measure to an earlier act's boss instead
-tools/train.py --resume ~/Desktop/bnb-balance-training/<stamp>
-tools/train.py --health 220 --generations 2 --population 3 --seeds 1   # a fast shakedown, not a training
-godot --headless -- --sim --sim-immortal --sim-policy <policy.json>    # watch one runner play
-```
-Output in `~/Desktop/bnb-balance-training/<timestamp>/`: `best-policy.json`, `leaderboard.csv`, and one
-folder per generation holding each runner's policy, ranking and full run log. Every ROOM line carries
-`cost=` — the health that room took — so the logs answer the other half of the balance question: which
-encounter is expensive. Reckon 4–10 minutes per immortal run.
+## Balance
+Balance is measured fight by fight, not by runners walking whole runs: see `bnb-content/BALANCE_PLAN.md`.
+The simulator above is a coverage instrument — it plays badly but broadly — and its numbers are not balance
+numbers.
 
 ## Building desktop binaries
 Requires the **Godot 4.7 (.NET) export templates** — install them once via the editor

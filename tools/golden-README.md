@@ -1,8 +1,8 @@
 # Das Golden-Set — das Messgerät, eingefroren
 
 ## Wofür es da ist
-Der ganze Runner-Umbau (`RUNNER_PERFORMANCE_PLAN.md`, R1–R5) hat **ein** Risiko: dass der Runner beim
-Schnellerwerden aufhört, dasselbe zu finden. Das Golden-Set ist die Antwort darauf. Es spielt einen festen
+Jeder Umbau an Engine oder Runner hat **ein** Risiko: dass der Würfelspieler danach etwas anderes findet,
+ohne dass es jemand merkt. Das Golden-Set ist die Antwort darauf. Es spielt einen festen
 Satz Läufe und schreibt auf, **was dabei herauskam** — nicht wie lange es gedauert hat.
 
 ```bash
