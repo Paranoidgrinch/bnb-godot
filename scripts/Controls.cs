@@ -33,6 +33,9 @@ public static class Controls
     public const string ViewDiscard = "bnb_view_discard";
     public const string ViewExhaust = "bnb_view_exhaust";
     public const string ViewDeck = "bnb_view_deck";
+    // THE INVENTORY TOOK THE DECK'S ACTION (user, 2026-09-28): the same id, so a key a player already bound to
+    // "look at your deck" now opens the inventory, whose Cards tab is that deck.
+    public const string Inventory = ViewDeck;
     public const string Map = "bnb_map";
     public const string Log = "bnb_log";
 
@@ -53,8 +56,8 @@ public static class Controls
         new(EndTurn, "End turn", Key.E),
         new(ViewDraw, "Look at the draw pile", Key.A),
         new(ViewDiscard, "Look at the discard pile", Key.S),
-        new(ViewExhaust, "Look at the exhausted cards", Key.X),
-        new(ViewDeck, "Look at your deck", Key.D),
+        new(ViewExhaust, "Look at the discard pile and the exhausted cards", Key.X),
+        new(Inventory, "Open the inventory (relics, cards, consumables)", Key.I),
         new(Map, "Show the map", Key.M),
         new(Log, "Show the run's log", Key.L),
     ];

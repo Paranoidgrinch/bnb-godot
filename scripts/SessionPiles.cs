@@ -49,7 +49,11 @@ public partial class SessionScreen
         {
             Pile.Deck => ("Your deck", DeckSections()),
             Pile.Draw => ("Draw pile", DrawSections(combat!)),
-            Pile.Discard => ("Discard pile", ZoneSections(combat!, CardZone.DiscardPile, "most recent last")),
+            // THE EXHAUSTED CARDS ARE A SECTION OF THIS VIEW (user, 2026-09-28): their own button under the hand is
+            // gone, and "where did that card go" is asked of the discard pile first.
+            Pile.Discard => ("Discard pile", [
+                .. ZoneSections(combat!, CardZone.DiscardPile, "most recent last"),
+                .. ZoneSections(combat!, CardZone.ExhaustPile, "Exhausted — gone for the rest of this fight")]),
             _ => ("Exhausted", ZoneSections(combat!, CardZone.ExhaustPile, "gone for the rest of this fight")),
         };
         var layer = CardOverlay(title, sections);
@@ -174,24 +178,59 @@ public partial class SessionScreen
         return layer;
     }
 
-    // The small buttons beside End turn: the two piles a fight has no picture for, and the whole deck.
-    private void AddPileButtons(HBoxContainer controls, InteractiveCombat combat)
-    {
-        var zones = combat.State.GetCardZones(combat.HeroId);
-        controls.AddChild(PileButton($"Discard {zones.GetCardsInZone(CardZone.DiscardPile).Count}",
-            "What you have played or discarded this shuffle.", Pile.Discard));
-        var exhausted = zones.GetCardsInZone(CardZone.ExhaustPile).Count;
-        if (exhausted > 0)
-            controls.AddChild(PileButton($"Exhausted {exhausted}",
-                "Cards gone for the rest of this fight.", Pile.Exhaust));
-        controls.AddChild(PileButton("Deck", "Every card you own.", Pile.Deck));
-    }
+    // ── THE DISCARD PILE, IN THE RIGHT-HAND CORNER (user, 2026-09-28) ─────────────────────────────────────
+    // The mirror of the draw pile: a small stack of backs with its count under it, and the picture is the
+    // button — it opens the discard pile, with the exhausted cards as a section of their own. Rebuilt every
+    // render (it has no animated card, so nothing is lost by making it again).
+    private const string DiscardPileName = "DiscardPile";
 
-    private Button PileButton(string text, string tooltip, Pile pile)
+    private void BuildDiscardPile(InteractiveCombat combat)
     {
-        var button = new Button { Text = text, TooltipText = tooltip };
-        button.Pressed += () => TogglePile(pile);
-        return button;
+        _combatRoot.GetNodeOrNull(DiscardPileName)?.QueueFree();
+        var zones = combat.State.GetCardZones(combat.HeroId);
+        var discarded = zones.GetCardsInZone(CardZone.DiscardPile).Count;
+        var exhausted = zones.GetCardsInZone(CardZone.ExhaustPile).Count;
+
+        const int lift = 4;
+        const int caption = 26;
+        const int lean = 4 * lift;
+        var footprint = new Vector2(CardVisuals.CardW + lean, CardVisuals.CardH + lean + caption);
+        var holder = new Control { Name = DiscardPileName, CustomMinimumSize = footprint, Size = footprint };
+        holder.SetAnchorsPreset(LayoutPreset.BottomRight);
+        holder.Position = new Vector2(-24 - footprint.X, -footprint.Y - 16);
+        _combatRoot.AddChild(holder);
+
+        // Leaning up and to the LEFT, the draw pile's lean turned round, so the two corners face each other.
+        var backs = Math.Min(discarded, 4);
+        for (var i = 0; i < backs; i++)
+        {
+            var back = CardVisuals.Back(animated: false);
+            back.Position = new Vector2(lean - i * lift, lean - i * lift);
+            back.Modulate = new Color(1, 1, 1, 0.85f);
+            holder.AddChild(back);
+        }
+        var count = new Label
+        {
+            Text = exhausted > 0 ? $"Discard {discarded} · Exhausted {exhausted}" : $"Discard {discarded}",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 1f, AnchorBottom = 1f,
+            OffsetLeft = -40f, OffsetRight = 0f, OffsetTop = -caption, OffsetBottom = 0f,
+        };
+        count.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
+        holder.AddChild(count);
+
+        var hit = new Button
+        {
+            Flat = true,
+            TooltipText = "Discard pile — click to see what you have played, and what is exhausted.",
+            MouseDefaultCursorShape = CursorShape.PointingHand,
+        };
+        foreach (var style in new[] { "normal", "hover", "pressed", "focus" })
+            hit.AddThemeStyleboxOverride(style, new StyleBoxEmpty());
+        hit.SetAnchorsPreset(LayoutPreset.FullRect);
+        hit.Pressed += () => TogglePile(Pile.Discard);
+        holder.AddChild(hit);
     }
 
     // The draw pile's own picture is the button for it: a flat, see-through Button over the whole stack.

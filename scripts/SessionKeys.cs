@@ -59,10 +59,16 @@ public partial class SessionScreen
             ToggleLog();
             return true;
         }
+        if (@event.IsActionPressed(Controls.Inventory))
+        {
+            GetNodeOrNull(MapOverlayName)?.QueueFree();
+            ToggleInventory();
+            return true;
+        }
+        // The exhausted cards are a section of the discard view now, so its key opens that view.
         foreach (var (action, pile) in new[]
         {
-            (Controls.ViewDeck, Pile.Deck), (Controls.ViewDraw, Pile.Draw),
-            (Controls.ViewDiscard, Pile.Discard), (Controls.ViewExhaust, Pile.Exhaust),
+            (Controls.ViewDraw, Pile.Draw), (Controls.ViewDiscard, Pile.Discard), (Controls.ViewExhaust, Pile.Discard),
         })
             if (@event.IsActionPressed(action))
             {
@@ -72,7 +78,7 @@ public partial class SessionScreen
             }
 
         // Everything below plays the fight, and is only meaningful with nothing covering it.
-        if (GetNodeOrNull(PileOverlayName) is not null || GetNodeOrNull(MapOverlayName) is not null
+        if (CardViewerOpen is not null || GetNodeOrNull(MapOverlayName) is not null
             || Play?.CombatDriver is not { } driver || driver.Current is not { IsHeroTurn: true } combat
             || driver.PendingCardChoice is not null || driver.PendingOptionChoice is not null)
             return false;
@@ -161,11 +167,11 @@ public partial class SessionScreen
         void Press(string action) => _Input(new InputEventKey { Keycode = Controls.KeyOf(action), Pressed = true });
         var report = new List<string>();
 
-        Press(Controls.ViewDeck);
-        report.Add($"deck-open={GetNodeOrNull(PileOverlayName) is not null}");
-        Press(Controls.ViewDeck);
+        Press(Controls.Inventory);
+        report.Add($"inventory-open={GetNodeOrNull(InventoryOverlayName) is not null}");
+        Press(Controls.Inventory);
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-        report.Add($"deck-closed={GetNodeOrNull(PileOverlayName) is null}");
+        report.Add($"inventory-closed={GetNodeOrNull(InventoryOverlayName) is null}");
 
         var fight = Play!.CombatDriver!.Current!;
         var hero = fight.State.GetCombatant(fight.HeroId);

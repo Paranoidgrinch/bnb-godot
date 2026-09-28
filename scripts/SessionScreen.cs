@@ -17,8 +17,10 @@ public partial class SessionScreen : Control
     private VBoxContainer _main = null!;
     private ScrollContainer _mainScroll = null!;
     private Control _combatRoot = null!;
-    private HBoxContainer _topBar = null!;
-    private const int TopBarHeight = 44;
+    // THE HUD: gold, health between rooms, the inventory — a small plate floating over the top of the page. It
+    // replaced a full-width bar (user, 2026-09-28) whose height the arena now has back; see RenderHud.
+    private HBoxContainer _hud = null!;
+    private const int HudTop = 6;
     // The reading column every non-fight screen stands in, centred on the page.
     private const int ColumnWidth = 820;
     private RichTextLabel _log = null!;
@@ -94,12 +96,23 @@ public partial class SessionScreen : Control
         page.AddThemeConstantOverride("separation", 0);
         AddChild(page);
 
-        var barPanel = new PanelContainer { CustomMinimumSize = new Vector2(0, TopBarHeight) };
-        barPanel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.BgRaised, MoonvineTheme.Hairline));
-        _topBar = new HBoxContainer();
-        _topBar.AddThemeConstantOverride("separation", 14);
-        barPanel.AddChild(_topBar);
-        page.AddChild(barPanel);
+        // The HUD floats over the page's top edge and takes no row of its own.
+        _hud = new HBoxContainer { Name = "Hud" };
+        _hud.AddThemeConstantOverride("separation", 14);
+        var hudPlate = new PanelContainer { Name = "HudPlate" };
+        var plate = MoonvineTheme.Panel(MoonvineTheme.BgRaised, MoonvineTheme.Hairline);
+        plate.ContentMarginLeft = plate.ContentMarginRight = 12;
+        plate.ContentMarginTop = plate.ContentMarginBottom = 2;
+        hudPlate.AddThemeStyleboxOverride("panel", plate);
+        // Top RIGHT: the centre is where an act's title plate and a room's heading stand, and the right edge above
+        // the enemies is the one strip every screen leaves empty.
+        hudPlate.SetAnchorsPreset(LayoutPreset.TopRight);
+        hudPlate.GrowHorizontal = GrowDirection.Begin;
+        hudPlate.OffsetTop = HudTop;
+        hudPlate.OffsetRight = -24;
+        hudPlate.AddChild(_hud);
+        AddChild(hudPlate);
+
 
         var mainPanel = new PanelContainer
         {
@@ -150,7 +163,7 @@ public partial class SessionScreen : Control
         _logPanel = new PanelContainer { Visible = false, ZIndex = 50 };
         _logPanel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.BgRaised, MoonvineTheme.Accent));
         _logPanel.AnchorLeft = 1f; _logPanel.AnchorRight = 1f; _logPanel.AnchorTop = 0f; _logPanel.AnchorBottom = 1f;
-        _logPanel.OffsetLeft = -420; _logPanel.OffsetRight = -12; _logPanel.OffsetTop = TopBarHeight + 12; _logPanel.OffsetBottom = -12;
+        _logPanel.OffsetLeft = -420; _logPanel.OffsetRight = -12; _logPanel.OffsetTop = 12; _logPanel.OffsetBottom = -12;
         _log = new RichTextLabel { FitContent = false, ScrollFollowing = true, BbcodeEnabled = false };
         _logPanel.AddChild(_log);
         AddChild(_logPanel);
@@ -319,7 +332,7 @@ public partial class SessionScreen : Control
         // draws nothing at all would still report a relic, and the number would stop meaning "this screen draws
         // what it is offering", which is the only thing it is for.
         GD.Print($"smoke-pictures [{screen}]: pane {Census(_main)}{Census(_combatRoot, add: true)} · "
-            + $"worn {Census(_topBar)}");
+            + $"worn {Census(_hud)}");
     }
 
     private static string Census(Godot.Node? root, bool add = false)
@@ -2377,9 +2390,9 @@ public partial class SessionScreen : Control
         if (CloseEndTurnAsk())
         {
         }
-        else if (GetNodeOrNull(PileOverlayName) is { } pile)
+        else if (CardViewerOpen is { } viewer)
         {
-            pile.QueueFree();
+            viewer.QueueFree();
         }
         else if (GetNodeOrNull(MapOverlayName) is { } looking)
         {
@@ -2427,7 +2440,8 @@ public partial class SessionScreen : Control
                 {
                     GetNodeOrNull("SettingsOverlay")?.QueueFree();
                     CompendiumPanel.Open(this);
-                });
+                },
+                Session?.Run.RandomSeed);
             overlay.Name = "SettingsOverlay";
             AddChild(overlay);
         }
@@ -2458,6 +2472,7 @@ public partial class SessionScreen : Control
             return;
 
         GetNodeOrNull(PileOverlayName)?.QueueFree();
+        CloseInventory();
         // Its own canvas layer, above everything the fight draws — part of the table sits on layers of its own,
         // and a map drawn beneath them had the fight showing through it.
         var layer = new CanvasLayer { Name = MapOverlayName, Layer = 50 };
@@ -2680,7 +2695,7 @@ public partial class SessionScreen : Control
                 continue;
             child.QueueFree();
         }
-        foreach (var child in _topBar.GetChildren())
+        foreach (var child in _hud.GetChildren())
             child.QueueFree();
 
         if (!inCombat && _deckHolder is { } stale)
@@ -2745,7 +2760,7 @@ public partial class SessionScreen : Control
         else
             Title("…");
 
-        RenderTopBar(session);
+        RenderHud(session);
         _log.Text = string.Join("\n", session.Run.Log.TakeLast(60).Select(entry => entry.Message));
         AnnounceAct(session);
         SetMusic(session);
@@ -3733,7 +3748,7 @@ public partial class SessionScreen : Control
 
     private float PaneHeight => _combatRoot is { } root && root.Size.Y > 100
         ? root.Size.Y
-        : GetViewportRect().Size.Y - TopBarHeight - 2;
+        : GetViewportRect().Size.Y - 2;
 
     private void RenderCombatGraphical(InteractiveRunSession session, InteractiveCombat combat)
     {
@@ -3987,11 +4002,24 @@ public partial class SessionScreen : Control
         var controls = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         controls.CustomMinimumSize = new Vector2(0, ControlBand);
         controls.AddThemeConstantOverride("separation", 10);
+        // LOG · END TURN · INVENTORY (user, 2026-09-28). The pile buttons that stood here are the piles
+        // themselves now — the draw pile in the left corner, the discard pile in the right — and the log moved
+        // down from the top bar that is gone.
+        var log = new Button { Text = "Log", TooltipText = $"What has happened this run. ({Controls.KeyName(Controls.Log)})" };
+        log.Pressed += ToggleLog;
+        controls.AddChild(log);
         var endTurn = new Button { Text = "End turn ▸", Name = "EndTurnButton" };
         endTurn.TooltipText = $"End your turn ({Controls.KeyName(Controls.EndTurn)})";
         endTurn.Pressed += RequestEndTurn;
         controls.AddChild(endTurn);
-        AddPileButtons(controls, combat);
+        var inventory = new Button
+        {
+            Text = "Inventory",
+            TooltipText = $"Relics, cards and consumables. ({Controls.KeyName(Controls.Inventory)})",
+        };
+        inventory.Pressed += ToggleInventory;
+        controls.AddChild(inventory);
+        BuildDiscardPile(combat);
         foreach (var consumable in session.Run.Consumables.Where(c => c.CombatUse is not null))
         {
             var id = consumable.Id;
@@ -5181,76 +5209,41 @@ public partial class SessionScreen : Control
 
     // ── sidebar + widgets ────────────────────────────────────────────────────────
 
-    // THE TOP BAR — what the sidebar used to say, on one line: who, how healthy, how rich, the deck, what is
-    // worn, the seed and the log. Every screen has it, so nothing the player used to glance at went away.
-    private void RenderTopBar(InteractiveRunSession session)
+    // THE HUD (user, 2026-09-28). The full-width bar across the top said everything twice — health beside the
+    // hero, the deck beside the piles, the seed nobody needs mid-fight — and cost the arena its height. What is
+    // left is what has no other home: the gold, the health BETWEEN rooms (there is no hero on the map to wear
+    // it), and the way into the inventory. Relics stand over the hero in a fight and in the inventory outside
+    // one; the seed is in the pause menu; the log is under the hand.
+    private void RenderHud(InteractiveRunSession session)
     {
         var run = session.Run;
-        var name = new Label { Text = Play?.HeroName ?? "You", VerticalAlignment = VerticalAlignment.Center };
-        _topBar.AddChild(name);
+        var inFight = _combatRoot.Visible;
 
-        // HEALTH IS THE SAME BAR IT IS IN A FIGHT: the one the player reads between rooms, deciding whether to
-        // take the elite, is drawn as the magnitude it is.
-        var health = new CenterContainer();
-        health.AddChild(RunHealthBar(run, 170));
-        _topBar.AddChild(health);
+        if (!inFight)
+        {
+            var health = new CenterContainer();
+            health.AddChild(RunHealthBar(run, 150));
+            _hud.AddChild(health);
+        }
 
-        // …and the resources by the names the document gives them.
         foreach (var (resource, amount) in run.Resources.OrderBy(r => r.Key.Value, StringComparer.Ordinal))
-            _topBar.AddChild(new Label
+            _hud.AddChild(new Label
             {
                 Text = $"{Play?.ResourceNames.GetValueOrDefault(resource.Value) ?? Humanized(resource.Value)}: {amount}",
                 VerticalAlignment = VerticalAlignment.Center,
             });
 
-        var deck = new Button
+        // In a fight the inventory is a button under the hand; between rooms there is no hand, so it is here.
+        if (inFight)
+            return;
+        var inventory = new Button
         {
-            Text = $"Deck ({run.Deck.Count})",
+            Text = "Inventory",
             Flat = true,
-            TooltipText = "Show every card you own. (D)",
+            TooltipText = $"Relics, cards and consumables. ({Controls.KeyName(Controls.Inventory)})",
         };
-        deck.Pressed += () => TogglePile(Pile.Deck);
-        _topBar.AddChild(deck);
-
-        // A consumable is spent rather than kept, so it stands apart from the relics, same tile, no pool.
-        foreach (var consumable in run.Consumables)
-        {
-            var id = consumable.DefinitionId.Value;
-            var look = GameHost.Instance.Blueprint.Presentation.Consumables.GetValueOrDefault(id);
-            _topBar.AddChild(Centered(CardVisuals.Tile(new CardVisuals.RelicFace(
-                Id: id,
-                Title: ConsumableName(id),
-                Pool: look?.Frame,
-                Tooltip: $"{ConsumableName(id)}\n{Glossary.Explain(look?.FlavorText)}",
-                Off: false), BarTileSize)));
-        }
-
-        _topBar.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-
-        // The relics, outside a fight. In a fight they stand over the hero, where the ones that fire are seen
-        // firing (RelicGrid) — the bar would be the wrong place to look for a flash.
-        if (run.Relics.Count > 0 && _combatRoot.Visible is false)
-            _topBar.AddChild(Centered(RelicStrip(run, BarTileSize, perRow: 24)));
-
-        // THE SEED, to share: a click puts it on the clipboard. It is the whole of the run's luck — a friend who
-        // types it in plays these same maps.
-        var seed = new Button
-        {
-            Text = $"Seed {run.RandomSeed}",
-            Flat = true,
-            TooltipText = "Click to copy. The same seed gives the same maps, rewards and shops.",
-        };
-        seed.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
-        seed.Pressed += () =>
-        {
-            DisplayServer.ClipboardSet(run.RandomSeed.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            Toast("Seed copied.");
-        };
-        _topBar.AddChild(seed);
-
-        var log = new Button { Text = "Log", Flat = true, TooltipText = "What has happened this run. (L)" };
-        log.Pressed += ToggleLog;
-        _topBar.AddChild(log);
+        inventory.Pressed += ToggleInventory;
+        _hud.AddChild(inventory);
     }
 
     private const int BarTileSize = 24;

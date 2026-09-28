@@ -16,6 +16,7 @@ public partial class SettingsPanel : PanelContainer
     private readonly Action? _onSaveAndQuit;
     private readonly Action? _onArchive;
     private readonly Action? _onCompendium;
+    private readonly int? _seed;
     private OptionButton _mode = null!;
     private OptionButton _size = null!;
     private OptionButton _scale = null!;
@@ -25,8 +26,9 @@ public partial class SettingsPanel : PanelContainer
 
     public SettingsPanel(
         Action? onClose = null, Action? onReportBug = null, Action? onSaveAndQuit = null,
-        Action? onArchive = null, Action? onCompendium = null)
+        Action? onArchive = null, Action? onCompendium = null, int? seed = null)
     {
+        _seed = seed;
         _onClose = onClose;
         _onReportBug = onReportBug;
         _onSaveAndQuit = onSaveAndQuit;
@@ -217,6 +219,25 @@ public partial class SettingsPanel : PanelContainer
         // that the autosave had caught the last thing they did. Saying it out loud — save, then put me back on
         // the title screen — is one button, and it is the only one here that is about the RUN rather than about
         // the window, which is why the caller supplies it and the title screen passes nothing.
+        // THE SEED LIVES HERE NOW (user, 2026-09-28): the top bar that showed it is gone. It is the whole of the
+        // run's luck — a friend who types it in plays these same maps — so a click puts it on the clipboard.
+        if (_seed is { } runSeed)
+        {
+            var text = runSeed.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var seedButton = new Button
+            {
+                Text = $"Seed {text}  ·  click to copy",
+                CustomMinimumSize = new Vector2(0, 40),
+                TooltipText = "The same seed gives the same maps, rewards and shops.",
+            };
+            seedButton.Pressed += () =>
+            {
+                DisplayServer.ClipboardSet(text);
+                seedButton.Text = $"Seed {text}  ·  copied";
+            };
+            column.AddChild(seedButton);
+        }
+
         if (_onSaveAndQuit is { } leave)
         {
             var quit = new Button
@@ -293,7 +314,7 @@ public partial class SettingsPanel : PanelContainer
     // The dialog as a full-screen overlay: a dimmed sheet with the panel centred on it. `onClose` frees it.
     public static Control Overlay(
         Action onClose, Action? onReportBug = null, Action? onSaveAndQuit = null, Action? onArchive = null,
-        Action? onCompendium = null)
+        Action? onCompendium = null, int? seed = null)
     {
         var veil = new Control { MouseFilter = MouseFilterEnum.Stop };
         veil.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -303,7 +324,7 @@ public partial class SettingsPanel : PanelContainer
 
         var center = new CenterContainer();
         center.SetAnchorsPreset(LayoutPreset.FullRect);
-        center.AddChild(new SettingsPanel(onClose, onReportBug, onSaveAndQuit, onArchive, onCompendium));
+        center.AddChild(new SettingsPanel(onClose, onReportBug, onSaveAndQuit, onArchive, onCompendium, seed));
         veil.AddChild(center);
         return veil;
     }

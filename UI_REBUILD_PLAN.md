@@ -24,10 +24,16 @@ Tastenbelegung: `I` Inventory (frei). `D`/`X` (heute Deck/Ablage) öffnen künft
 ## Hauptmenü
 - Buttons untereinander statt nebeneinander (vorher schnitt die Reihe „Quit“ ab) — ✔ umgesetzt 2026-09-28.
 
-## Offen
-- **Relikte im Kampf:** Sie stehen heute in der oberen Leiste (`RelicStrip`) und leuchten auf, wenn sie wirken
-  (Playtest-Punkt, d818c0f). Fällt die Leiste weg, brauchen sie einen Platz — Vorschlag: eine kleine Reihe neben
-  der Gold-Anzeige oben, sonst nur im Inventory (dann ohne Aufleuchten).
+## Relikte (geklärt 2026-09-28)
+- Im Kampf stehen sie schon über dem Helden und leuchten dort auf — daran ändert sich nichts.
+- Außerhalb von Kämpfen standen sie in der oberen Leiste; die fällt weg, dort sieht man sie künftig im
+  Inventory-Reiter „Relikte“.
+
+## Entschieden 2026-09-28
+- **HP außerhalb von Kämpfen:** die schlichte Anzeige oben zeigt Gold und — nur außerhalb von Kämpfen — HP.
+- **Verbrauchsgegenstände:** eigener Inventory-Reiter (Inventory hat damit drei Reiter: Relikte, Karten,
+  Verbrauchsgegenstände).
+- **Erschöpfte Karten:** eigener Abschnitt „Exhausted“ in der Ablagestapel-Ansicht; der Button unten fällt weg.
 
 ## Tor
 Screenshot-Sonde vorher/nachher (Kampf, Karte, Inventory, Pausenmenü); Golden-Set unverändert (die UI spielt
