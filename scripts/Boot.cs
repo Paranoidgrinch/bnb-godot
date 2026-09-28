@@ -11,6 +11,9 @@ namespace BnbGodot;
 // variants boot straight into a seeded run (routed here).
 public partial class Boot : Control
 {
+    // Every main-menu button is this wide, so the column reads as one block.
+    private const float MenuButtonWidth = 260;
+
     private string? _selectedCharacter;
     private static bool _resumeVerdict;
     public static bool ResumeVerdict => _resumeVerdict;
@@ -848,19 +851,33 @@ public partial class Boot : Control
         var available = host.AvailableCharacters.Select(c => c.Id).ToHashSet();
         _selectedCharacter ??= host.AvailableCharacters.FirstOrDefault()?.Id;
 
+        // THE CHARACTER BESIDE THE MENU, NOT ABOVE IT: a column of eight buttons under the character card ran off
+        // the bottom of a 720-px window. Side by side, both fit in the height the title leaves.
+        var body = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        body.AddThemeConstantOverride("separation", 32);
+        root.AddChild(body);
+
         if (host.Blueprint.Characters.Count > 0)
         {
-            root.AddChild(new Label { Text = "Choose your character", HorizontalAlignment = HorizontalAlignment.Center });
+            var chooser = new VBoxContainer { SizeFlagsVertical = SizeFlags.ShrinkBegin };
+            chooser.AddThemeConstantOverride("separation", 12);
+            chooser.AddChild(new Label { Text = "Choose your character", HorizontalAlignment = HorizontalAlignment.Center });
             var roster = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
             roster.AddThemeConstantOverride("separation", 12);
             foreach (var character in host.Blueprint.Characters)
                 roster.AddChild(CharacterCard(host, character, available.Contains(character.Id)));
-            root.AddChild(roster);
+            chooser.AddChild(roster);
+            body.AddChild(chooser);
         }
 
         // ── actions ──────────────────────────────────────────────────────────────
-        var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-        actions.AddThemeConstantOverride("separation", 10);
+        // ONE COLUMN, NOT ONE ROW (user, 2026-09-28): eight buttons side by side outgrew the 960-px body and cut
+        // "Quit" off. A column of equal widths shows every one of them and reads top to bottom in the order a
+        // player needs them. The widths below are only minimums; the column sets them all to MenuButtonWidth.
+        var actions = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        actions.AddThemeConstantOverride("separation", 6);
+        actions.SizeFlagsVertical = SizeFlags.ShrinkBegin;
+        actions.CustomMinimumSize = new Vector2(MenuButtonWidth, 0);
 
         var start = new Button { Text = "New run ▸", CustomMinimumSize = new Vector2(160, 44) };
         start.Disabled = host.Blueprint.Characters.Count > 0 && _selectedCharacter is null;
@@ -927,7 +944,9 @@ public partial class Boot : Control
         var quit = new Button { Text = "Quit", CustomMinimumSize = new Vector2(120, 44) };
         quit.Pressed += () => GetTree().Quit();
         actions.AddChild(quit);
-        root.AddChild(actions);
+        foreach (var button in actions.GetChildren().OfType<Button>())
+            button.CustomMinimumSize = new Vector2(MenuButtonWidth, 40);
+        body.AddChild(actions);
         if (PlayerIdentity.Name is { } player)
         {
             var who = MutedLabel($"Playing as {player}");
