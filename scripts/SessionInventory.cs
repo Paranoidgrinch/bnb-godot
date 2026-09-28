@@ -115,7 +115,7 @@ public partial class SessionScreen
 
             case InventoryTab.Relics:
                 if (run.Relics.Count == 0)
-                    body.AddChild(Centred(MutedLabel("No relics yet.")));
+                    body.AddChild(Centred(EmptyNote("No relics yet.")));
                 foreach (var relic in run.Relics)
                 {
                     var look = GameHost.Instance.Blueprint.Presentation.Relics.GetValueOrDefault(relic.Id.Value);
@@ -126,7 +126,7 @@ public partial class SessionScreen
 
             default:
                 if (run.Consumables.Count == 0)
-                    body.AddChild(Centred(MutedLabel("No consumables.")));
+                    body.AddChild(Centred(EmptyNote("No consumables yet.")));
                 foreach (var consumable in run.Consumables)
                 {
                     var id = consumable.DefinitionId.Value;
@@ -137,6 +137,15 @@ public partial class SessionScreen
         }
 
         AddChild(layer);
+    }
+
+    // ⚠ NOT MutedLabel: that one wraps words, and a wrapping label in a centring container is given no width at
+    // all — the note stood one letter per line down the middle of the inventory (2026-09-28).
+    private static Label EmptyNote(string text)
+    {
+        var label = new Label { Text = text, HorizontalAlignment = HorizontalAlignment.Center };
+        label.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+        return label;
     }
 
     // One carried thing as a row: its tile, its name, what it does.

@@ -169,6 +169,13 @@ public partial class SessionScreen
 
         Press(Controls.Inventory);
         report.Add($"inventory-open={GetNodeOrNull(InventoryOverlayName) is not null}");
+        if (!DisplayServer.GetName().Contains("headless"))
+        {
+            // A picture of the tab a new run opens empty — the note once stood one letter per line.
+            OpenInventory(InventoryTab.Relics);
+            await ToSignal(GetTree().CreateTimer(0.5), SceneTreeTimer.SignalName.Timeout);
+            GetViewport().GetTexture().GetImage().SavePng("user://smoke-inventory.png");
+        }
         Press(Controls.Inventory);
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         report.Add($"inventory-closed={GetNodeOrNull(InventoryOverlayName) is null}");
