@@ -1,4 +1,4 @@
-# UI-Umbau: die obere Leiste fällt weg
+# UI-Umbau: die obere Leiste fällt weg  ✔ UMGESETZT 2026-09-28 (7f145fc)
 
 Vom Spieler beschrieben am 2026-09-28. Ziel: mehr Platz in der Höhe für Held und Gegner.
 
