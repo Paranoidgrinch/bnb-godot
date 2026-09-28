@@ -183,10 +183,16 @@ public partial class SessionScreen
     // button — it opens the discard pile, with the exhausted cards as a section of their own. Rebuilt every
     // render (it has no animated card, so nothing is lost by making it again).
     private const string DiscardPileName = "DiscardPile";
+    private Control? _discardHolder;
+
+    // Built ONCE per fight and updated afterwards, like the draw pile — and for the same reason: its top card is
+    // the animated back, a video, and a video made again on every render never gets to play.
+    private readonly List<Control> _discardStills = [];
+    private Control? _discardTop;
+    private Label? _discardCount;
 
     private void BuildDiscardPile(InteractiveCombat combat)
     {
-        _combatRoot.GetNodeOrNull(DiscardPileName)?.QueueFree();
         var zones = combat.State.GetCardZones(combat.HeroId);
         var discarded = zones.GetCardsInZone(CardZone.DiscardPile).Count;
         var exhausted = zones.GetCardsInZone(CardZone.ExhaustPile).Count;
@@ -195,42 +201,64 @@ public partial class SessionScreen
         const int caption = 26;
         const int lean = 4 * lift;
         var footprint = new Vector2(CardVisuals.CardW + lean, CardVisuals.CardH + lean + caption);
-        var holder = new Control { Name = DiscardPileName, CustomMinimumSize = footprint, Size = footprint };
-        holder.SetAnchorsPreset(LayoutPreset.BottomRight);
-        holder.Position = new Vector2(-24 - footprint.X, -footprint.Y - 16);
-        _combatRoot.AddChild(holder);
 
-        // Leaning up and to the LEFT, the draw pile's lean turned round, so the two corners face each other.
-        var backs = Math.Min(discarded, 4);
-        for (var i = 0; i < backs; i++)
+        if (_discardHolder is null || !IsInstanceValid(_discardHolder))
         {
-            var back = CardVisuals.Back(animated: false);
-            back.Position = new Vector2(lean - i * lift, lean - i * lift);
-            back.Modulate = new Color(1, 1, 1, 0.85f);
-            holder.AddChild(back);
+            var holder = new Control { Name = DiscardPileName, CustomMinimumSize = footprint, Size = footprint };
+            holder.SetAnchorsPreset(LayoutPreset.BottomRight);
+            holder.Position = new Vector2(-24 - footprint.X, -footprint.Y - 16);
+            _combatRoot.AddChild(holder);
+            _discardHolder = holder;
+
+            _discardStills.Clear();
+            for (var i = 0; i < 3; i++)
+            {
+                var still = CardVisuals.Back(animated: false);
+                holder.AddChild(still);
+                _discardStills.Add(still);
+            }
+            var top = CardVisuals.Back(animated: true);
+            holder.AddChild(top);
+            _discardTop = top;
+
+            _discardCount = new Label
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 1f, AnchorBottom = 1f,
+                OffsetLeft = -40f, OffsetRight = 0f, OffsetTop = -caption, OffsetBottom = 0f,
+            };
+            _discardCount.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
+            holder.AddChild(_discardCount);
+
+            var hit = new Button
+            {
+                Flat = true,
+                TooltipText = "Discard pile — click to see what you have played, and what is exhausted.",
+                MouseDefaultCursorShape = CursorShape.PointingHand,
+            };
+            foreach (var style in new[] { "normal", "hover", "pressed", "focus" })
+                hit.AddThemeStyleboxOverride(style, new StyleBoxEmpty());
+            hit.SetAnchorsPreset(LayoutPreset.FullRect);
+            hit.Pressed += () => TogglePile(Pile.Discard);
+            holder.AddChild(hit);
         }
-        var count = new Label
-        {
-            Text = exhausted > 0 ? $"Discard {discarded} · Exhausted {exhausted}" : $"Discard {discarded}",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 1f, AnchorBottom = 1f,
-            OffsetLeft = -40f, OffsetRight = 0f, OffsetTop = -caption, OffsetBottom = 0f,
-        };
-        count.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
-        holder.AddChild(count);
 
-        var hit = new Button
+        // Leaning up and to the LEFT, the draw pile's lean turned round, so the two corners face each other. The
+        // stack grows from the bottom as cards are discarded, and the animated back is always the top one.
+        var backing = Math.Min(discarded > 0 ? discarded - 1 : 0, 3);
+        for (var i = 0; i < _discardStills.Count; i++)
         {
-            Flat = true,
-            TooltipText = "Discard pile — click to see what you have played, and what is exhausted.",
-            MouseDefaultCursorShape = CursorShape.PointingHand,
-        };
-        foreach (var style in new[] { "normal", "hover", "pressed", "focus" })
-            hit.AddThemeStyleboxOverride(style, new StyleBoxEmpty());
-        hit.SetAnchorsPreset(LayoutPreset.FullRect);
-        hit.Pressed += () => TogglePile(Pile.Discard);
-        holder.AddChild(hit);
+            _discardStills[i].Visible = i < backing;
+            _discardStills[i].Position = new Vector2(lean - i * lift, lean - i * lift);
+        }
+        if (_discardTop is not null && IsInstanceValid(_discardTop))
+        {
+            _discardTop.Visible = discarded > 0;
+            _discardTop.Position = new Vector2(lean - backing * lift, lean - backing * lift);
+        }
+        if (_discardCount is not null && IsInstanceValid(_discardCount))
+            _discardCount.Text = exhausted > 0 ? $"Discard {discarded} · Exhausted {exhausted}" : $"Discard {discarded}";
     }
 
     // The draw pile's own picture is the button for it: a flat, see-through Button over the whole stack.
@@ -287,6 +315,29 @@ public partial class SessionScreen
             report.Add($"after-esc={(GetNodeOrNull(PileOverlayName) is { } left && !left.IsQueuedForDeletion() ? "STILL OPEN" : "closed")}");
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         }
+        // ⚠ AND BY THE MOUSE, through the viewport — the way a player opens them. Calling TogglePile says the
+        // viewer works; only a real click says the picture is not covered by something else that eats it (the
+        // draw pile was, 2026-09-28, while every check above passed).
+        foreach (var (name, holder) in new[] { ("click-draw", _deckHolder), ("click-discard", _discardHolder) })
+        {
+            ClosePile();
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            if (holder is null || !IsInstanceValid(holder))
+            {
+                report.Add($"{name}=NO-PILE CLOSED");
+                continue;
+            }
+            var at = holder.GetGlobalRect().GetCenter();
+            foreach (var pressed in new[] { true, false })
+                GetViewport().PushInput(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left, Pressed = pressed, Position = at, GlobalPosition = at,
+                });
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            report.Add($"{name}={(GetNodeOrNull(PileOverlayName) is { } shown && !shown.IsQueuedForDeletion() ? "open" : "CLOSED")}");
+        }
+        ClosePile();
+
         var ok = report.All(r => !r.Contains("CLOSED") && !r.Contains("STILL"));
         GD.Print($"smoke-piles: {string.Join(" ", report)} {(ok ? "PASS" : "FAIL")}");
         GetTree().Quit(ok ? 0 : 1);

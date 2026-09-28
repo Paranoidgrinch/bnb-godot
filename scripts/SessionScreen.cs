@@ -2691,7 +2691,7 @@ public partial class SessionScreen : Control
             // past its first tenth of a second. MEASURED (`players a13: …@1.59` then `players b0: …@0.00`, a
             // brand-new instance id): the pile visibly snapped back to the top of the loop on every click.
             // The pile is therefore built ONCE per fight and updated in place; it is freed when the fight is.
-            if (inCombat && child == _deckHolder)
+            if (inCombat && (child == _deckHolder || child == _discardHolder))
                 continue;
             child.QueueFree();
         }
@@ -2704,6 +2704,14 @@ public partial class SessionScreen : Control
             _deckHolder = null;
             _deckStills.Clear();
             _deckCount = null;
+        }
+        if (!inCombat && _discardHolder is { } staleDiscard)
+        {
+            staleDiscard.QueueFree();
+            _discardHolder = null;
+            _discardStills.Clear();
+            _discardTop = null;
+            _discardCount = null;
         }
         _combatRoot.Visible = inCombat;
         _mainScroll.Visible = !inCombat;
@@ -3870,6 +3878,11 @@ public partial class SessionScreen : Control
         var bottom = BottomRegion(PaneInset, BottomBand, left: PaneInset, right: PaneInset);
         var bottomBox = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         bottomBox.SetAnchorsPreset(LayoutPreset.FullRect);
+        // ⚠ THE BAND IS FURNITURE, NOT A SURFACE. It spans the whole width, over the two piles in its corners, and a
+        // container that stops the mouse ate every click on the draw pile (2026-09-28). Only what is IN it — the
+        // cards, the buttons — takes a click; the band itself lets it through.
+        bottom.MouseFilter = MouseFilterEnum.Ignore;
+        bottomBox.MouseFilter = MouseFilterEnum.Ignore;
         bottomBox.AddThemeConstantOverride("separation", 8);
         bottom.AddChild(bottomBox);
 
@@ -3990,6 +4003,7 @@ public partial class SessionScreen : Control
         BuildDeckPile(combat);
         var handRegion = new Control
         {
+            MouseFilter = MouseFilterEnum.Ignore,
             CustomMinimumSize = new Vector2(0, HandBand),
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             SizeFlagsVertical = SizeFlags.ExpandFill,
@@ -3999,19 +4013,15 @@ public partial class SessionScreen : Control
         BuildHand(handRegion, combat, hero);
         RestorePreview();
 
-        var controls = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        var controls = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center, MouseFilter = MouseFilterEnum.Ignore };
         controls.CustomMinimumSize = new Vector2(0, ControlBand);
         controls.AddThemeConstantOverride("separation", 10);
-        // LOG · END TURN · INVENTORY (user, 2026-09-28). The pile buttons that stood here are the piles
+        // LOG · INVENTORY · END TURN (user, 2026-09-28) — End turn last, at the right, where the hand ends. The pile buttons that stood here are the piles
         // themselves now — the draw pile in the left corner, the discard pile in the right — and the log moved
         // down from the top bar that is gone.
         var log = new Button { Text = "Log", TooltipText = $"What has happened this run. ({Controls.KeyName(Controls.Log)})" };
         log.Pressed += ToggleLog;
         controls.AddChild(log);
-        var endTurn = new Button { Text = "End turn ▸", Name = "EndTurnButton" };
-        endTurn.TooltipText = $"End your turn ({Controls.KeyName(Controls.EndTurn)})";
-        endTurn.Pressed += RequestEndTurn;
-        controls.AddChild(endTurn);
         var inventory = new Button
         {
             Text = "Inventory",
@@ -4019,6 +4029,10 @@ public partial class SessionScreen : Control
         };
         inventory.Pressed += ToggleInventory;
         controls.AddChild(inventory);
+        var endTurn = new Button { Text = "End turn ▸", Name = "EndTurnButton" };
+        endTurn.TooltipText = $"End your turn ({Controls.KeyName(Controls.EndTurn)})";
+        endTurn.Pressed += RequestEndTurn;
+        controls.AddChild(endTurn);
         BuildDiscardPile(combat);
         foreach (var consumable in session.Run.Consumables.Where(c => c.CombatUse is not null))
         {
@@ -4027,6 +4041,7 @@ public partial class SessionScreen : Control
             use.Pressed += () => play.UseConsumableInCombat(id);
             controls.AddChild(use);
         }
+        controls.MoveChild(endTurn, -1); // End turn stays the last, rightmost button whatever else is offered
         bottomBox.AddChild(controls);
     }
 
