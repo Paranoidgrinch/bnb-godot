@@ -1622,6 +1622,37 @@ public partial class SessionScreen : Control
             + $" run={session?.Run.Result} choice={session?.IsAwaitingChoice} entities={session?.IsAwaitingEntities} "
             + $"error={session?.Error ?? Play?.Error ?? "none"}");
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        // `--scroll`: scroll the page down, pick another card the way a click does (a redraw of the same screen),
+        // and the page must still stand where it was read (playtest feedback 2, B3).
+        if (OS.GetCmdlineUserArgs().Contains("--scroll") && session is { IsAwaitingEntities: true, PendingEntities: { } list })
+        {
+            for (var frame = 0; frame < 3; frame++)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            _mainScroll.ScrollVertical = 300;
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            var read = _mainScroll.ScrollVertical;
+            _selectedEntities.Clear();
+            _selectedEntities.Add(list.Displays.Count - 1);
+            Rebuild();
+            for (var frame = 0; frame < 3; frame++)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            GD.Print($"smoke-scroll: read at {read}, after the pick {_mainScroll.ScrollVertical} "
+                + $"{(read > 0 && _mainScroll.ScrollVertical == read ? "PASS" : "FAIL")}");
+            // …and a right-click flip of the last card on the page.
+            if (_cardFlips.Keys.Where(c => IsInstanceValid(c) && _main.IsAncestorOf(c)).LastOrDefault() is { } face
+                && face.GetParent() is { } parent)
+            {
+                var flipped = _cardFlips[face]();
+                _cardFlips.Remove(face);
+                parent.AddChild(flipped);
+                parent.MoveChild(flipped, face.GetIndex());
+                face.QueueFree();
+                for (var frame = 0; frame < 3; frame++)
+                    await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                GD.Print($"smoke-scroll: after a flip {_mainScroll.ScrollVertical} "
+                    + $"{(_mainScroll.ScrollVertical == read ? "PASS" : "FAIL")}");
+            }
+        }
         ReportPictures(role);
         ReportTooltips(role);
         // `--tip`: hold the pointer over the control with the LONGEST hover text on the screen — the case the
@@ -2651,13 +2682,51 @@ public partial class SessionScreen : Control
     //
     // Catching is right here for a HUMAN too: a half-drawn screen with a toast beats the game vanishing,
     // and the next state change draws it again from scratch.
+    private string _screenKey = "";
+    private string _scrollRoom = "";
+    private readonly Dictionary<string, int> _scrollByScreen = new(StringComparer.Ordinal);
+
+    // Which page of the room this is, by what it asks — not by how many things it offers, which a purchase changes.
+    private static string ScreenKind(InteractiveRunSession session) =>
+        session.IsAwaitingEntities ? $"pick:{session.PendingEntities?.Purpose}"
+        : session.PendingShopShelf is not null ? "shop"
+        : session.IsAwaitingChoice ? "choice"
+        : session.IsAwaitingNodeChoice ? "map"
+        : "";
+
     private void Rebuild()
     {
         if (!_drawing)
             return;
+        // THE PAGE STAYS WHERE IT WAS READ (playtest feedback 2, B3). Every click on a screen that is not a fight
+        // redraws the page — and a screen left for a moment (the shop's card strike, a card looked at, an upgrade
+        // considered) came back at its top. Each screen of the room keeps its own offset and gets it back when it
+        // is drawn again; a new room starts every page at its own beginning.
+        var room = Session?.Run.CurrentNodeId?.Value ?? "";
+        if (room != _scrollRoom)
+        {
+            _scrollRoom = room;
+            _scrollByScreen.Clear();
+        }
+        if (_mainScroll.Visible && _screenKey.Length > 0)
+            _scrollByScreen[_screenKey] = _mainScroll.ScrollVertical;
+        var key = Session is { } s ? ScreenKind(s) : "";
+        int? keep = _scrollByScreen.TryGetValue(key, out var kept) ? kept : null;
+        _screenKey = key;
         try
         {
             RebuildScreen();
+            if (keep is { } offset && offset > 0)
+            {
+                Callable.From(() => _mainScroll.ScrollVertical = offset).CallDeferred();
+                GetTree().ProcessFrame += RestoreOnce;
+                void RestoreOnce()
+                {
+                    GetTree().ProcessFrame -= RestoreOnce;
+                    if (IsInstanceValid(_mainScroll))
+                        _mainScroll.ScrollVertical = offset;
+                }
+            }
         }
         catch (Exception ex)
         {
