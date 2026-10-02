@@ -57,6 +57,28 @@ public partial class ArchivePanel : PanelContainer
         Draw();
     }
 
+    private int _shelfScroll;
+
+    // For the probe: right-click the plate's card, as a player would, and say what its face now reads.
+    public string FlipPortraitForProbe()
+    {
+        if (FindChild("Portrait", recursive: true, owned: false) is not Control holder)
+            return "no portrait";
+        holder.EmitSignal(Control.SignalName.GuiInput,
+            new InputEventMouseButton { ButtonIndex = MouseButton.Right, Pressed = true });
+        return string.Join(" / ", Labels(holder));
+    }
+
+    private static IEnumerable<string> Labels(Godot.Node root)
+    {
+        if (root is Label { Visible: true } label && !string.IsNullOrWhiteSpace(label.Text))
+            yield return label.Text;
+        foreach (var child in root.GetChildren())
+            if (!child.IsQueuedForDeletion())
+                foreach (var text in Labels(child))
+                    yield return text;
+    }
+
     private void Draw()
     {
         foreach (var child in _body.GetChildren())
@@ -130,6 +152,7 @@ public partial class ArchivePanel : PanelContainer
             {
                 _kind = pick;
                 _picked = null;
+                _shelfScroll = 0;
                 Draw();
             };
             row.AddChild(button);
@@ -158,6 +181,16 @@ public partial class ArchivePanel : PanelContainer
         foreach (var entry in Archive.Entries(_kind))
             grid.AddChild(Tile(entry));
         scroll.AddChild(grid);
+        // THE SHELF STAYS WHERE IT WAS READ (playtest feedback 2, B3). Picking a tile redraws the panel, and a
+        // new ScrollContainer starts at the top: a player forty cards down was thrown back to the first row by
+        // every card they looked at. The offset is kept and given back once the new shelf has a size to scroll.
+        var keep = _shelfScroll;
+        scroll.GetVScrollBar().ValueChanged += value => _shelfScroll = (int)value;
+        Callable.From(() =>
+        {
+            if (IsInstanceValid(scroll))
+                scroll.ScrollVertical = keep;
+        }).CallDeferred();
         row.AddChild(scroll);
 
         var plate = new PanelContainer { CustomMinimumSize = new Vector2(DetailWidth, 0) };
@@ -371,21 +404,46 @@ public partial class ArchivePanel : PanelContainer
 
     // THE THING ITSELF, in the form it is met in: a card is a card face, a relic is the framed object it
     // wears on the shelf, and a body is a body.
+    // What the improved copy costs, from the document's own "+" card; the found card's cost when there is none.
+    private static string UpgradedCost(ArchiveEntry entry)
+    {
+        var plus = GameHost.Instance.Blueprint.Cards.FirstOrDefault(c => c.Id == entry.Id + "+");
+        return plus is null ? entry.Facts.FirstOrDefault(f => f.Label == "Cost").Value ?? "0"
+            : plus.Costs.Count == 0 ? "0"
+            : string.Join(" · ", plus.Costs.Select(c => c.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+    }
+
     private static Control Portrait(ArchiveEntry entry)
     {
-        var holder = new CenterContainer();
+        var holder = new CenterContainer { Name = "Portrait" };
         switch (entry.Kind)
         {
             case ArchiveKind.Cards:
-                holder.AddChild(CardVisuals.Face(new CardVisuals.CardFace(
+                // RIGHT-CLICK SHOWS THE IMPROVED CARD, as it does on every other screen that draws a card
+                // (playtest feedback 2, B1); the next right-click turns it back.
+                var plus = false;
+                Control Drawn() => CardVisuals.Face(new CardVisuals.CardFace(
                     Id: entry.Id,
-                    Title: entry.Name,
-                    Cost: entry.Facts.FirstOrDefault(f => f.Label == "Cost").Value ?? "⚡0",
-                    Rules: entry.Prose ?? "",
+                    Title: plus ? entry.Name + "+" : entry.Name,
+                    Cost: plus ? UpgradedCost(entry) : entry.Facts.FirstOrDefault(f => f.Label == "Cost").Value ?? "0",
+                    Rules: plus ? entry.Upgraded! : entry.Prose ?? "",
                     Rarity: entry.Frame,
-                    Tooltip: Glossary.Explain(entry.Prose),
+                    Tooltip: Glossary.Explain(plus ? entry.Upgraded : entry.Prose)
+                        + (entry.Upgraded is { Length: > 0 } ? "\n\nRight-click: " + (plus ? "the card as found." : "the upgraded card.") : ""),
                     Dimmed: false,
-                    Armed: false), scale: 1.3f));
+                    Armed: false), scale: 1.3f);
+                holder.AddChild(Drawn());
+                if (entry.Upgraded is { Length: > 0 })
+                    holder.GuiInput += input =>
+                    {
+                        if (input is not InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right })
+                            return;
+                        plus = !plus;
+                        foreach (var old in holder.GetChildren())
+                            old.QueueFree();
+                        holder.AddChild(Drawn());
+                        holder.AcceptEvent();
+                    };
                 break;
             case ArchiveKind.Relics:
                 holder.AddChild(CardVisuals.Tile(new CardVisuals.RelicFace(

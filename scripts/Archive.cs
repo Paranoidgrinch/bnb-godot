@@ -210,7 +210,7 @@ public static class Archive
             var look = blueprint.Presentation.Cards.GetValueOrDefault(card.Id);
             var facts = new List<(string, string)>
             {
-                ("Cost", card.Costs.Count == 0 ? "⚡0" : string.Join(" · ", card.Costs.Select(Priced))),
+                ("Cost", card.Costs.Count == 0 ? "0" : string.Join(" · ", card.Costs.Select(Priced))),
             };
             if (look?.Rarity is { Length: > 0 } rarity)
                 facts.Add(("Rarity", Humanized(rarity)));
@@ -226,7 +226,7 @@ public static class Archive
     // What one cost reads as. Every card in the game is priced in energy, and the bolt is what the hand and
     // the shelf already print; anything else says its own name rather than borrowing the bolt's.
     private static string Priced(ResourceCost cost) =>
-        cost.ResourceId == StandardCombatIds.EnergyResource ? $"⚡{cost.Amount}" : $"{Humanized(cost.ResourceId.value)} {cost.Amount}";
+        cost.ResourceId == StandardCombatIds.EnergyResource ? $"{cost.Amount}" : $"{Humanized(cost.ResourceId.value)} {cost.Amount}";
 
     private static void BuildRelics(RunBlueprint blueprint)
     {

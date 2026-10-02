@@ -1257,7 +1257,7 @@ public partial class Boot : Control
         {
             ("user://smoke-archive.png", null, null),
             ("user://smoke-archive-elite.png", ArchiveKind.Elites, Archive.Entries(ArchiveKind.Elites).FirstOrDefault()?.Id),
-            ("user://smoke-archive-card.png", ArchiveKind.Cards, Archive.Entries(ArchiveKind.Cards).FirstOrDefault()?.Id),
+            ("user://smoke-archive-card.png", ArchiveKind.Cards, Archive.Entries(ArchiveKind.Cards).FirstOrDefault(e => e.Upgraded is { Length: > 0 })?.Id),
             ("user://smoke-archive-relic.png", ArchiveKind.Relics, Archive.Entries(ArchiveKind.Relics).FirstOrDefault()?.Id),
             ("user://smoke-archive-god.png", ArchiveKind.Gods, god?.Id),
         };
@@ -1289,6 +1289,16 @@ public partial class Boot : Control
             GD.Print($"smoke-archive: screenshot {file} — {panel.Photographed}");
             if (id is not null && !panel.Photographed.Contains(id, StringComparison.Ordinal))
                 wrong++;
+            if (kind == ArchiveKind.Cards)
+            {
+                var flipped = panel.FlipPortraitForProbe();
+                for (var frame = 0; frame < 4; frame++)
+                    await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                GetViewport().GetTexture().GetImage().SavePng("user://smoke-archive-card-plus.png");
+                GD.Print($"smoke-archive: right-click on the card ⇒ {flipped}");
+                if (!flipped.Contains('+'))
+                    wrong++;
+            }
         }
         GetTree().Quit(wrong == 0 ? 0 : 1);
     }
