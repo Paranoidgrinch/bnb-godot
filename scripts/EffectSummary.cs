@@ -151,7 +151,7 @@ public static class EffectSummary
         }
         catch (Exception)
         {
-            return "Something happens in your next fight";
+            return opening.Combats > 1 ? $"Something happens in your next {opening.Combats} fights" : "Something happens in your next fight";
         }
         var said = AppliedStatus.Matches(json)
             .Select(m =>
@@ -172,8 +172,9 @@ public static class EffectSummary
             })
             .Distinct()
             .ToList();
+        var fights = opening.Combats > 1 ? $"next {opening.Combats} fights" : "next fight";
         return said.Count == 0
-            ? "Something happens in your next fight"
-            : $"Next fight: {string.Join(", ", said)}";
+            ? $"Something happens in your {fights}"
+            : $"{char.ToUpperInvariant(fights[0])}{fights[1..]}: {string.Join(", ", said)}";
     }
 }

@@ -97,8 +97,76 @@ Kämpfe“, Bonus wie Malus. Tor: Liste umgestellter Events; Test, dass der Effe
 Gewinn, Ausgang sichtbar per Zufall). Entwürfe zuerst in diese Datei, dann bauen. Tor: Events im Spiel, Tests
 für beide Ausgänge.
 
+## F — Vorschlag zur Durchsicht (Regeln + Stichprobe)
+
+**Messbasis** (Audit 2026-09-28, 4 Runden gegen Dummy, Wert pro Energie, Median je Familie): Paperwork 10 · Doubt 10 ·
+Queue 10 · Lien 9 · Citation 9 · Blood Ink 8 · Seal 7 · Ward Wax 7 · Censure 6 · Archive/Junk 5 · reiner Schaden/Block 5.
+Upgrades heute: +1 bis +3 auf die Hauptzahl (≈ +25 %), fast nie eine neue Facette.
+
+**Regeln**
+- R1 Upgrade = Gesamtwert ×1,5. Mindestens 40 % der Upgrades bekommen eine Facette: zieh 1 · Kosten −1 · Exhaust weg /
+  Retain · +1 Schlüsselwort-Stapel passend zur Identität · Bedingung wird bedingungslos · kleiner Nebeneffekt.
+- R2 Familien unter Paperwork werden angehoben, bis ihr Median ≥ 8,5/E (−15 %) liegt: Seal, Ward Wax, Censure,
+  Archive/Junk, reiner Schaden/Block. Paperwork bleibt wie es ist.
+- R3 Eine Karte, die strikt schwächer als eine gleich teure Karte derselben Familie ist, bekommt einen eigenen Dreh
+  (anderes Ziel, andere Bedingung, andere Facette) statt nur größerer Zahlen.
+- R4 2-Kosten-Karten liefern ≥ 15 % mehr pro Energie als der 1-Kosten-Median ihrer Familie. Ein paar heute sehr
+  starke 1-Kosten-Karten werden 2-Kosten-Karten mit deutlich mehr Wirkung.
+
+**Stichprobe** (heute → neu Basis → neu Upgrade)
+
+| Karte | heute (Basis / +) | neu Basis | neu + |
+|---|---|---|---|
+| Paper Cut (Starter) | 6 Schaden / 8 | unverändert | 9 Schaden |
+| Cower Behind a Desk (Starter) | 5 Block / 7 | unverändert | 8 Block |
+| Strong Binder (Starter) | 7 Block, 1 Doubt / 9, 2 | unverändert | 10 Block, 2 Doubt |
+| Petty Objection (R3: schwächer als der Starter Strong Binder) | 5 Block, 1 Doubt / 6, 2 | 5 Block, 1 Doubt, **zieh 1** | 7 Block, 2 Doubt, zieh 1 |
+| Inkblot Verdict (R3) | 8 Schaden, +2 wenn Paperwork / 10 | 8 Schaden, **+ Schaden = Paperwork des Ziels (max 8)** | 10 Schaden, + Paperwork (max 12) |
+| Cauldron Copy | 9 Schaden, +1 Duplicate Copy / 12 | 10 Schaden, +1 Duplicate Copy (R2) | 13 Schaden, +1 Duplicate Copy, **zieh 1** |
+| Deferred Hex (Queue) | Queue: 13 / 16 | unverändert | Queue: 16, **jetzt zieh 1** |
+| Waxing Authority (Seal) | 5 Schaden, 1 Seal / 6, 2 | 6 Schaden, 1 Seal | 8 Schaden, 2 Seal |
+| Waxen Surety (Ward Wax) | 4 Ward Wax / 5 | 5 Ward Wax (R2) | 6 Ward Wax, **sofort 3 Block** |
+| Certified Kindling (Archive) | Archive, 4 Block (+4 bei Junk) / 5 (+6) | Archive, 6 Block (+5 bei Junk) (R2) | Archive, 8 Block (+6 bei Junk), **zieh 1 bei Junk** |
+| Cursed Addendum (Paperwork) | 6 Schaden, 2 Paperwork / 7, 3 | unverändert | 9 Schaden, 3 Paperwork |
+| Grave Lien (R4: heute 12/E, sehr stark) | 1 E: 7 Schaden, 5 Lien | **2 E**: 13 Schaden, 9 Lien | 2 E: 15 Schaden, 11 Lien, zieh 1 |
+| Summary Judgment (2 E, heute 8/E, schwach) | 16 Schaden, ab 6 Paperwork: Paperwork auslösen | 2 E: **20** Schaden, ab 6 Paperwork auslösen | 2 E: 24 Schaden, ab **4** Paperwork auslösen |
+| Permit A38 (Starter, 2 E) | 5 Paperwork / Kosten 1 | unverändert | unverändert (Kosten −1 ist schon ×2) |
+
+**Schlüsselwort-Vorschläge (R2), statt jede Karte einzeln:** Ratify gibt +5 statt +3 pro Deed · eine Censure, die einen
+Status abwehrt, gibt zusätzlich 2 Block. Ward Wax und Archive/Junk über die Kartenzahlen (s. Tabelle).
+
+## G2 — Entwürfe Glücksspiel-Events (vor dem Bau)
+
+Alle Ausgänge per Lauf-Zufall (seed-reproduzierbar), die Chancen stehen im Text — Glück, kein Versteckspiel.
+
+1. **Die Formular-Lotterie** (Akt I) — 30 Gold einsetzen: 40 % → 120 Gold · 35 % → eine seltene Karte · 25 % → nichts. Oder gehen.
+2. **Der Stempel-Kreisel** (Akt I/II) — dreh das Rad: 30 % → ein zufälliges Relikt · 40 % → 2 zufällige Karten verbessert · 30 % → 12 HP verloren.
+3. **Doppelt oder nichts beim Kassenwart** (Akt II) — die Goldbeute der nächsten 3 Kämpfe wetten: 50 % verdoppelt · 50 % entfällt.
+4. **Die Berufung auf den Zufall** (Akt II/III) — streiche eine Karte deiner Wahl; 50 % → du darfst noch eine streichen · 50 % → eine zufällige weitere Karte wird verwandelt.
+5. **Würfel des Notars** (Akt III) — zahle 10 % deiner Max-HP: 50 % → die nächsten 3 Kämpfe beginnst du mit +1 Energie · 50 % → die nächsten 3 Kämpfe beginnen die Gegner mit 2 Stärke.
+6. **Das versiegelte Angebot** (Akt IV) — öffne einen von drei Umschlägen (blind): großes Relikt / 150 Gold / ein Fluch + 50 Gold.
+
+Ersetzt werden die Events mit der schwächsten Wirkung (einmaliger Ein-Kampf-Effekt, „nächster Debuff wird ignoriert“ & Co.); welche genau, entscheidet die Liste aus G1.
+
 ## Status
 
 | Punkt | Stand |
 |---|---|
-| alle | offen |
+| A1 Ward Wax | ✔ Votive Covenant wirkte nie; Wax Reliquary/Indemnity hielten den ganzen Kampf; Indemnity+ heilte 3 statt 4 (bnb-content 85c50a9) |
+| A2 Queue | ✔ Auflösung rechnet richtig (gemessen); Hover einer Queue-Karte zeigt jetzt den nächsten Zug (bnb-godot 3423c48) |
+| A3 Rechner | ✔ `--calc-check` (60 Kämpfe): Kartenvorschau, Incoming, Gegner-HP exakt; **Absichts-Chips 160/450 falsch** → zeigen jetzt den gerechneten Schlag |
+| B1 Rechtsklick | ✔ Archiv + Hand im Kampf (Rest hatte es schon) |
+| B2 Blitz | ✔ |
+| B3 Scroll | ✔ Archiv war der echte Fall; Hauptseiten merken die Position je Bildschirm |
+| B4 Zurück | ✔ Lagerfeuer-Upgrade abbrechbar (Core EventChoice.Declinable). Event-Upgrades bewusst nicht (Teil der Geschichte) |
+| C1 Belohnung | ✔ Gold sofort, Karten direkt, Skip (Core VictoryRewardGranted) |
+| C2 Boss-Relikt | ✔ alle drei zur Wahl, jede Kombination |
+| C3 Entfernung | ✔ 75 +25 je Nutzung, laufweit (Core ShopService.PriceStep) |
+| C4 Upgrade-Funde | ✔ 10/20/30/40 % (Core PoolRewardSource.UpgradeChancePercent) |
+| D1 Legacy | ✔ Neuer-Lauf-Panel fragt nicht mehr; alte Saves laden weiter |
+| D2 Rast vor Boss | ✔ letzte Reihe vor jedem Akt-Boss ganz Rast (Core StrategicRoomSpec.PreBossKind): 100 % der Routen |
+| D3 Entscheidungen | ✔ Querwege (Core MinForksPerRoute) + echte Entscheidungen als Zusage (MinRealDecisionsPerRoute=4, Gabel-Strafe auch für Kämpfe, 48 Versuche): **min 4, Median 7 echte pro Route in Akt I–IV** (300 Seeds/Akt); Entscheidungen pro Karte 4,9 → 17 |
+| E1 Paperwork | ✔ alle ~290 Encounter ohne Paperwork auf dem Helden in Runde 1–2 — **außer Bossen** (geskriptete Mechanik, bewusst ausgenommen) |
+| F | Vorschlag liegt oben, wartet auf Durchsicht |
+| G1 X Kämpfe | ✔ Event-Eröffnungen gelten 3 Kämpfe (Core InstallNextCombatOpeningRunEffect.Combats, im Save); Markierungen bleiben 1 Kampf |
+| G2 Glücksspiele | ✔ 6 Events (Core EventChoice.Outcomes), ersetzen 6 Events mit der geringsten bleibenden Wirkung |
