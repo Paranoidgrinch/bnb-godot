@@ -135,6 +135,38 @@ Upgrades heute: +1 bis +3 auf die Hauptzahl (≈ +25 %), fast nie eine neue Face
 **Schlüsselwort-Vorschläge (R2), statt jede Karte einzeln:** Ratify gibt +5 statt +3 pro Deed · eine Censure, die einen
 Status abwehrt, gibt zusätzlich 2 Block. Ward Wax und Archive/Junk über die Kartenzahlen (s. Tabelle).
 
+
+### F — FREIGEGEBEN (Spieler, 2026-10-02): Starter + Akt I
+
+Globale Regeln: Ratify +5 statt +3 · Censure gibt 2 Block pro Abwehr · Starter: nur Upgrades stärker · Ziehen nur bei
+Karten, deren Identität Ziehen ist. Upgrade ≈ ×1,5. (A Breite · B Mehrfach · C Bedingung · D Querverbindung ·
+E Nachwirkung · F Umwandlung · G Sofort · H Kosten −1 · I Retain · K Beides statt Wahl · N Nachteil weg · S Schwelle)
+
+Starter: Paper Cut + 5×2 (B) · Cower + 6 Block, nächster Zug 3 (E) · Strong Binder + 9 Block, 1 Doubt an ALLE (A) ·
+Permit A38 + kostet 1.
+Akt I: Deferred Hex + Queue 11 an ALLE (A) · Protective Adjournment + Queue 11 Block + 5 sofort (G) · Cinder Warrant
+B 8 / + 8, bis zu 2 Junk je Wiederholung (C) · Dawn Summons + 24/+12 · Threefold Injunction + 4×4 (B) · Blank Warrant
++ 27/+7 · Rebuttal + 10, 5/Doubt max 15, 1 Doubt an ALLE (A) · Cauldron Copy B 10 / + 15 · Forfeit Seal + 10, 4 Lien,
+8 wenn Block (C) · Inkblot Verdict B 8 + PW (max 8) / + max 10, PW tickt sofort (G) · Cursed Addendum + 7, 3 PW, +2 PW
+wenn Ratified (C) · Deskward + 11, Red Tape → Exhaust (N) · Summary Judgment 2E B 20 / + kostet 1 (H) · Conditional
+Approval + 9, 2 Seal (3) · Fine-Print Hex + 7×2, je 1 Seal bei Doubt (B) · Occult Precedent B 8+2 / + 9, +4 und 1 Ward
+Wax bei PW (D) · Backlog Charge + 9 +5/Queue · Foreclosure + 9, 8 Lien · Waxing Authority B 6+1 Seal / + 4×2 je 1 Seal
+(B) · Hex Circular 2E B 9 ALLE+1 Doubt / + 12+2 · Candle Tribunal 2E B 6×3 / + 8×3 · Grave Lien → 2E B 13+9 Lien / +
+13 und 6 Lien an ALLE (A) · Petty Objection B 5 Block, Angriff: 2 Doubt / + 7, 3 Doubt +3 Block (C) · Malediction
+Review + 8 Block, Censure beides (K) · Clerical Discretion + 7, Doubt und Seal (K) · Counter Ward + 8, −1, Retain (I) ·
+Sealed Mantle + 12, 3 Wax · Sanctioned Charm B 6 / + 8 +1 Censure (D) · Wastepaper Bastion B 5+3 / + 7+4 · Waxen
+Surety B 5 / + 5 + Block = Wax (F) · Tallow Reserve + 5 Wax · Certified Kindling B 6 (+5) / + 8, Junk: 6 an ALLE (D) ·
+Form of Ill Intent → 2E B 6 PW, Angriff 2 Doubt / + 8, 3 · Blood Marginalia + 4 Cit, 3 BI · Witchmark Citation + 5
+Cit, nicht-schadend +2 Cit (C) · Mortgage Sigil + 5/+5 · Notarial Press + 3 Seal, 7 Block · Seal of Concern B 2 Seal
+1 Doubt / + an ALLE (A) · Silent Hearing + 3 Cit, 10 Block · Contempt Finding + 3 Block/Cit, je 2 Schaden (D) · Candle
+Allowance + Queue 2 Energie · Borrowed Candle + ziehe 3 · Notary's Tithe + ziehe 3 · Secure Misfiling + ziehe 2 ·
+Formal Dissent + Retain (I) · Tallow Budget + 2 Energie · False Signature + −2 · Night Docket / Privy Seal wie heute
+(N) · Riten H wie heute · Continuance 2E B 12 / + kostet 1 · Black Ledger + Schwelle 5 (S) · Clerk's Familiar + 6 ·
+Dubious Authority + 3 PW · Pending Matters + 5 · Stay of Execution + 28 · Usurer's Moon + 1 pro 2.
+
+### F — FREIGEGEBEN (Spieler, 2026-10-02): Akt II–IV wie im Chat vorgeschlagen
+Hedge Hospitality → 2E; Cross-Filing bleibt 1E; Riten behalten "kostet 1 weniger". Neue Facette T (Zielwahl).
+
 ## G2 — Entwürfe Glücksspiel-Events (vor dem Bau)
 
 Alle Ausgänge per Lauf-Zufall (seed-reproduzierbar), die Chancen stehen im Text — Glück, kein Versteckspiel.
@@ -167,6 +199,6 @@ Ersetzt werden die Events mit der schwächsten Wirkung (einmaliger Ein-Kampf-Eff
 | D2 Rast vor Boss | ✔ letzte Reihe vor jedem Akt-Boss ganz Rast (Core StrategicRoomSpec.PreBossKind): 100 % der Routen |
 | D3 Entscheidungen | ✔ Querwege (Core MinForksPerRoute) + echte Entscheidungen als Zusage (MinRealDecisionsPerRoute=4, Gabel-Strafe auch für Kämpfe, 48 Versuche): **min 4, Median 7 echte pro Route in Akt I–IV** (300 Seeds/Akt); Entscheidungen pro Karte 4,9 → 17 |
 | E1 Paperwork | ✔ alle ~290 Encounter ohne Paperwork auf dem Helden in Runde 1–2 — **außer Bossen** (geskriptete Mechanik, bewusst ausgenommen) |
-| F | Vorschlag liegt oben, wartet auf Durchsicht |
+| F Karten | ✔ umgesetzt (alle 138 Grundkarten nach Freigabe). Abweichungen, weil die Engine es so nicht kann oder es sonst wertlos wäre: Protective Adjournment+ = Queue 12 Block + 2 Ward Wax (eine Queue-Karte wirkt nicht beim Ausspielen) · Occult Precedent+ / Smudged Index+ geben ihr Ward Wax ohne Bedingung · Sanguine Errata+ +1 Blood Ink ohne Bedingung · Censure-Block kommt als Promised Block im nächsten Zug (im Gegnerzug gewonnener Block verfällt sonst) · Continuance: Basis-Regel 12, Upgrade kostet 1 |
 | G1 X Kämpfe | ✔ Event-Eröffnungen gelten 3 Kämpfe (Core InstallNextCombatOpeningRunEffect.Combats, im Save); Markierungen bleiben 1 Kampf |
 | G2 Glücksspiele | ✔ 6 Events (Core EventChoice.Outcomes), ersetzen 6 Events mit der geringsten bleibenden Wirkung |
