@@ -3274,7 +3274,9 @@ public partial class SessionScreen : Control
         // one slip of the mouse away.
         var oneClick = entities.Count == 1 && entities.Intent == RunChoiceIntent.Keep && !IsImprovement(entities)
             && entities.Purpose.StartsWith("reward", StringComparison.Ordinal)
-            && Enumerable.Range(0, entities.Displays.Count).All(i => entities.ArtAt(i) is { Kind: EntityArt.Card });
+            // …and a relic the same way (playtest feedback 2, C2): a boss's three are a pick like its cards.
+            && Enumerable.Range(0, entities.Displays.Count).All(i => entities.ArtAt(i) is { Kind: EntityArt.Card or EntityArt.Relic });
+        var relics = oneClick && entities.ArtAt(0) is { Kind: EntityArt.Relic };
         if (oneClick && GoldJustWon(session.Run) is { } gold && gold > 0)
         {
             var won = new Label { Text = $"+{gold} gold", HorizontalAlignment = HorizontalAlignment.Center };
@@ -3282,7 +3284,8 @@ public partial class SessionScreen : Control
             won.AddThemeFontSizeOverride("font_size", 18);
             _main.AddChild(won);
         }
-        Muted(oneClick ? "Choose one card for your deck — or skip."
+        Muted(relics ? "Choose one relic — or skip."
+            : oneClick ? "Choose one card for your deck — or skip."
             : entities.Displays.Count <= entities.Count ? "Yours:" : $"Pick {entities.Count}");
         HFlowContainer? gallery = null;
         for (var i = 0; i < entities.Displays.Count; i++)
