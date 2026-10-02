@@ -192,6 +192,8 @@ public partial class SessionScreen : Control
             _ = SmokeKeys();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-preview"))
             _ = SmokePreview();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-intents"))
+            _ = SmokeIntents();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-report"))
             _ = SmokeReport();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-mapkey"))
@@ -4487,7 +4489,8 @@ public partial class SessionScreen : Control
             var days = combat.UpcomingIntentsFor(combatant.Id);
             for (var ahead = 0; ahead < days.Count; ahead++)
             {
-                box.AddChild(IntentPlate(days[ahead], ahead, width));
+                box.AddChild(IntentPlate(days[ahead], ahead, width,
+                    ahead == 0 ? ForeseenBlow(combat, combatant.Id) : null));
                 spent += (ahead == 0 ? PromisePlate : ForecastPlate) + 4;
             }
         }
@@ -4522,9 +4525,31 @@ public partial class SessionScreen : Control
         return panel;
     }
 
-    private static Label? IncomingLine(InteractiveCombat combat, CombatantState hero)
+    // ONE FORESIGHT PER DRAWN TABLE. The "Incoming" line and every enemy's intent chips read the same forecast;
+    // forking the enemy turn once per enemy would be the same answer bought several times over.
+    private (InteractiveCombat Combat, int Steps, Foresight? Sight)? _foresightCache;
+
+    private Foresight? ForeseenNow(InteractiveCombat combat)
     {
-        if (!GameplaySettings.DamageCalculator || !combat.IsHeroTurn || combat.Foresee() is not { } foresight)
+        if (!GameplaySettings.DamageCalculator || !combat.IsHeroTurn)
+            return null;
+        if (_foresightCache is { } cached && ReferenceEquals(cached.Combat, combat) && cached.Steps == combat.Steps.Count)
+            return cached.Sight;
+        var sight = combat.Foresee();
+        _foresightCache = (combat, combat.Steps.Count, sight);
+        return sight;
+    }
+
+    // What this enemy's next turn will actually take off the hero (health + block), played out on the fork —
+    // null when the calculator is off, or when the hero would fall before the enemy acts and the blow is cut short.
+    private int? ForeseenBlow(InteractiveCombat combat, CombatantId enemy) =>
+        ForeseenNow(combat) is { HeroDies: false } sight
+            ? sight.Blows.Where(b => b.Enemy == enemy).Sum(b => b.Amount)
+            : null;
+
+    private Label? IncomingLine(InteractiveCombat combat, CombatantState hero)
+    {
+        if (ForeseenNow(combat) is not { } foresight)
             return null;
         var loss = Math.Max(0, hero.Health.Current - foresight.HeroHealthAfter);
         var text = foresight.HeroDies ? $"Incoming {foresight.Amount} · ☠ lethal"
@@ -5618,8 +5643,12 @@ public partial class SessionScreen : Control
     //
     // ⚠ THE RAIL IS ON THE LEFT AND NOTHING ELSE IS. A box outlined all the way round is a panel, and the
     // column is already made of panels; one edge reads as an accent instead of as another container.
+    // `foreseen` is what the blow will really take (playtest feedback 2, A3): the telegraph's own number is the
+    // AUTHORED one, and a measured 41 % of chips disagreed with the hit that followed — weakened, strengthened,
+    // a "+2 per Complaint" rider already counted, or a move whose words name no damage at all. The plate prints
+    // the played-out number and keeps the written one in the hover.
     private static Control IntentPlate(
-        RogueDeck.Scenario.Authoring.ActionIntent intent, int ahead, int width)
+        RogueDeck.Scenario.Authoring.ActionIntent intent, int ahead, int width, int? foreseen = null)
     {
         // AS FAR PAST THE FIRST AS THE PLAYER CAN SEE. The engine projects an enemy's next several actions for
         // a hero who has been granted the sight (the Article of Full Disclosure; Nanshe's Ration Tablet, which
@@ -5670,6 +5699,30 @@ public partial class SessionScreen : Control
         var chips = new HFlowContainer { Alignment = FlowContainer.AlignmentMode.Center, MouseFilter = MouseFilterEnum.Pass };
         chips.AddThemeConstantOverride("h_separation", 6);
         chips.AddThemeConstantOverride("v_separation", 2);
+        var parts = effects.Length == 0 ? new List<string>() : effects.Split(", ").Select(e => e.Trim()).ToList();
+        if (foreseen is { } blow)
+        {
+            var written = parts.FirstOrDefault(p => System.Text.RegularExpressions.Regex.IsMatch(p, @"^\d+ dmg"));
+            parts.RemoveAll(p => System.Text.RegularExpressions.Regex.IsMatch(p, @"^\d+ dmg"));
+            if (blow > 0)
+            {
+                chips.AddChild(IntentChip($"⚔ {blow}", MoonvineTheme.Harm, promise,
+                    $"Will hit you for {blow}, everything counted."
+                        + (written is not null && !written.StartsWith($"{blow} dmg", StringComparison.Ordinal)
+                            ? $" (Written: {written}.)" : ""),
+                    bigNumber: true));
+            }
+            if (parts.Count == 0 && blow > 0)
+                effects = "";
+            else
+                effects = string.Join(", ", parts);
+            if (effects.Length == 0 && blow > 0)
+            {
+                column.AddChild(chips);
+                plate.AddChild(column);
+                return plate;
+            }
+        }
         if (effects.Length == 0)
             chips.AddChild(IntentChip(
                 $"{RogueDeck.Scenario.Authoring.IntentDisplay.Glyph(intent.Kind)} "

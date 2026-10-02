@@ -60,10 +60,23 @@ public partial class SessionScreen
 
         var before = Standing(combat);
         Dictionary<string, Stand> after;
+        // A QUEUE CARD DOES NOTHING NOW (playtest feedback 2, A2): it is filed, and resolves at the start of your
+        // next turn. Played on a fork it changed nothing, so its hover was blank. It is previewed where it
+        // lands instead — both forks hand the turn over, one with the card filed and one without, and what
+        // differs between the two tables at the start of your next turn is the card.
+        var queued = Queued(combat, inHand.DefinitionId);
         try
         {
+            if (queued)
+            {
+                var without = combat.Fork();
+                without.EndTurn();
+                before = Standing(without);
+            }
             var fork = combat.Fork();
             fork.PlayCard(card, target);
+            if (queued)
+                fork.EndTurn();
             after = Standing(fork);
         }
         catch (Exception ex)
@@ -76,8 +89,12 @@ public partial class SessionScreen
         foreach (var (id, then) in before)
             if (after.TryGetValue(id, out var now) && _healthBars.TryGetValue(id, out var bar)
                 && IsInstanceValid(bar.Bar))
-                Decorate(bar.Bar, bar.Max, then, now);
+                Decorate(bar.Bar, bar.Max, then, now, queued ? "next turn:" : null);
     }
+
+    private static bool Queued(InteractiveCombat combat, CardDefinitionId definition) =>
+        combat.State.DefinitionRegistry is { } registry
+        && registry.TryGetCard(definition, out var card) && card is { QueueOnPlay: true };
 
     private void ClearPreview()
     {
@@ -127,7 +144,7 @@ public partial class SessionScreen
     }
 
     private static void Decorate(Control bar, int max,
-        Stand then, Stand now)
+        Stand then, Stand now, string? when = null)
     {
         var lost = then.Health - Math.Max(now.Health, 0);
         var healed = now.Health - then.Health;
@@ -151,6 +168,8 @@ public partial class SessionScreen
         }
 
         var parts = new List<string>();
+        if (when is not null)
+            parts.Add(when);
         if (dies)
             parts.Add("☠");
         if (lost > 0)
@@ -223,5 +242,53 @@ public partial class SessionScreen
         GD.Print($"smoke-preview: card={card.DefinitionId.value} aimed={aimed} shows=\"{shown}\" "
             + $"fight-untouched={untouched} {(ok ? "PASS" : "FAIL")}");
         await CaptureThenQuit("smoke-preview.png", ok ? 0 : 1);
+    }
+
+    // `--smoke-intents`: at the first fight every living enemy's promise plate must print the blow the fork plays
+    // out (ForeseenBlow), not the number written in its telegraph.
+    private async System.Threading.Tasks.Task SmokeIntents()
+    {
+        var combat = WalkToFirstFight();
+        if (combat is null)
+        {
+            GD.Print("smoke-intents: no fight reached");
+            GetTree().Quit(1);
+            return;
+        }
+        Rebuild();
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        var ok = true;
+        var plates = FindAll(_combatRoot, "IntentPlate").ToList();
+        var enemies = combat.State.Combatants.Where(c => c.Id != combat.HeroId && c.IsAlive).ToList();
+        foreach (var enemy in enemies)
+        {
+            var blow = ForeseenBlow(combat, enemy.Id);
+            var label = combat.UpcomingIntentsFor(enemy.Id).FirstOrDefault()?.Label ?? "—";
+            var shown = blow is > 0 && plates.Any(p => Texts(p).Any(t => t == $"⚔ {blow}"));
+            ok &= blow is not > 0 || shown;
+            GD.Print($"smoke-intents: {enemy.Id.value} written \"{label}\" foreseen {blow?.ToString() ?? "—"} shown={shown}");
+        }
+        GD.Print($"smoke-intents: plates={plates.Count} {(ok ? "PASS" : "FAIL")}");
+        await CaptureThenQuit("smoke-intents.png", ok ? 0 : 1);
+    }
+
+    private static IEnumerable<Godot.Node> FindAll(Godot.Node root, string name)
+    {
+        foreach (var child in root.GetChildren())
+        {
+            if (child.Name == name)
+                yield return child;
+            foreach (var deeper in FindAll(child, name))
+                yield return deeper;
+        }
+    }
+
+    private static IEnumerable<string> Texts(Godot.Node root)
+    {
+        if (root is Label label)
+            yield return label.Text;
+        foreach (var child in root.GetChildren())
+            foreach (var text in Texts(child))
+                yield return text;
     }
 }
