@@ -291,4 +291,38 @@ public partial class SessionScreen
             foreach (var text in Texts(child))
                 yield return text;
     }
+
+    // `--smoke-peek`: point at the first card in hand that has a "+" form, right-click, and the improved card
+    // must stand above it (playtest feedback 2, B1).
+    private async System.Threading.Tasks.Task SmokePeek()
+    {
+        var combat = WalkToFirstFight();
+        if (combat is null)
+        {
+            GD.Print("smoke-peek: no fight reached");
+            GetTree().Quit(1);
+            return;
+        }
+        Rebuild();
+        for (var frame = 0; frame < 30; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        var face = _handFaceDefinitions.FirstOrDefault(pair => ShownDefinition(pair.Value, 1) != pair.Value).Key;
+        if (face is null)
+        {
+            GD.Print("smoke-peek: no improvable card in hand");
+            GetTree().Quit(1);
+            return;
+        }
+        await PointAt(face.GetGlobalRect().GetCenter());
+        Input.ParseInputEvent(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Right, Pressed = true, Position = face.GetGlobalRect().GetCenter(),
+            GlobalPosition = face.GetGlobalRect().GetCenter(),
+        });
+        for (var frame = 0; frame < 4; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        var ok = _plusPeek is not null && IsInstanceValid(_plusPeek);
+        GD.Print($"smoke-peek: {_handFaceDefinitions.GetValueOrDefault(face)} ⇒ peek shown={ok} {(ok ? "PASS" : "FAIL")}");
+        await CaptureThenQuit("smoke-peek.png", ok ? 0 : 1);
+    }
 }

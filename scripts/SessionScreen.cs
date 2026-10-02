@@ -194,6 +194,8 @@ public partial class SessionScreen : Control
             _ = SmokePreview();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-intents"))
             _ = SmokeIntents();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-peek"))
+            _ = SmokePeek();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-report"))
             _ = SmokeReport();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-mapkey"))
@@ -3403,8 +3405,53 @@ public partial class SessionScreen : Control
     // wired here once: each face remembers how to draw itself the other way round.
     private readonly Dictionary<Control, Func<Control>> _cardFlips = [];
 
+    // RIGHT-CLICK ON A CARD IN HAND (playtest feedback 2, B1). A hand card is not swapped for its "+" face — it
+    // is lifted, aimed and played, and a face that changed under the pointer would be a play waiting to go
+    // wrong — so the improved card is held up above it instead, and the next right-click puts it away.
+    private readonly Dictionary<Control, string> _handFaceDefinitions = [];
+    private Control? _plusPeek;
+
+    private void ClosePlusPeek()
+    {
+        if (_plusPeek is { } peek && IsInstanceValid(peek))
+            peek.QueueFree();
+        _plusPeek = null;
+    }
+
+    private bool PeekHoveredHandCard()
+    {
+        if (_plusPeek is not null)
+        {
+            ClosePlusPeek();
+            return true;
+        }
+        for (Godot.Node? node = GetViewport().GuiGetHoveredControl(); node is Control control; node = control.GetParent())
+        {
+            if (!_handFaceDefinitions.TryGetValue(control, out var definition))
+                continue;
+            var plus = ShownDefinition(definition, 1);
+            if (plus == definition)
+                return false;
+            var face = DrawCardPick(definition, 1, selected: false, caption: "upgraded", onClick: null);
+            face.MouseFilter = MouseFilterEnum.Ignore;
+            face.Scale = new Vector2(1.25f, 1.25f);
+            var at = control.GetGlobalRect();
+            var size = new Vector2(CardVisuals.CardW, CardVisuals.CardH) * 1.25f;
+            face.Position = new Vector2(
+                Mathf.Clamp(at.GetCenter().X - size.X / 2, 8, GetViewportRect().Size.X - size.X - 8),
+                Mathf.Max(8, at.Position.Y - size.Y - 16));
+            face.ZIndex = 50;
+            _plusPeek = face;
+            AddChild(face);
+            return true;
+        }
+        return false;
+    }
+
     private bool FlipHoveredCard()
     {
+        if (PeekHoveredHandCard())
+            return true;
         for (Godot.Node? node = GetViewport().GuiGetHoveredControl(); node is Control control; node = control.GetParent())
         {
             if (!_cardFlips.TryGetValue(control, out var other))
@@ -4257,6 +4304,8 @@ public partial class SessionScreen : Control
 
         _cardsToAnimate.Clear();
         _handFaces.Clear();
+        _handFaceDefinitions.Clear();
+        ClosePlusPeek();
         for (var i = 0; i < cards.Count; i++)
         {
             var card = cards[i];
@@ -4277,6 +4326,7 @@ public partial class SessionScreen : Control
             LiftOnHover(face, face.Position, face.RotationDegrees);
             PreviewOnHover(face, cardId);
             _handFaces.Add(face);
+            _handFaceDefinitions[face] = card.DefinitionId.value;
             if (!_shownHandIds.Contains(cardId.value))
                 _cardsToAnimate.Add(face); // newly drawn → fly it in
         }
