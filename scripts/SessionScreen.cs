@@ -1624,6 +1624,16 @@ public partial class SessionScreen : Control
             + $" run={session?.Run.Result} choice={session?.IsAwaitingChoice} entities={session?.IsAwaitingEntities} "
             + $"error={session?.Error ?? Play?.Error ?? "none"}");
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        // `--back`: call the improvement off — the campfire must ask again, with "amend" still on offer.
+        if (OS.GetCmdlineUserArgs().Contains("--back") && session is { IsAwaitingEntities: true, PendingEntities: { } offered }
+            && IsImprovement(offered))
+        {
+            session.PickEntities([]);
+            var again = session.IsAwaitingChoice && session.PendingChoices.Any(c => c.Id == "amend");
+            GD.Print($"smoke-back: called off ⇒ campfire asks again={again} "
+                + $"[{string.Join(" | ", session.PendingChoices.Select(c => c.Id))}] {(again ? "PASS" : "FAIL")}");
+            Rebuild();
+        }
         // `--scroll`: scroll the page down, pick another card the way a click does (a redraw of the same screen),
         // and the page must still stand where it was read (playtest feedback 2, B3).
         if (OS.GetCmdlineUserArgs().Contains("--scroll") && session is { IsAwaitingEntities: true, PendingEntities: { } list })
@@ -3333,7 +3343,8 @@ public partial class SessionScreen : Control
         // A declinable pick: a reward the player may take nothing of, or a removal the player may call off
         // (the shop's — which is then not charged and stays on offer).
         if (entities.AllowSkip)
-            AddButton(entities.Intent == RunChoiceIntent.Remove ? "Cancel — keep my deck" : "Skip — take none", () =>
+            AddButton(entities.Intent == RunChoiceIntent.Remove ? "Cancel — keep my deck"
+                : IsImprovement(entities) ? "◂ Back — improve nothing" : "Skip — take none", () =>
             {
                 _selectedEntities.Clear();
                 session.PickEntities([]);
