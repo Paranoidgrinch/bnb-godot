@@ -23,7 +23,6 @@ public partial class NewRunPanel : PanelContainer
     private readonly Action _onCancel;
     private readonly int? _presetSeed;
     private string _choice = RunPreferences.MapGenerator;
-    private ButtonGroup _group = null!;
     private LineEdit _seed = null!;
 
     public NewRunPanel(Action<string, int?> onBegin, Action onCancel, int? presetSeed = null)
@@ -52,17 +51,10 @@ public partial class NewRunPanel : PanelContainer
         title.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
         column.AddChild(title);
 
-        var ask = new Label
-        {
-            Text = "How should this run's maps be laid out?",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        ask.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
-        column.AddChild(ask);
-
-        _group = new ButtonGroup();
-        foreach (var generator in new[] { MapGenerators.Strategic, MapGenerators.RuleBased })
-            column.AddChild(Option(generator, _group));
+        // NO MAP QUESTION ANY MORE (playtest feedback 2, D1): the old rule-based maps are archived. Every new run
+        // walks the design's own maps; a save made on the old ones still resumes on them, and the probes still
+        // reach them with `--legacy`.
+        _choice = MapGenerators.Strategic;
 
         column.AddChild(SeedRow());
 
@@ -116,8 +108,6 @@ public partial class NewRunPanel : PanelContainer
         {
             _seed.Text = RunSeeds.Daily(today).ToString(System.Globalization.CultureInfo.InvariantCulture);
             _choice = MapGenerators.Strategic;
-            foreach (var button in _group.GetButtons())
-                button.ButtonPressed = button.Name == OptionName(MapGenerators.Strategic);
         };
         row.AddChild(daily);
         box.AddChild(row);
@@ -131,39 +121,6 @@ public partial class NewRunPanel : PanelContainer
         box.AddChild(note);
         return box;
     }
-
-    // One answer: a toggle that carries the plain-English name, and under it the sentence that says what it
-    // actually means for the act the player is about to walk.
-    private Control Option(string generator, ButtonGroup group)
-    {
-        var box = new VBoxContainer();
-        box.AddThemeConstantOverride("separation", 2);
-
-        var pick = new Button
-        {
-            Text = RunPreferences.Title(generator),
-            ToggleMode = true,
-            ButtonGroup = group,
-            ButtonPressed = generator == _choice,
-            Alignment = HorizontalAlignment.Left,
-            // Named so the probe can find and press one without knowing where the dialog put it.
-            Name = OptionName(generator),
-        };
-        pick.Pressed += () => _choice = generator;
-        box.AddChild(pick);
-
-        var blurb = new Label
-        {
-            Text = RunPreferences.Blurb(generator),
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        blurb.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
-        box.AddChild(blurb);
-        return box;
-    }
-
-    public static string OptionName(string generator) =>
-        generator == MapGenerators.RuleBased ? "OptionRuleBased" : "OptionStrategic";
 
     public const string OverlayName = "NewRunOverlay";
 

@@ -25,14 +25,9 @@ public static class RunPreferences
 
     // The generator a NEW run starts on. v0.0.1 is the default because it is what a BnB act now is
     // (docs/bnb-act-map-specs.md); v0.0.0 stays offered, and stays what an old save resumes on.
-    public static string MapGenerator
-    {
-        get
-        {
-            Load();
-            return _mapGenerator;
-        }
-    }
+    // ⚠ ALWAYS THE DESIGN'S OWN since the rule-based maps were archived (playtest feedback 2, D1). A preference
+    // stored by an older build still reads, and is no longer obeyed for a new run.
+    public static string MapGenerator => MapGenerators.Strategic;
 
     public static void SetMapGenerator(string generator)
     {
