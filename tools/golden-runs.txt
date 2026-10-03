@@ -1,53 +1,53 @@
 # THE GOLDEN RUN SET — what these runs did, so that making them faster can be proved harmless.
-# Recorded 2026-10-02T14:53:31+02:00 by tools/golden.sh --record. Re-record ONLY when a change to the GAME
+# Recorded 2026-10-03T10:23:49+02:00 by tools/golden.sh --record. Re-record ONLY when a change to the GAME
 # is intended, and say in the commit which lines moved and why.
 # 'seconds=' is stripped: the clock is meant to change. Timings at the bottom are informational.
 #
-immortal seed10    sim-fitness: policy=random seed=10 maps=v0.0.1 deepestActBoss=5 damageTaken=5414 healed=4811 actBossDamage=1:470,2:1021,3:1981,4:4088,5:5414 actBossHp=1:9703,2:9803,3:9074,4:9887,5:9396 rooms=110 result=Victory
-immortal seed10    sim-result: seed=10 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=70 hp=8788/10029 problems=0 error=none stopped because the run finished
-immortal seed11    sim-fitness: policy=random seed=11 maps=v0.0.1 deepestActBoss=5 damageTaken=5672 healed=4661 actBossDamage=1:458,2:1120,3:1618,4:3397,5:5672 actBossHp=1:9541,2:9738,3:9999,4:8275,5:8988 rooms=110 result=Victory
-immortal seed11    sim-result: seed=11 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=76 hp=8565/9999 problems=0 error=none stopped because the run finished
-immortal seed12    sim-fitness: policy=random seed=12 maps=v0.0.1 deepestActBoss=5 damageTaken=5877 healed=5082 actBossDamage=1:694,2:1322,3:2166,4:4665,5:5877 actBossHp=1:9999,2:9539,3:9463,4:8579,5:9204 rooms=110 result=Victory
-immortal seed12    sim-result: seed=12 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=78 hp=8996/10011 problems=0 error=none stopped because the run finished
-immortal seed1     sim-fitness: policy=random seed=1 maps=v0.0.1 deepestActBoss=5 damageTaken=5466 healed=4932 actBossDamage=1:292,2:1407,3:2593,4:4613,5:5466 actBossHp=1:9999,2:8998,3:9023,4:9546,5:9465 rooms=110 result=Victory
-immortal seed1     sim-result: seed=1 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=78 hp=9126/10003 problems=0 error=none stopped because the run finished
-immortal seed2     sim-fitness: policy=random seed=2 maps=v0.0.1 deepestActBoss=5 damageTaken=6912 healed=6251 actBossDamage=1:266,2:1285,3:2584,4:5619,5:6912 actBossHp=1:9829,2:9037,3:9994,4:8711,5:9338 rooms=110 result=Victory
-immortal seed2     sim-result: seed=2 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=75 hp=8248/10004 problems=0 error=none stopped because the run finished
-immortal seed3     sim-fitness: policy=random seed=3 maps=v0.0.1 deepestActBoss=5 damageTaken=6939 healed=5874 actBossDamage=1:635,2:1507,3:2682,4:5219,5:6939 actBossHp=1:9999,2:9674,3:9186,4:7525,5:8934 rooms=110 result=Victory
-immortal seed3     sim-result: seed=3 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=75 hp=8646/10013 problems=0 error=none stopped because the run finished
-immortal seed4     sim-fitness: policy=random seed=4 maps=v0.0.1 deepestActBoss=5 damageTaken=5823 healed=5002 actBossDamage=1:565,2:2373,3:3098,4:4566,5:5823 actBossHp=1:9999,2:9260,3:9566,4:9391,5:9178 rooms=110 result=Victory
-immortal seed4     sim-result: seed=4 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=70 hp=8992/10040 problems=0 error=none stopped because the run finished
-immortal seed5     sim-fitness: policy=random seed=5 maps=v0.0.1 deepestActBoss=5 damageTaken=4872 healed=4744 actBossDamage=1:389,2:1522,3:2443,4:4499,5:4872 actBossHp=1:9999,2:9185,3:9993,4:8847,5:9871 rooms=110 result=Victory
-immortal seed5     sim-result: seed=5 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=73 hp=9599/9993 problems=0 error=none stopped because the run finished
-immortal seed6     sim-fitness: policy=random seed=6 maps=v0.0.1 deepestActBoss=5 damageTaken=5488 healed=4920 actBossDamage=1:259,2:725,3:2065,4:3961,5:5488 actBossHp=1:9740,2:9580,3:8679,4:9997,5:9431 rooms=110 result=Victory
-immortal seed6     sim-result: seed=6 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=69 hp=9147/9997 problems=0 error=none stopped because the run finished
-immortal seed7     sim-fitness: policy=random seed=7 maps=v0.0.1 deepestActBoss=5 damageTaken=9058 healed=8150 actBossDamage=1:326,2:1789,3:3465,4:6882,5:9058 actBossHp=1:9681,2:10003,3:8393,4:8194,5:9091 rooms=110 result=Victory
-immortal seed7     sim-result: seed=7 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=76 hp=8741/9999 problems=0 error=none stopped because the run finished
-immortal seed8     sim-fitness: policy=random seed=8 maps=v0.0.1 deepestActBoss=5 damageTaken=6023 healed=5583 actBossDamage=1:393,2:1007,3:2811,4:4624,5:6023 actBossHp=1:9606,2:10007,3:10007,4:9725,5:9559 rooms=110 result=Victory
-immortal seed8     sim-result: seed=8 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=74 hp=9281/10007 problems=0 error=none stopped because the run finished
-immortal seed9     sim-fitness: policy=random seed=9 maps=v0.0.1 deepestActBoss=5 damageTaken=6876 healed=6463 actBossDamage=1:346,2:1576,3:3283,4:6149,5:6876 actBossHp=1:9654,2:9799,3:9936,4:7254,5:9586 rooms=110 result=Victory
-immortal seed9     sim-result: seed=9 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=72 hp=9146/9999 problems=0 error=none stopped because the run finished
-mortal seed101   sim-fitness: policy=random seed=101 maps=v0.0.1 deepestActBoss=2 damageTaken=950 healed=609 actBossDamage=1:156,2:459 actBossHp=1:392,2:178 rooms=67 result=Defeat
-mortal seed101   sim-result: seed=101 maps=v0.0.1 result=Defeat acts=3 rooms=67 fights=39 hp=0/400 problems=0 error=none stopped because the run finished
-mortal seed102   sim-fitness: policy=random seed=102 maps=v0.0.1 deepestActBoss=0 damageTaken=374 healed=0 actBossDamage= actBossHp= rooms=19 result=Defeat
-mortal seed102   sim-result: seed=102 maps=v0.0.1 result=Defeat acts=1 rooms=19 fights=13 hp=0/400 problems=0 error=none stopped because the run finished
-mortal seed103   sim-fitness: policy=random seed=103 maps=v0.0.1 deepestActBoss=0 damageTaken=370 healed=0 actBossDamage= actBossHp= rooms=16 result=Defeat
+immortal seed10    sim-fitness: policy=random seed=10 maps=v0.0.1 deepestActBoss=5 damageTaken=5082 healed=4523 actBossDamage=1:470,2:1013,3:2652,4:4051,5:5082 actBossHp=1:9703,2:10003,3:10003,4:9523,5:9440 rooms=110 result=Victory
+immortal seed10    sim-result: seed=10 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=70 hp=9177/10011 problems=0 error=none stopped because the run finished
+immortal seed11    sim-fitness: policy=random seed=11 maps=v0.0.1 deepestActBoss=5 damageTaken=5906 healed=5667 actBossDamage=1:470,2:1209,3:2320,4:5000,5:5906 actBossHp=1:9879,2:9607,3:9145,4:10004,5:9592 rooms=110 result=Victory
+immortal seed11    sim-result: seed=11 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=73 hp=9272/10004 problems=0 error=none stopped because the run finished
+immortal seed12    sim-fitness: policy=random seed=12 maps=v0.0.1 deepestActBoss=5 damageTaken=5274 healed=4732 actBossDamage=1:694,2:1321,3:2139,4:4278,5:5274 actBossHp=1:9999,2:9540,3:9489,4:9932,5:9457 rooms=110 result=Victory
+immortal seed12    sim-result: seed=12 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=77 hp=9291/10008 problems=0 error=none stopped because the run finished
+immortal seed1     sim-fitness: policy=random seed=1 maps=v0.0.1 deepestActBoss=5 damageTaken=4129 healed=3684 actBossDamage=1:292,2:1593,3:2241,4:3420,5:4129 actBossHp=1:9999,2:8812,3:9999,4:8871,5:9554 rooms=110 result=Victory
+immortal seed1     sim-result: seed=1 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=75 hp=9122/10005 problems=0 error=none stopped because the run finished
+immortal seed2     sim-fitness: policy=random seed=2 maps=v0.0.1 deepestActBoss=5 damageTaken=3565 healed=3336 actBossDamage=1:266,2:1231,3:2198,4:3264,5:3565 actBossHp=1:9829,2:9091,3:9778,4:9111,5:9770 rooms=110 result=Victory
+immortal seed2     sim-result: seed=2 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=75 hp=9683/9993 problems=0 error=none stopped because the run finished
+immortal seed3     sim-fitness: policy=random seed=3 maps=v0.0.1 deepestActBoss=5 damageTaken=3143 healed=2913 actBossDamage=1:670,2:1199,3:1764,4:2402,5:3143 actBossHp=1:9503,2:9593,3:9494,4:9637,5:9769 rooms=110 result=Victory
+immortal seed3     sim-result: seed=3 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=72 hp=9676/9995 problems=0 error=none stopped because the run finished
+immortal seed4     sim-fitness: policy=random seed=4 maps=v0.0.1 deepestActBoss=5 damageTaken=5928 healed=4883 actBossDamage=1:971,2:2119,3:2800,4:4302,5:5928 actBossHp=1:9284,2:9666,3:10017,4:9241,5:8954 rooms=110 result=Victory
+immortal seed4     sim-result: seed=4 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=71 hp=8900/10015 problems=0 error=none stopped because the run finished
+immortal seed5     sim-fitness: policy=random seed=5 maps=v0.0.1 deepestActBoss=5 damageTaken=7283 healed=7285 actBossDamage=1:381,2:1646,3:3509,4:6802,5:7283 actBossHp=1:9618,2:8761,3:8918,4:8964,5:9875 rooms=110 result=Victory
+immortal seed5     sim-result: seed=5 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=74 hp=9679/10003 problems=0 error=none stopped because the run finished
+immortal seed6     sim-fitness: policy=random seed=6 maps=v0.0.1 deepestActBoss=5 damageTaken=6000 healed=5484 actBossDamage=1:331,2:1327,3:4043,4:5341,5:6000 actBossHp=1:9668,2:9999,3:7335,4:9616,5:9483 rooms=110 result=Victory
+immortal seed6     sim-result: seed=6 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=73 hp=9092/10009 problems=0 error=none stopped because the run finished
+immortal seed7     sim-fitness: policy=random seed=7 maps=v0.0.1 deepestActBoss=5 damageTaken=5728 healed=5302 actBossDamage=1:326,2:1521,3:2664,4:4968,5:5728 actBossHp=1:9681,2:8991,3:9974,4:9365,5:9573 rooms=110 result=Victory
+immortal seed7     sim-result: seed=7 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=74 hp=9070/10011 problems=0 error=none stopped because the run finished
+immortal seed8     sim-fitness: policy=random seed=8 maps=v0.0.1 deepestActBoss=5 damageTaken=5324 healed=4340 actBossDamage=1:393,2:1007,3:1840,4:3813,5:5324 actBossHp=1:9606,2:10007,3:9565,4:8064,5:9015 rooms=110 result=Victory
+immortal seed8     sim-result: seed=8 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=74 hp=8475/10001 problems=0 error=none stopped because the run finished
+immortal seed9     sim-fitness: policy=random seed=9 maps=v0.0.1 deepestActBoss=5 damageTaken=4084 healed=4034 actBossDamage=1:339,2:1163,3:2229,4:3543,5:4084 actBossHp=1:9661,2:9999,3:8982,4:8737,5:9949 rooms=110 result=Victory
+immortal seed9     sim-result: seed=9 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=70 hp=9388/9992 problems=0 error=none stopped because the run finished
+mortal seed101   sim-fitness: policy=random seed=101 maps=v0.0.1 deepestActBoss=2 damageTaken=940 healed=553 actBossDamage=1:156,2:423 actBossHp=1:292,2:245 rooms=69 result=Defeat
+mortal seed101   sim-result: seed=101 maps=v0.0.1 result=Defeat acts=3 rooms=69 fights=40 hp=0/395 problems=0 error=none stopped because the run finished
+mortal seed102   sim-fitness: policy=random seed=102 maps=v0.0.1 deepestActBoss=0 damageTaken=315 healed=0 actBossDamage= actBossHp= rooms=21 result=Defeat
+mortal seed102   sim-result: seed=102 maps=v0.0.1 result=Defeat acts=1 rooms=21 fights=13 hp=0/400 problems=0 error=none stopped because the run finished
+mortal seed103   sim-fitness: policy=random seed=103 maps=v0.0.1 deepestActBoss=0 damageTaken=368 healed=0 actBossDamage= actBossHp= rooms=16 result=Defeat
 mortal seed103   sim-result: seed=103 maps=v0.0.1 result=Defeat acts=1 rooms=16 fights=11 hp=0/400 problems=0 error=none stopped because the run finished
 #
 # ── how long it took when recorded (informational, never compared) ──
-#time immortal seed10    30.8 s
-#time immortal seed11    43.7 s
-#time immortal seed1     192.7 s
-#time immortal seed12    37.3 s
-#time immortal seed2     56.6 s
-#time immortal seed3     47.5 s
-#time immortal seed4     37.2 s
-#time immortal seed5     28.8 s
-#time immortal seed6     30.3 s
-#time immortal seed7     38.6 s
-#time immortal seed8     41.0 s
-#time immortal seed9     43.8 s
-#time mortal seed101   20.7 s
-#time mortal seed102   17.2 s
-#time mortal seed103   10.4 s
-# total run-seconds 676.6 (wall clock depends on --jobs)
+#time immortal seed10    29.0 s
+#time immortal seed11    48.8 s
+#time immortal seed1     200.3 s
+#time immortal seed12    38.9 s
+#time immortal seed2     38.2 s
+#time immortal seed3     41.7 s
+#time immortal seed4     41.7 s
+#time immortal seed5     47.6 s
+#time immortal seed6     41.5 s
+#time immortal seed7     36.2 s
+#time immortal seed8     45.2 s
+#time immortal seed9     41.0 s
+#time mortal seed101   25.8 s
+#time mortal seed102   14.9 s
+#time mortal seed103   11.3 s
+# total run-seconds 702.1 (wall clock depends on --jobs)
