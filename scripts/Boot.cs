@@ -38,6 +38,20 @@ public partial class Boot : Control
         GD.Print($"loaded: {host.GameTitle} ({blueprint.Cards.Count} cards, {blueprint.Map.Nodes.Count} map nodes)");
 
         var userArgs = OS.GetCmdlineUserArgs();
+        // THE PLAYER'S COMMAND: open the whole archive (tools/reveal-archive.sh). Headless it only writes the fund
+        // book and quits; with a window the game then starts as usual, every shelf already filled.
+        if (userArgs.Contains("--reveal-archive"))
+        {
+            Archive.Build(blueprint);
+            var added = Archive.RevealAll();
+            GD.Print($"reveal-archive: {added} new entries — the whole archive is open "
+                + $"({string.Join(", ", Archive.Kinds.Select(k => $"{Archive.Title(k)} {Archive.Entries(k).Count}"))})");
+            if (DisplayServer.GetName().Contains("headless"))
+            {
+                GetTree().Quit();
+                return;
+            }
+        }
         // THE SECOND HALF OF --smoke-quit: this is the title screen the button led back to. Reported from here
         // rather than from the session, because by the time the scene change has happened the node that pressed
         // the button no longer exists — and what is being checked is exactly what this screen knows.

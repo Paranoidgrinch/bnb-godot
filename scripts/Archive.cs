@@ -383,6 +383,18 @@ public static class Archive
             Save();
     }
 
+    // EVERYTHING, at once — the player's own command (`tools/reveal-archive.sh`, or `--reveal-archive` on the
+    // command line): the whole catalogue written into the fund book, every shelf open. Returns how many entries
+    // were new.
+    public static int RevealAll()
+    {
+        Load();
+        var added = Kinds.SelectMany(Entries).Count(entry => Found.Add($"{Slot(entry.Kind)}:{entry.Id}"));
+        if (added > 0)
+            Save();
+        return added;
+    }
+
     // Everything on one shelf that has been met — for the probe that has to say what a walk actually taught
     // the archive, by name and not by count.
     internal static IReadOnlyList<ArchiveEntry> FoundIn(ArchiveKind kind) => [.. Entries(kind).Where(Seen)];
