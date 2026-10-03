@@ -59,6 +59,12 @@ public partial class ArchivePanel : PanelContainer
 
     private int _shelfScroll;
 
+    // Every tile on the current shelf, by what it shows — so picking one restyles two tiles and refills the
+    // plate instead of rebuilding the whole panel.
+    private readonly Dictionary<(ArchiveKind, string), (PanelContainer Window, ArchiveEntry Entry)> _tiles = new();
+    private ScrollContainer? _reading;
+    private ScrollContainer? _shelf;
+
     // For the probe: right-click the plate's card, as a player would, and say what its face now reads.
     public string FlipPortraitForProbe()
     {
@@ -173,17 +179,30 @@ public partial class ArchivePanel : PanelContainer
             SizeFlagsVertical = SizeFlags.ExpandFill,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
-        // ⚠ NOT inside a CenterContainer, and the flow container must EXPAND: a flow container handed its own
-        // minimum width is one tile wide, which stacks a shelf of a hundred and sixty into a single column.
-        var grid = new HFlowContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        grid.AddThemeConstantOverride("h_separation", 12);
-        grid.AddThemeConstantOverride("v_separation", 12);
-        foreach (var entry in Archive.Entries(_kind))
-            grid.AddChild(Tile(entry));
-        scroll.AddChild(grid);
-        // THE SHELF STAYS WHERE IT WAS READ (playtest feedback 2, B3). Picking a tile redraws the panel, and a
-        // new ScrollContainer starts at the top: a player forty cards down was thrown back to the first row by
-        // every card they looked at. The offset is kept and given back once the new shelf has a size to scroll.
+        // ONE SHELF PER SECTION, each under its own heading (user, 2026-10-03): a tab of 229 cards is read as
+        // "the Bureaucrat's, the general pool, junk, relic cards, fight cards" before it is read card by card.
+        var column = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        column.AddThemeConstantOverride("separation", 10);
+        _tiles.Clear();
+        foreach (var (shelf, entries) in Archive.Sections(_kind))
+        {
+            if (shelf.Length > 0)
+                column.AddChild(ShelfHeading(shelf, entries));
+            // ⚠ NOT inside a CenterContainer, and the flow container must EXPAND: a flow container handed its
+            // own minimum width is one tile wide, which stacks a shelf of a hundred and sixty into one column.
+            var grid = new HFlowContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+            grid.AddThemeConstantOverride("h_separation", 12);
+            grid.AddThemeConstantOverride("v_separation", 12);
+            foreach (var entry in entries)
+                grid.AddChild(Tile(entry));
+            column.AddChild(grid);
+        }
+        scroll.AddChild(column);
+        // THE SHELF STAYS WHERE IT WAS READ (playtest feedback 2, B3). Picking a tile no longer rebuilds the
+        // shelf at all (Pick) — giving a new ScrollContainer its old offset back was not enough: it was handed
+        // over before the new shelf had a height to scroll, clamped to the top, and the player was thrown back
+        // to the first row anyway (user, 2026-10-03). The offset is still kept for a redraw that has to happen
+        // (a reset, a tab change keeps none).
         var keep = _shelfScroll;
         scroll.GetVScrollBar().ValueChanged += value => _shelfScroll = (int)value;
         Callable.From(() =>
@@ -192,6 +211,7 @@ public partial class ArchivePanel : PanelContainer
                 scroll.ScrollVertical = keep;
         }).CallDeferred();
         row.AddChild(scroll);
+        _shelf = scroll;
 
         var plate = new PanelContainer { CustomMinimumSize = new Vector2(DetailWidth, 0) };
         plate.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.BgPanelStrong, MoonvineTheme.Hairline));
@@ -206,6 +226,7 @@ public partial class ArchivePanel : PanelContainer
         };
         inset.AddChild(reading);
         reading.AddChild(Plate());
+        _reading = reading;
         row.AddChild(plate);
         return row;
     }
@@ -231,11 +252,8 @@ public partial class ArchivePanel : PanelContainer
             ClipContents = true,
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        var chosen = _picked?.Id == entry.Id && _picked.Kind == entry.Kind;
-        window.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
-            met ? MoonvineTheme.BgPanel : MoonvineTheme.BgPanelStrong,
-            chosen ? MoonvineTheme.AccentLight : met ? MoonvineTheme.Hairline : new Color(MoonvineTheme.TextMuted, 0.18f),
-            radius: 4));
+        window.AddThemeStyleboxOverride("panel", TileStyle(entry));
+        _tiles[(entry.Kind, entry.Id)] = (window, entry);
         root.AddChild(window);
 
         if (met && Art(entry) is { } picture)
@@ -282,13 +300,60 @@ public partial class ArchivePanel : PanelContainer
 
         var overlay = new Button { Flat = true };
         overlay.SetAnchorsPreset(LayoutPreset.FullRect);
-        overlay.Pressed += () =>
-        {
-            _picked = entry;
-            Draw();
-        };
+        overlay.Pressed += () => Pick(entry);
         root.AddChild(overlay);
         return root;
+    }
+
+    private StyleBoxFlat TileStyle(ArchiveEntry entry)
+    {
+        var met = Archive.Seen(entry);
+        var chosen = _picked?.Id == entry.Id && _picked.Kind == entry.Kind;
+        return MoonvineTheme.Panel(
+            met ? MoonvineTheme.BgPanel : MoonvineTheme.BgPanelStrong,
+            chosen ? MoonvineTheme.AccentLight : met ? MoonvineTheme.Hairline : new Color(MoonvineTheme.TextMuted, 0.18f),
+            radius: 4);
+    }
+
+    // A pick changes two frames and the plate — nothing else on the screen, and above all not the shelf.
+    private void Pick(ArchiveEntry entry)
+    {
+        var before = _picked;
+        _picked = entry;
+        foreach (var touched in new[] { before, entry })
+            if (touched is not null && _tiles.TryGetValue((touched.Kind, touched.Id), out var tile)
+                && IsInstanceValid(tile.Window))
+                tile.Window.AddThemeStyleboxOverride("panel", TileStyle(tile.Entry));
+        if (_reading is null || !IsInstanceValid(_reading))
+        {
+            Draw();
+            return;
+        }
+        foreach (var old in _reading.GetChildren())
+            old.QueueFree();
+        _reading.AddChild(Plate());
+        _reading.ScrollVertical = 0;
+    }
+
+    private static Control ShelfHeading(string shelf, IReadOnlyList<ArchiveEntry> entries)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        var name = new Label { Text = shelf };
+        name.AddThemeFontSizeOverride("font_size", 15);
+        name.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
+        row.AddChild(name);
+        var count = new Label
+        {
+            Text = $"{entries.Count(Archive.Seen)}/{entries.Count}",
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        count.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+        row.AddChild(count);
+        var line = new HSeparator { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ShrinkCenter };
+        line.AddThemeStyleboxOverride("separator", new StyleBoxLine { Color = MoonvineTheme.Hairline, Thickness = 1 });
+        row.AddChild(line);
+        return row;
     }
 
     private Control Plate()
@@ -550,7 +615,39 @@ public partial class ArchivePanel : PanelContainer
             row.AddChild(reset);
         }
 
-        row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        // THE WHOLE ARCHIVE, TAKEN HOME (user, 2026-10-03): a page that reads like this screen, every entry and
+        // every picture in it, plus the same entries as data — written to the desktop and opened in a browser.
+        var exported = new Label
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        exported.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+        exported.AddThemeFontSizeOverride("font_size", 12);
+        row.AddChild(exported);
+
+        var export = new Button
+        {
+            Text = "Export",
+            CustomMinimumSize = new Vector2(120, 40),
+            TooltipText = "Write the whole archive to your desktop: a page that opens in any browser, and the same entries as JSON.",
+        };
+        export.Pressed += () =>
+        {
+            try
+            {
+                var page = ArchiveExport.Write(GameHost.Instance.Blueprint);
+                exported.Text = $"Exported to {System.IO.Path.GetDirectoryName(page)}";
+                OS.ShellOpen(page);
+            }
+            catch (Exception ex)
+            {
+                exported.Text = $"Export failed: {ex.Message}";
+            }
+        };
+        row.AddChild(export);
 
         var close = new Button { Text = "Close", CustomMinimumSize = new Vector2(140, 40) };
         close.Pressed += () => _onClose?.Invoke();
@@ -581,6 +678,29 @@ public partial class ArchivePanel : PanelContainer
         _kind = kind;
         _picked = Archive.Entries(kind).FirstOrDefault(e => e.Id == id);
         Draw();
+    }
+
+    // FOR THE SHELF PROBE: scroll the shelf as a wheel would, then pick a tile as a click would — and say where
+    // the shelf stands afterwards. A pick that throws the reader back to the top is the bug this answers.
+    internal int ShelfOffset => _shelf is { } shelf && IsInstanceValid(shelf) ? shelf.ScrollVertical : -1;
+
+    internal void ScrollShelfForProbe(int offset)
+    {
+        if (_shelf is { } shelf && IsInstanceValid(shelf))
+            shelf.ScrollVertical = offset;
+    }
+
+    internal void OpenTabForProbe(ArchiveKind kind)
+    {
+        _kind = kind;
+        _picked = null;
+        Draw();
+    }
+
+    internal void PickForProbe(ArchiveKind kind, string id)
+    {
+        if (Archive.Entries(kind).FirstOrDefault(e => e.Id == id) is { } entry)
+            Pick(entry);
     }
 
     // ⚠⚠ AND WHAT IS ACTUALLY ON THE PLATE, so a probe can say what it photographed rather than what it

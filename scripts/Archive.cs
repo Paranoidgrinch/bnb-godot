@@ -43,7 +43,8 @@ public sealed record ArchiveEntry(
     string? ProseTitle,                               // a god's Divine Rule wears its own name
     IReadOnlyList<(string Label, string Value)> Facts,
     IReadOnlyList<string> Moves,                      // what an enemy can do, in its own telegraph words
-    string? Upgraded = null);                         // what the same card says once it has been improved
+    string? Upgraded = null,                          // what the same card says once it has been improved
+    string Section = "");                             // the shelf it stands on inside its tab (see Sections)
 
 public static class Archive
 {
@@ -96,6 +97,8 @@ public static class Archive
         foreach (var kind in Kinds)
             Catalogue[kind] = [];
 
+        ActShelves.Clear();
+        ActShelves.AddRange((blueprint.Acts ?? []).Select(a => Short(a.NameKey) ?? a.Id));
         BuildEnemies(blueprint);
         BuildCards(blueprint);
         BuildRelics(blueprint);
@@ -103,6 +106,34 @@ public static class Archive
 
     public static IReadOnlyList<ArchiveEntry> Entries(ArchiveKind kind) =>
         Catalogue.TryGetValue(kind, out var list) ? list : [];
+
+    // EVERY TAB IS SHELVED (user, 2026-10-03): the cards a player can own apart from the cards a fight forces on
+    // them, the Bureaucrat's own apart from the general pool, every relic by the pool it is won from, every body
+    // by the act it is first met in. The cards and relics carry their shelf in the game files
+    // (`Extra["archiveSection"]`, bnb-content ArchiveSections); the order is the archive's own.
+    private static readonly string[] CardShelves =
+        ["Bureaucrat", "General pool", "Junk & curses", "Relic cards", "Fight cards"];
+    private static readonly string[] RelicShelves =
+        ["Bureaucrat", "Normal", "Shop", "Event", "Elite", "Mimic", "Boss"];
+    private static readonly List<string> ActShelves = [];
+
+    public static IReadOnlyList<(string Shelf, IReadOnlyList<ArchiveEntry> Entries)> Sections(ArchiveKind kind)
+    {
+        IReadOnlyList<string> order = kind switch
+        {
+            ArchiveKind.Cards => CardShelves,
+            ArchiveKind.Relics => RelicShelves,
+            _ => ActShelves,
+        };
+        int Rank(string shelf) => order.ToList().IndexOf(shelf) is var at and >= 0 ? at : int.MaxValue;
+        return [.. Entries(kind)
+            .GroupBy(e => e.Section)
+            .OrderBy(g => Rank(g.Key))
+            .ThenBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => (g.Key, (IReadOnlyList<ArchiveEntry>)[.. g]))];
+    }
+
+    public const string SectionKey = "archiveSection";
 
     // What one act's pools reach, with the act it belongs to — the only honest answer to "can a run draw
     // this". Both generators realize their rooms from the SAME pools (the strategic spec carries shape only),
@@ -184,7 +215,8 @@ public static class Archive
             Catalogue[kind].Add(new ArchiveEntry(
                 kind, id, names.GetValueOrDefault(id, Humanized(id)), look?.Frame,
                 decree, decreeTitle, facts,
-                [.. (actions.GetValueOrDefault(id) ?? []).Select(a => moveOf.GetValueOrDefault(a, Humanized(a)))]));
+                [.. (actions.GetValueOrDefault(id) ?? []).Select(a => moveOf.GetValueOrDefault(a, Humanized(a)))],
+                Section: actsOf.GetValueOrDefault(id)?.FirstOrDefault() ?? ""));
         }
     }
 
@@ -216,10 +248,15 @@ public static class Archive
                 facts.Add(("Rarity", Humanized(rarity)));
             if (card.Tags.Count > 0)
                 facts.Add(("Type", string.Join(", ", card.Tags.Select(t => Humanized(t.value)))));
+            var shelf = look?.Extra.GetValueOrDefault(SectionKey) ?? "Fight cards";
+            facts.Add(("Shelf", shelf));
+            // WHO PUTS IT IN YOUR HAND, for a card no pool offers: the enemy, the fight, the event or the relic.
+            if (look?.Extra.GetValueOrDefault("madeBy") is { Length: > 0 } makers)
+                facts.Add(("Made by", makers));
             Catalogue[ArchiveKind.Cards].Add(new ArchiveEntry(
                 ArchiveKind.Cards, card.Id, card.NameKey ?? Humanized(card.Id), look?.Rarity,
                 look?.FlavorText ?? card.DescriptionKey, null, facts, [],
-                improved.GetValueOrDefault(card.Id)));
+                improved.GetValueOrDefault(card.Id), shelf));
         }
     }
 
@@ -234,11 +271,16 @@ public static class Archive
         {
             var look = blueprint.Presentation.Relics.GetValueOrDefault(relic.Id);
             var facts = new List<(string, string)>();
-            if (look?.Rarity is { Length: > 0 } rarity)
-                facts.Add(("Pool", Humanized(rarity)));
+            if (look?.Frame is { Length: > 0 } pool)
+                facts.Add(("Pool", Humanized(pool)));
+            if (look?.Rarity is { Length: > 0 } rarity && rarity != look.Frame)
+                facts.Add(("Rarity", Humanized(rarity)));
+            var shelf = look?.Extra.GetValueOrDefault(SectionKey) ?? Humanized(look?.Frame ?? "other");
+            if (shelf == "Bureaucrat")
+                facts.Add(("Only for", "the Bureaucrat"));
             Catalogue[ArchiveKind.Relics].Add(new ArchiveEntry(
                 ArchiveKind.Relics, relic.Id, relic.DisplayName, look?.Frame ?? look?.Rarity,
-                look?.FlavorText, null, facts, []));
+                look?.FlavorText, null, facts, [], Section: shelf));
         }
     }
 

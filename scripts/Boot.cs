@@ -40,6 +40,17 @@ public partial class Boot : Control
         var userArgs = OS.GetCmdlineUserArgs();
         // THE PLAYER'S COMMAND: open the whole archive (tools/reveal-archive.sh). Headless it only writes the fund
         // book and quits; with a window the game then starts as usual, every shelf already filled.
+        // …and the same as a file: the archive's export, headless (tools/export-archive.sh).
+        if (userArgs.Contains("--export-archive"))
+        {
+            var page = ArchiveExport.Write(blueprint);
+            GD.Print($"export-archive: {page}");
+            if (DisplayServer.GetName().Contains("headless"))
+            {
+                GetTree().Quit();
+                return;
+            }
+        }
         if (userArgs.Contains("--reveal-archive"))
         {
             Archive.Build(blueprint);
@@ -253,6 +264,13 @@ public partial class Boot : Control
             return;
         }
         // The compendium, opened from its title-screen button the way a player opens it, on Paperwork.
+        // The archive's shelves, read as a player reads them: the cards tab, scrolled well down, one card picked.
+        // Says whether the shelf stayed where it was read, and photographs it. Touches no file but the picture.
+        if (userArgs.Contains("--smoke-archive-shelf") && !DisplayServer.GetName().Contains("headless"))
+        {
+            _ = ArchiveShelfProbe();
+            return;
+        }
         if (userArgs.Contains("--smoke-compendium"))
         {
             var button = FindChildren("*", nameof(Button), recursive: true, owned: false).OfType<Button>()
@@ -735,6 +753,37 @@ public partial class Boot : Control
             GetViewport().GetTexture().GetImage().SavePng(file);
             GD.Print($"smoke-splash: {file}");
         }
+        GetTree().Quit();
+    }
+
+    private async System.Threading.Tasks.Task ArchiveShelfProbe()
+    {
+        var panel = ArchivePanel.Open(this);
+        if (panel is null)
+        {
+            GD.Print("smoke-archive-shelf: THE ARCHIVE DID NOT OPEN");
+            GetTree().Quit();
+            return;
+        }
+        async System.Threading.Tasks.Task Frames(int n)
+        {
+            for (var i = 0; i < n; i++)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
+        await Frames(3);
+        panel.OpenTabForProbe(ArchiveKind.Cards);
+        await Frames(4);
+        panel.ScrollShelfForProbe(2400);
+        await Frames(3);
+        var before = panel.ShelfOffset;
+        var deep = Archive.Sections(ArchiveKind.Cards).First(s => s.Shelf == "General pool").Entries[3];
+        panel.PickForProbe(ArchiveKind.Cards, deep.Id);
+        await Frames(4);
+        var after = panel.ShelfOffset;
+        GD.Print($"smoke-archive-shelf: shelves {string.Join(", ", Archive.Sections(ArchiveKind.Cards).Select(s => $"{s.Shelf} {s.Entries.Count}"))}"
+            + $" · scrolled to {before}, picked {deep.Name}, shelf now at {after} {(after == before && before > 0 ? "(STAYED)" : "— MOVED")}");
+        GetViewport().GetTexture().GetImage().SavePng("user://smoke-archive-shelf.png");
+        GD.Print("smoke: screenshot user://smoke-archive-shelf.png");
         GetTree().Quit();
     }
 
