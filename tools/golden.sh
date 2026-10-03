@@ -120,7 +120,8 @@ play_one() {
   [[ $GOLDEN_DRAWN == *" $seed "* ]] && ui="--sim-ui"
   local started; started=$(date +%s.%N)
   # shellcheck disable=SC2086
-  timeout 3600 $GOLDEN_GAME -- --sim --sim-seed "$seed" $health $ui >"$log" 2>&1
+  # The set is the BUREAUCRAT's: the roster grew (the Hedge Witch), and a rolled character would change the runs.
+  timeout 3600 $GOLDEN_GAME -- --sim --sim-seed "$seed" --sim-character bureaucrat $health $ui >"$log" 2>&1
   local elapsed; elapsed=$(awk "BEGIN{printf \"%.1f\", $(date +%s.%N) - $started}")
   # Strip the clock from what is compared; keep it beside the line as a comment for the timing report.
   local fitness result

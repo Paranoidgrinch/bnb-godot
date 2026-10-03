@@ -112,9 +112,9 @@ public static class Archive
     // by the act it is first met in. The cards and relics carry their shelf in the game files
     // (`Extra["archiveSection"]`, bnb-content ArchiveSections); the order is the archive's own.
     private static readonly string[] CardShelves =
-        ["Bureaucrat", "General pool", "Junk & curses", "Relic cards", "Fight cards"];
+        ["Bureaucrat", "Hedge Witch", "General pool", "Junk & curses", "Relic cards", "Fight cards"];
     private static readonly string[] RelicShelves =
-        ["Bureaucrat", "Normal", "Shop", "Event", "Elite", "Mimic", "Boss"];
+        ["Bureaucrat", "Hedge Witch", "Normal", "Shop", "Event", "Elite", "Mimic", "Boss"];
     private static readonly List<string> ActShelves = [];
 
     public static IReadOnlyList<(string Shelf, IReadOnlyList<ArchiveEntry> Entries)> Sections(ArchiveKind kind)
@@ -235,7 +235,9 @@ public static class Archive
                 c => blueprint.Presentation.Cards.GetValueOrDefault(c.Id)?.FlavorText ?? c.DescriptionKey,
                 StringComparer.Ordinal);
 
+        // A character's own ACTIONS (the Witch's "Into the Pot", "Brew") are not cards anybody holds.
         foreach (var card in blueprint.Cards
+            .Where(c => !c.IsAction)
             .Where(c => !(c.Id.EndsWith('+') && improved.ContainsKey(c.Id.TrimEnd('+'))))
             .OrderBy(c => c.NameKey ?? c.Id, StringComparer.Ordinal))
         {

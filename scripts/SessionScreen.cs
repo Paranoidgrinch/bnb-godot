@@ -182,6 +182,8 @@ public partial class SessionScreen : Control
             _ = SimulateRun();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-run"))
             SmokeRun();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-cauldron"))
+            _ = SmokeCauldron();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-target"))
             SmokeTarget();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-draw"))
@@ -4173,6 +4175,8 @@ public partial class SessionScreen : Control
             use.Pressed += () => play.UseConsumableInCombat(id);
             controls.AddChild(use);
         }
+        // The hero's own actions and, for a hero with a cauldron, the pot itself (SessionCauldron).
+        BuildHeroActions(controls, combat);
         controls.MoveChild(endTurn, -1); // End turn stays the last, rightmost button whatever else is offered
         bottomBox.AddChild(controls);
     }
@@ -6154,7 +6158,7 @@ public partial class SessionScreen : Control
             // wants the count, so the name is set small and the magnitude large beside it.
             var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
             row.AddThemeConstantOverride("separation", 4);
-            var (label, magnitude) = StatusParts(status, definition);
+            var (label, magnitude) = StatusParts(status, definition, combatant);
             var text = new Label { Text = label, MouseFilter = Control.MouseFilterEnum.Pass, TooltipText = hover };
             text.AddThemeFontSizeOverride("font_size", 11);
             text.AddThemeColorOverride("font_color", colour);
@@ -6262,11 +6266,22 @@ public partial class SessionScreen : Control
         tween.TweenProperty(target, "scale", Vector2.One, 0.45).SetTrans(Tween.TransitionType.Back);
     }
 
-    private static (string Label, string Magnitude) StatusParts(StatusInstance status, StatusDefinition? definition)
+    private static (string Label, string Magnitude) StatusParts(
+        StatusInstance status, StatusDefinition? definition, CombatantState? bearer = null)
     {
         var name = definition is not null && !string.IsNullOrWhiteSpace(definition.DisplayNameKey)
             ? definition.DisplayNameKey
             : Humanized(status.DefinitionId.value);
+        // THE HEDGE WITCH'S TWO COUNTS, said the way the canon asks (§4.2, §5): Hexed shows its stacks AND how
+        // close the third night is ("7 ••○" — two nights counted, it bursts at this body's next turn end),
+        // Misfortune shows the chance, never the stacks behind it.
+        if (status.DefinitionId.value == "hexed" && bearer is not null)
+        {
+            var step = Math.Clamp(bearer.Counters.GetValueOrDefault(new CounterId("threefold_step")), 0, 2);
+            return (name, $"{status.Stacks} {new string('•', step)}{new string('○', 3 - step)}");
+        }
+        if (status.DefinitionId.value == "misfortune")
+            return (name, $"{Math.Min(status.Stacks, 12) * 5}%");
         var magnitude = status.Stacks > 0 && (definition?.UsesStacks ?? true) ? $"{status.Stacks}"
             : status.DurationTurns > 0 && (definition?.UsesDuration ?? true) ? $"{status.DurationTurns}t"
             : status.Charges > 0 && (definition?.UsesCharges ?? true) ? $"{status.Charges}c" : "";

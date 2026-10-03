@@ -178,7 +178,9 @@ public partial class Boot : Control
         {
             var seed = SessionScreen.SimArg("--sim-seed", 1);
             var roster = host.AvailableCharacters;
-            var character = roster.Count > 0 ? roster[new Random(seed).Next(roster.Count)].Id : null;
+            // `--sim-character <id>` names who walks; otherwise the seed rolls one off the roster.
+            var named = userArgs.SkipWhile(a => a != "--sim-character").Skip(1).FirstOrDefault();
+            var character = named ?? (roster.Count > 0 ? roster[new Random(seed).Next(roster.Count)].Id : null);
             SessionScreen.SimCharacter = character;
             host.StartNewRun(seed, character,
                 health: userArgs.Contains("--sim-immortal") ? 9999
@@ -200,9 +202,12 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover" or "--smoke-mapkey" or "--smoke-piles" or "--smoke-keys" or "--smoke-preview" or "--smoke-intents" or "--smoke-peek" or "--smoke-report" or "--smoke-summaries" or "--smoke-tip-flip"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-cauldron" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover" or "--smoke-mapkey" or "--smoke-piles" or "--smoke-keys" or "--smoke-preview" or "--smoke-intents" or "--smoke-peek" or "--smoke-report" or "--smoke-summaries" or "--smoke-tip-flip"))
         {
             host.StartNewRun(seed: 7,
+                // Who walks it: `--character=<id>` (the roster's first otherwise) — a probe of the Hedge
+                // Witch's screens is the same probe with her name on it.
+                characterId: userArgs.FirstOrDefault(a => a.StartsWith("--character=", StringComparison.Ordinal))?["--character=".Length..],
                 // ⚠ A PROBE THAT HAS TO WALK SOMEWHERE MUST SURVIVE THE WALK. The greedy walker plays badly on
                 // purpose, and on the game's own health it dies in act I — which is how `--smoke-shop`,
                 // `--smoke-event` and `--smoke-elite` all came to photograph the same DEFEAT SCREEN and call it
