@@ -208,7 +208,7 @@ public partial class SessionScreen
             && data.Tags.Any(t => FamilyTags.Contains(t.value)) ? card.DefinitionId.value.TrimEnd('+') : "dregs").ToList();
         foreach (var recipe in RecipeBook.Hidden(GameHost.Instance.Blueprint).Where(r => RecipeBook.Discovered(r.Number)))
             if (recipe.Cards.Order(StringComparer.Ordinal).SequenceEqual(ids.Order(StringComparer.Ordinal)))
-                return (recipe.Name, recipe.Effect);
+                return (recipe.Name, recipe.Effect + Pinches(pot, cards));
 
         var families = pot.Take(3)
             .Select(card => cards.GetValueOrDefault(card.DefinitionId.value)?.Tags
@@ -221,7 +221,19 @@ public partial class SessionScreen
         if (said is null)
             return null;
         var bar = said.IndexOf('|');
-        return bar < 0 ? (said, "") : (said[..bar], said[(bar + 1)..]);
+        var (name, effect) = bar < 0 ? (said, "") : (said[..bar], said[(bar + 1)..]);
+        return (name, effect + Pinches(pot, cards));
+    }
+
+    // An upgraded card's PINCH (W8) comes on top of whatever is brewed; the card's own words say what it adds, so
+    // the preview quotes them rather than keeping a second copy of the numbers.
+    private static string Pinches(IReadOnlyList<CardInstance> pot, IReadOnlyDictionary<string, RogueDeck.Scenario.Authoring.CardData> cards)
+    {
+        var lines = pot.Take(3)
+            .Select(card => cards.GetValueOrDefault(card.DefinitionId.value)?.DescriptionKey ?? "")
+            .Select(text => text.IndexOf("A pinch of", StringComparison.Ordinal) is var at and >= 0 ? text[at..] : null)
+            .OfType<string>().ToList();
+        return lines.Count == 0 ? "" : " " + string.Join(" ", lines);
     }
 
     // THE CAULDRON, WALKED (`--smoke-cauldron --character=hedge_witch`): into the first fight, three cards into the

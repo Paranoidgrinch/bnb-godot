@@ -69,12 +69,13 @@ public partial class GameHost : Godot.Node
 
     public bool HasTutorial => Blueprint?.Tutorial is not null;
 
-    public void StartTutorial()
+    // `characterId`: who is learning — a character with a tutorial of its own (the Hedge Witch) walks that one.
+    public void StartTutorial(string? characterId = null)
     {
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
         IsTutorial = true;
-        Play.Start(Blueprint.ForTutorial(), seed: 1, interactive: true);
+        Play.Start(Blueprint.ForTutorial(characterId), seed: 1, interactive: true);
         EmitChanged();
     }
 

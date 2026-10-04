@@ -204,7 +204,7 @@ public partial class Boot : Control
         // The tutorial, walked by its probe the way a player starts it.
         if (userArgs.Contains("--smoke-tutorial"))
         {
-            host.StartTutorial();
+            host.StartTutorial(userArgs.FirstOrDefault(a => a.StartsWith("--character=", StringComparison.Ordinal))?["--character=".Length..]);
             CallDeferred(nameof(GoToSession));
             return;
         }
@@ -967,9 +967,10 @@ public partial class Boot : Control
         {
             var tutorial = new Button { Text = "Tutorial", CustomMinimumSize = new Vector2(140, 44) };
             tutorial.TooltipText = "A short guided run: everything in the game, shown once and explained.";
+            tutorial.TooltipText += " Taught as the character chosen beside it.";
             tutorial.Pressed += () =>
             {
-                host.StartTutorial();
+                host.StartTutorial(_selectedCharacter);
                 if (host.Play?.Error is null)
                     GoToSession();
             };

@@ -35,7 +35,7 @@ public partial class SessionScreen
             return ["welcome", "map"];
         if (session.IsAwaitingEntities && session.PendingEntities is { } pick
             && pick.Purpose.StartsWith("reward", StringComparison.Ordinal))
-            return ["reward"];
+            return IsWitch(session) ? ["reward", "witch.recipes"] : ["reward"];
         if (session.IsAwaitingChoice)
         {
             if (session.PendingShopShelf is not null)
@@ -61,9 +61,37 @@ public partial class SessionScreen
                 moments.Add("combat.statuses");
             if (session.Run.Relics.Count > 0)
                 moments.Add("combat.relics");
+            moments.AddRange(WitchMomentsHere(combat));
         }
         return moments;
     }
+
+    // HER SIDE OF THE LESSON (Tutorial.WitchSteps): told only while the hero has a cauldron, each the first time the
+    // fight shows it — the pot and its lid at once, the families when the first card is in, Brew when it is Ready,
+    // and Hexed, Misfortune and Hearth the first time an enemy carries the one or she has HP to heal.
+    private static IEnumerable<string> WitchMomentsHere(RogueDeck.Scenario.Scripting.InteractiveCombat combat)
+    {
+        if (!combat.Actions.Any(a => a.value == CauldronAction))
+            yield break;
+        yield return "witch.cauldron";
+        yield return "witch.shelter";
+        var pot = combat.State.GetCardZones(combat.HeroId).SetAside.Count;
+        if (pot >= 1)
+            yield return "witch.families";
+        if (pot >= 3)
+            yield return "witch.brew";
+        var enemies = combat.State.Combatants.Where(c => c.Id != combat.HeroId && c.IsAlive).ToList();
+        if (enemies.Any(e => e.Statuses.Any(st => st.DefinitionId.value == "hexed")))
+            yield return "witch.hexed";
+        if (enemies.Any(e => e.Statuses.Any(st => st.DefinitionId.value == "misfortune")))
+            yield return "witch.misfortune";
+        var hero = combat.State.GetCombatant(combat.HeroId);
+        if (hero.Health.Current < hero.Health.Max)
+            yield return "witch.hearth";
+    }
+
+    private static bool IsWitch(InteractiveRunSession session) =>
+        session.Run.CombatActions.Any(a => a.value == CauldronAction);
 
     private void CoachAfterDraw(InteractiveRunSession session)
     {
@@ -188,6 +216,12 @@ public partial class SessionScreen
         "combat.relics" => FindNamed(_combatRoot, RelicGridName),
         "combat.multiple" => _enemyRow,
         "elite.rules" => FindNamed(this, "FightRules"),
+        "witch.cauldron" => FindNamed(this, $"Action_{CauldronAction}"),
+        "witch.brew" => FindNamed(this, $"Action_{BrewAction}"),
+        "witch.shelter" or "witch.families" => FindNamed(this, "Cauldron"),
+        "witch.recipes" => FindNamed(this, "RecipeBookButton") ?? _main,
+        "witch.hexed" or "witch.misfortune" => _enemyRow,
+        "witch.hearth" => FindNamed(this, "Incoming"),
         "reward" or "event" or "shop" or "rest" => _main,
         _ => null,
     };
@@ -253,6 +287,9 @@ public partial class SessionScreen
                     driver.SupplyOptionChoice([.. Enumerable.Range(0, Math.Min(driver.PendingOptionChoiceCount, options.Count))]);
                 else if (driver.PendingCardChoice is { } cards)
                     driver.SupplyCardChoice([.. cards.Take(driver.PendingCardChoiceCount).Select(c => c.Id)]);
+                else if (driver.Current!.IsHeroTurn && WitchMove(driver))
+                {
+                }
                 else if (driver.Current!.IsHeroTurn)
                 {
                     var combat = driver.Current;
@@ -277,14 +314,46 @@ public partial class SessionScreen
             Rebuild();
         }
         var extra = GameHost.Instance.Blueprint.Presentation.Game?.Extra ?? new Dictionary<string, string>();
+        // Her moments are only owed when she is the one walking.
+        var witch = Session is { } walked && IsWitch(walked);
         var all = extra.Keys.Where(k => k.StartsWith("tutorial:", StringComparison.Ordinal))
-            .Select(k => k["tutorial:".Length..]).ToList();
+            .Select(k => k["tutorial:".Length..])
+            .Where(m => witch || !m.StartsWith("witch.", StringComparison.Ordinal)).ToList();
         var missing = all.Except(shown).ToList();
         var done = Session is { IsComplete: true } end;
         GD.Print($"smoke-tutorial: result={Session?.Run.Result} shown {shown.Count}/{all.Count}: {string.Join(" ", shown)}"
             + (missing.Count > 0 ? $" · NEVER SHOWN: {string.Join(" ", missing)}" : "")
             + $" · the player's save {(Godot.FileAccess.GetModifiedTime("user://run-save.json") == saveStamp ? "untouched" : "WRITTEN")}");
         GetTree().Quit(done && missing.Count == 0 ? 0 : 1);
+    }
+
+    // The probe's witch: brew when she can, otherwise one card into the pot each turn while it has room — so the
+    // pot, its families and the Brew all come up the way a player meets them. False: play a card as usual.
+    private bool _cookedThisTurn;
+    private int _cookRound = -1;
+
+    private bool WitchMove(InteractiveCombatDriver driver)
+    {
+        var combat = driver.Current!;
+        var add = combat.Actions.FirstOrDefault(a => a.value == CauldronAction);
+        var brew = combat.Actions.FirstOrDefault(a => a.value == BrewAction);
+        if (add.value is null)
+            return false;
+        if (_cookRound != combat.State.CurrentRound)
+            (_cookRound, _cookedThisTurn) = (combat.State.CurrentRound, false);
+        var target = FirstLivingEnemy(combat);
+        if (brew.value is not null && combat.CanUse(brew, target))
+        {
+            driver.UseAction(brew, target);
+            return true;
+        }
+        if (!_cookedThisTurn && combat.CanUse(add, target))
+        {
+            _cookedThisTurn = true;
+            driver.UseAction(add, target);
+            return true;
+        }
+        return false;
     }
 
     // Out of the tree at once, not at the end of the frame: a coach queued for freeing still holds its name, and
