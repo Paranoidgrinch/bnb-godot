@@ -225,7 +225,29 @@ public partial class SessionScreen
             GetTree().Quit();
             return;
         }
-        var energy = driver.Current.HeroEnergy;
+        // FIRST THROUGH THE BUTTON, the way a player does it (player report 2026-10-04: a second card into the pot
+        // sometimes failed, and so did the free one with no Energy left). Pressing the real "Into the pot" button
+        // runs everything behind it — the recorder, the save — which calling the driver directly skips.
+        await PressIntoThePot("turn 1, first");
+        await PressIntoThePot("turn 1, second");
+        driver.EndTurn();
+        await Frames(4);
+        // Spend the turn's Energy on cards first: the free ingredient must still go in at 0.
+        if (driver.Current is { } next && FirstLivingEnemy(next) is { } foe)
+            for (var guard = 0; guard < 10 && driver.Current!.HeroEnergy > 0; guard++)
+            {
+                var spent = driver.Current.HeroEnergy;
+                if (driver.Current.Hand.FirstOrDefault(c => driver.Current.CanPlay(c.Id)) is not { } card)
+                    break;
+                driver.PlayCard(card.Id, foe);
+                await Frames(2);
+                if (driver.PendingCardChoice is not null || driver.PendingOptionChoice is not null
+                    || driver.Current?.HeroEnergy == spent)
+                    break;
+            }
+        await PressIntoThePot("turn 2, no Energy left");
+
+        var energy = driver.Current!.HeroEnergy;
         for (var i = 0; i < 3 && driver.Current!.CanUse(add); i++)
         {
             driver.UseAction(add, null);
@@ -253,5 +275,45 @@ public partial class SessionScreen
             + $" · enemy HP {before}→{(enemy is { } id ? after.State.GetCombatant(id).Health.Current : 0)}"
             + $" · hero block {after.HeroGuard} · error={Session?.Error ?? Play?.Error ?? "none"}");
         GetTree().Quit();
+    }
+
+    private async System.Threading.Tasks.Task Frames(int count)
+    {
+        for (var i = 0; i < count; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+    }
+
+    // One press of the real "Into the pot" button, then a click on the first card the prompt offers — and what the
+    // pot, the Energy and the button said before and after.
+    private async System.Threading.Tasks.Task PressIntoThePot(string when)
+    {
+        await Frames(2);
+        var driver = Play!.CombatDriver!;
+        var before = driver.Current!;
+        var potBefore = before.State.GetCardZones(before.HeroId).SetAside.Count;
+        var energyBefore = before.HeroEnergy;
+        if (FindChild($"Action_{CauldronAction}", recursive: true, owned: false) is not Button button)
+        {
+            GD.Print($"smoke-cauldron [{when}]: no 'Into the pot' button on screen");
+            return;
+        }
+        var label = $"{button.Text}{(button.Disabled ? " DISABLED" : "")}";
+        if (button.Disabled)
+        {
+            GD.Print($"smoke-cauldron [{when}]: button {label} · pot {potBefore} · energy {energyBefore}");
+            return;
+        }
+        button.EmitSignal(BaseButton.SignalName.Pressed);
+        await Frames(2);
+        var offered = driver.PendingCardChoice;
+        if (offered is { Count: > 0 })
+        {
+            OnCardChoiceClicked(Play, offered, offered[0].Id);
+            await Frames(2);
+        }
+        var after = driver.Current!;
+        GD.Print($"smoke-cauldron [{when}]: button {label} · prompt offered {offered?.Count ?? 0} · pot {potBefore}→"
+            + $"{after.State.GetCardZones(after.HeroId).SetAside.Count} · energy {energyBefore}→{after.HeroEnergy}"
+            + $" · error={Session?.Error ?? Play?.Error ?? "none"}");
     }
 }
