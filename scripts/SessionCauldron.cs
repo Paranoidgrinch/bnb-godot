@@ -42,6 +42,10 @@ public partial class SessionScreen
                 Disabled = !combat.CanUse(action, target),
                 TooltipText = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(action.value)?.FlavorText ?? "",
             };
+            // A greyed-out button says WHY (player report 2026-10-04: "ausgegraut" with no way to tell a rule from
+            // a bug).
+            if (button.Disabled && WhyNot(combat, action, cost) is { } why)
+                button.TooltipText = $"{why}\n\n{button.TooltipText}";
             // §18: when the pot is Ready, BREW pulses.
             if (action.value == BrewAction && !button.Disabled)
                 button.Ready += () => Pulse(button);
@@ -57,6 +61,30 @@ public partial class SessionScreen
             };
             controls.AddChild(button);
         }
+    }
+
+    private static string? WhyNot(InteractiveCombat combat, CardDefinitionId action, int cost)
+    {
+        if (!combat.IsHeroTurn)
+            return "Not now: it is not your turn.";
+        var pot = combat.State.GetCardZones(combat.HeroId).SetAside.Count;
+        if (action.value == CauldronAction)
+        {
+            var cookable = combat.Hand.Count(c => !(GameHost.Instance.Blueprint.Cards
+                .FirstOrDefault(d => d.Id == c.DefinitionId.value)?.Tags.Any(t => t.value == "uncookable") ?? false));
+            if (pot >= 3)
+                return "The cauldron is full: Brew first.";
+            if (cookable == 0)
+                return "No card in your hand will go into the cauldron.";
+        }
+        else if (action.value == BrewAction && pot < 3)
+        {
+            return $"Brewing wants three in the cauldron ({pot} now).";
+        }
+        if (combat.HeroEnergy < cost)
+            return $"Costs {cost} Energy, you have {combat.HeroEnergy}."
+                + (action.value == CauldronAction ? " (Only the first card each turn is free.)" : "");
+        return "A rule in this fight forbids it right now.";
     }
 
     private static CombatantId? FirstLivingEnemy(InteractiveCombat combat) =>
