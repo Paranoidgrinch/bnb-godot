@@ -352,6 +352,7 @@ public static class Archive
     {
         Found.Clear();
         _loaded = true;
+        RecipeBook.Reset();   // the Witch's Recipe Book is meta progression too
         foreach (var file in new[] { Path, "user://metastate.json" })
             if (Godot.FileAccess.FileExists(file))
                 Godot.DirAccess.RemoveAbsolute(Godot.ProjectSettings.GlobalizePath(file));

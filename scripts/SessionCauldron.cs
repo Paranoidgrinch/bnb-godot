@@ -23,7 +23,12 @@ public partial class SessionScreen
             return;
 
         if (combat.Actions.Any(a => a.value == BrewAction))
+        {
             controls.AddChild(CauldronView(combat));
+            var book = new Button { Text = "Recipes", Name = "RecipeBookButton", TooltipText = "The Recipe Book." };
+            book.Pressed += () => RecipeBookPanel.Open(this);
+            controls.AddChild(book);
+        }
 
         foreach (var action in combat.Actions)
         {
@@ -98,6 +103,14 @@ public partial class SessionScreen
     private static (string Name, string Effect)? Preview(
         IReadOnlyList<CardInstance> pot, IReadOnlyDictionary<string, RogueDeck.Scenario.Authoring.CardData> cards)
     {
+        // A Hidden Recipe the player has FOUND is named for what it is; one not yet found never is — the pot
+        // previews the ordinary family brew until the book knows better (§9).
+        var ids = pot.Take(3).Select(card => cards.GetValueOrDefault(card.DefinitionId.value) is { } data
+            && data.Tags.Any(t => FamilyTags.Contains(t.value)) ? card.DefinitionId.value.TrimEnd('+') : "dregs").ToList();
+        foreach (var recipe in RecipeBook.Hidden(GameHost.Instance.Blueprint).Where(r => RecipeBook.Discovered(r.Number)))
+            if (recipe.Cards.Order(StringComparer.Ordinal).SequenceEqual(ids.Order(StringComparer.Ordinal)))
+                return (recipe.Name, recipe.Effect);
+
         var families = pot.Take(3)
             .Select(card => cards.GetValueOrDefault(card.DefinitionId.value)?.Tags
                 .Select(t => t.value).FirstOrDefault(FamilyTags.Contains))

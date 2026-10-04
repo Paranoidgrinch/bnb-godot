@@ -2863,6 +2863,9 @@ public partial class SessionScreen : Control
         // added next year. It walks a deck and a shelf and adds to a set; the FILE is only touched when the
         // set actually grew (Archive.Observe), which over a whole run is a few dozen times.
         Archive.Observe(session, Play);
+        // …and the Recipe Book: a Hidden Recipe brewed for the first time is news (RecipeBook.Observe).
+        if (RecipeBook.Observe(Play, GameHost.Instance.Blueprint) is { } recipe)
+            Toast($"NEW RECIPE DISCOVERED — {recipe}");
         CoachAfterDraw(session);
     }
 

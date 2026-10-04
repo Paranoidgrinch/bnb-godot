@@ -141,6 +141,12 @@ public partial class Boot : Control
             _ = SmokeHistory();
             return;
         }
+        if (userArgs.Contains("--smoke-recipe-book"))
+        {
+            BuildTitle(host);
+            _ = SmokeRecipeBook();
+            return;
+        }
         if (userArgs.Contains("--smoke-archive"))
         {
             ReportArchive(blueprint);
@@ -988,6 +994,16 @@ public partial class Boot : Control
         archive.Pressed += () => OpenArchive();
         actions.AddChild(archive);
 
+        // THE RECIPE BOOK, when the game has a cauldron in it (the Hedge Witch): what she can brew, and which of its
+        // secrets have been found.
+        if (RecipeBook.HasCauldron(host.Blueprint))
+        {
+            var recipes = new Button { Text = "Recipe Book", Name = "RecipeBookButton", CustomMinimumSize = new Vector2(140, 44) };
+            recipes.TooltipText = "The Hedge Witch's recipes, and the secrets you have brewed.";
+            recipes.Pressed += () => RecipeBookPanel.Open(this);
+            actions.AddChild(recipes);
+        }
+
         // THE COMPENDIUM beside it: the rules of the game, which a new player needs before the first fight.
         var compendium = new Button { Text = "Compendium", CustomMinimumSize = new Vector2(140, 44) };
         compendium.TooltipText = "Every effect and status in the game, in plain words with an example.";
@@ -1314,6 +1330,40 @@ public partial class Boot : Control
             GetTree().Quit(ok ? 0 : 1);
         else
             _ = CaptureThenQuit("user://smoke-seed.png");
+    }
+
+    // THE RECIPE BOOK, PHOTOGRAPHED (`--smoke-recipe-book`): its three sections from the title screen, with two
+    // recipes found in memory (a probe never writes the player's book). One panel asked three times — the archive
+    // probe's lesson (a rebuilt overlay is the dying one).
+    private async System.Threading.Tasks.Task SmokeRecipeBook()
+    {
+        var blueprint = GameHost.Instance.Blueprint;
+        var family = RecipeBook.Family(blueprint).Count;
+        var hidden = RecipeBook.Hidden(blueprint);
+        GD.Print($"smoke-recipe-book: {family} family recipes, {hidden.Count} hidden, {hidden.Count(r => r.Clue.Length > 0)} clues");
+        foreach (var number in new[] { 1, 10 })
+            RecipeBook.Discover(number);
+        var panel = RecipeBookPanel.Open(this);
+        if (panel is null || family != 35 || hidden.Count != 20)
+        {
+            GD.Print("smoke-recipe-book: FAILED — the book did not open, or its catalogue is not 35 + 20");
+            GetTree().Quit(1);
+            return;
+        }
+        foreach (var (section, file) in new[]
+        {
+            (RecipeBookPanel.Section.Everyday, "user://smoke-recipes-everyday.png"),
+            (RecipeBookPanel.Section.Worked, "user://smoke-recipes-worked.png"),
+            (RecipeBookPanel.Section.Margin, "user://smoke-recipes-margin.png"),
+        })
+        {
+            panel.Show(section);
+            for (var frame = 0; frame < 4; frame++)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            GetViewport().GetTexture().GetImage().SavePng(file);
+            GD.Print($"smoke-recipe-book: screenshot {file} — {panel.Showing}");
+        }
+        GetTree().Quit();
     }
 
     private async System.Threading.Tasks.Task SmokeArchiveShots()
