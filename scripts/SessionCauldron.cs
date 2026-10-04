@@ -42,6 +42,9 @@ public partial class SessionScreen
                 Disabled = !combat.CanUse(action, target),
                 TooltipText = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(action.value)?.FlavorText ?? "",
             };
+            // §18: when the pot is Ready, BREW pulses.
+            if (action.value == BrewAction && !button.Disabled)
+                button.Ready += () => Pulse(button);
             var chosen = action;
             button.Pressed += () =>
             {
@@ -70,22 +73,44 @@ public partial class SessionScreen
         row.AddThemeConstantOverride("separation", 6);
         box.AddChild(row);
 
+        // §18, without pictures yet: the lid and the steam say the state — lid down while she shelters, a thread of
+        // steam per ingredient, a rattling lid when it is Ready — and each ingredient wears its family's colour.
         var state = pot.Count == 0 ? "Sheltering" : pot.Count >= 3 ? "Ready" : "Brewing";
-        var stateLabel = new Label { Text = $"Cauldron · {state}", VerticalAlignment = VerticalAlignment.Center };
+        var lid = pot.Count == 0 ? "lid down" : pot.Count >= 3 ? "lid rattling" : "lid open";
+        var stateLabel = new Label
+        {
+            Text = $"Cauldron · {state}",
+            VerticalAlignment = VerticalAlignment.Center,
+            TooltipText = pot.Count == 0 ? "Empty: she shelters behind it." : $"{pot.Count} in the pot ({lid}).",
+        };
         stateLabel.AddThemeColorOverride("font_color", pot.Count >= 3 ? MoonvineTheme.AccentLight : MoonvineTheme.TextSoft);
         row.AddChild(stateLabel);
 
+        var steam = new Label { Text = pot.Count == 0 ? "◡" : new string('≀', Math.Min(pot.Count, 3)), Name = "Steam",
+            VerticalAlignment = VerticalAlignment.Center, TooltipText = lid };
+        steam.AddThemeColorOverride("font_color", pot.Count == 0 ? MoonvineTheme.TextMuted : MoonvineTheme.TextSoft);
+        if (pot.Count > 0)
+            steam.Ready += () => Steam(steam, pot.Count);
+        row.AddChild(steam);
+
         var cards = GameHost.Instance.Blueprint.Cards.ToDictionary(c => c.Id, StringComparer.Ordinal);
-        for (var slot = 0; slot < 3; slot++)
+        for (var slot = 0; slot < Math.Max(3, pot.Count); slot++)
         {
-            var text = slot < pot.Count
-                ? cards.GetValueOrDefault(pot[slot].DefinitionId.value)?.NameKey ?? pot[slot].DefinitionId.value
-                : "·";
-            var chip = new Label { Text = $"[{text}]", VerticalAlignment = VerticalAlignment.Center };
+            var data = slot < pot.Count ? cards.GetValueOrDefault(pot[slot].DefinitionId.value) : null;
+            var text = slot < pot.Count ? data?.NameKey ?? pot[slot].DefinitionId.value : "·";
+            var family = data?.Tags.Select(t => t.value).FirstOrDefault(FamilyTags.Contains);
+            var chip = new Label
+            {
+                Text = slot >= 3 ? $"[{text} · reserve]" : $"[{text}]",
+                VerticalAlignment = VerticalAlignment.Center,
+                TooltipText = slot < pot.Count ? FamilyName(family) : "an empty slot",
+            };
             chip.AddThemeFontSizeOverride("font_size", 12);
-            chip.AddThemeColorOverride("font_color", slot < pot.Count ? MoonvineTheme.Text : MoonvineTheme.TextMuted);
+            chip.AddThemeColorOverride("font_color", slot < pot.Count ? FamilyColor(family) : MoonvineTheme.TextMuted);
             row.AddChild(chip);
         }
+        if (pot.Count >= 3)
+            box.Ready += () => Rattle(stateLabel);
 
         if (pot.Count >= 3 && Preview(pot, cards) is { } preview)
         {
@@ -96,6 +121,52 @@ public partial class SessionScreen
             row.AddChild(said);
         }
         return box;
+    }
+
+    // Each family's colour, as the rest of the screen already speaks it: damage, a hex, defence, the hearth, luck.
+    private static Color FamilyColor(string? family) => family switch
+    {
+        "fam_fang" => MoonvineTheme.Harm,
+        "fam_hex" => MoonvineTheme.Arcane,
+        "fam_husk" => MoonvineTheme.Steel,
+        "fam_hearth" => MoonvineTheme.Copper,
+        "fam_fortune" => MoonvineTheme.Signal,
+        _ => MoonvineTheme.TextMuted,
+    };
+
+    private static string FamilyName(string? family) => family switch
+    {
+        "fam_fang" => "Fang",
+        "fam_hex" => "Hex",
+        "fam_husk" => "Husk",
+        "fam_hearth" => "Hearth",
+        "fam_fortune" => "Fortune",
+        _ => "Dregs: no family",
+    };
+
+    // The motions, each a looping tween on the node it moves — freed with it when the screen redraws.
+    private static void Steam(Label steam, int strength)
+    {
+        var tween = steam.CreateTween().SetLoops();
+        var period = strength >= 3 ? 0.45f : strength == 2 ? 0.7f : 1.1f;
+        tween.TweenProperty(steam, "modulate:a", 0.35f, period);
+        tween.TweenProperty(steam, "modulate:a", 1f, period);
+    }
+
+    private static void Rattle(Control lid)
+    {
+        var tween = lid.CreateTween().SetLoops();
+        tween.TweenProperty(lid, "rotation_degrees", 2.5f, 0.06f);
+        tween.TweenProperty(lid, "rotation_degrees", -2.5f, 0.06f);
+        tween.TweenProperty(lid, "rotation_degrees", 0f, 0.06f);
+        tween.TweenInterval(0.9f);
+    }
+
+    private static void Pulse(Control button)
+    {
+        var tween = button.CreateTween().SetLoops();
+        tween.TweenProperty(button, "modulate", new Color(1.25f, 1.15f, 0.8f), 0.5f);
+        tween.TweenProperty(button, "modulate", Colors.White, 0.5f);
     }
 
     // What the full pot would brew, by its families — read from BREW's own presentation, where the content lists

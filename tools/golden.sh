@@ -64,6 +64,11 @@ fi
 # their outcomes: a set picked for runs that win would be a set that cannot notice a run starting to lose.
 IMMORTAL_SEEDS=(1 2 3 4 5 6 7 8 9 10 11 12)
 MORTAL_SEEDS=(101 102 103)
+# THE HEDGE WITCH'S OWN SET (plan G6): four immortal and two mortal runs as her, beside his fifteen and never mixed
+# with them — her lines carry `witch-` in front, so a change to her can never be mistaken for one to him. Godot's
+# runner only: the console runner has no character choice yet.
+WITCH_IMMORTAL_SEEDS=(1 2 3 4)
+WITCH_MORTAL_SEEDS=(101 102)
 
 desktop="$HOME/Desktop"; [[ -d "$HOME/Schreibtisch" ]] && desktop="$HOME/Schreibtisch"
 out="$desktop/bnb-golden/$(date +%Y%m%d-%H%M%S)"
@@ -105,8 +110,8 @@ if [[ $console == yes ]]; then
   [[ $replay == yes ]] && which_build="console runner, one process, through the replay model"
   drawn="none drawing the screen (the console runner has no screen)"
 fi
-echo "golden set: ${#IMMORTAL_SEEDS[@]} immortal + ${#MORTAL_SEEDS[@]} mortal runs, $jobs at a time, \
-$drawn, $which_build"
+echo "golden set: ${#IMMORTAL_SEEDS[@]} immortal + ${#MORTAL_SEEDS[@]} mortal runs (Bureaucrat), \
+${#WITCH_IMMORTAL_SEEDS[@]} + ${#WITCH_MORTAL_SEEDS[@]} (Hedge Witch), $jobs at a time, $drawn, $which_build"
 echo "  logs -> $out"
 
 # The seeds that draw: the first $ui of the set as it is played below (immortal first, then mortal).
@@ -115,13 +120,14 @@ DRAWN=$(printf '%s\n' "${IMMORTAL_SEEDS[@]}" "${MORTAL_SEEDS[@]}" | head -n "$ui
 export GOLDEN_OUT="$out" GOLDEN_DRAWN=" $DRAWN " GOLDEN_GAME="${GAME[*]}"
 play_one() {
   local seed=$1 body=$2 log="$GOLDEN_OUT/run-$2-$(printf %04d "$1").log"
-  local health; [[ $body == immortal ]] && health="--sim-immortal" || health="--sim-health 400"
+  local health; [[ $body == *immortal ]] && health="--sim-immortal" || health="--sim-health 400"
+  local character=bureaucrat; [[ $body == witch-* ]] && character=hedge_witch
   local ui=""
-  [[ $GOLDEN_DRAWN == *" $seed "* ]] && ui="--sim-ui"
+  [[ $body != witch-* && $GOLDEN_DRAWN == *" $seed "* ]] && ui="--sim-ui"
   local started; started=$(date +%s.%N)
   # shellcheck disable=SC2086
-  # The set is the BUREAUCRAT's: the roster grew (the Hedge Witch), and a rolled character would change the runs.
-  timeout 3600 $GOLDEN_GAME -- --sim --sim-seed "$seed" --sim-character bureaucrat $health $ui >"$log" 2>&1
+  # Who plays is NAMED, never rolled: a rolled character would change the runs whenever the roster grows.
+  timeout 3600 $GOLDEN_GAME -- --sim --sim-seed "$seed" --sim-character "$character" $health $ui >"$log" 2>&1
   local elapsed; elapsed=$(awk "BEGIN{printf \"%.1f\", $(date +%s.%N) - $started}")
   # Strip the clock from what is compared; keep it beside the line as a comment for the timing report.
   local fitness result
@@ -170,6 +176,8 @@ else
 {
   for seed in "${IMMORTAL_SEEDS[@]}"; do echo "$seed immortal"; done
   for seed in "${MORTAL_SEEDS[@]}";   do echo "$seed mortal";   done
+  for seed in "${WITCH_IMMORTAL_SEEDS[@]}"; do echo "$seed witch-immortal"; done
+  for seed in "${WITCH_MORTAL_SEEDS[@]}";   do echo "$seed witch-mortal";   done
 } | xargs -P "$jobs" -L1 bash -c 'play_one "$@"' _ > "$out/played.raw"
 fi
 
@@ -205,6 +213,11 @@ if [[ ! -f $GOLDEN ]]; then
 fi
 
 grep -v '^#' "$GOLDEN" | grep -v '^[[:space:]]*$' > "$out/expected.txt"
+# The console runner plays only his set (it has no character choice yet): her lines are not expected of it.
+if [[ $console == yes ]]; then
+  grep -v '^witch-' "$out/expected.txt" > "$out/expected.his.txt"
+  mv "$out/expected.his.txt" "$out/expected.txt"
+fi
 if diff -u "$out/expected.txt" "$out/played.txt" > "$out/diff.txt"; then
   echo
   echo "GOLDEN OK — all $(grep -c 'sim-result:' "$out/played.txt") runs match what was recorded."
