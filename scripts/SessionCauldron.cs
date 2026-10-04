@@ -346,13 +346,22 @@ public partial class SessionScreen
         button.EmitSignal(BaseButton.SignalName.Pressed);
         await Frames(2);
         var offered = driver.PendingCardChoice;
+        // Click the card on SCREEN, not the handler: a face dimmed as unaffordable has a disabled click, and the
+        // handler alone never saw that (the 0-Energy pot bug, 2026-10-04).
+        var clickable = "none";
         if (offered is { Count: > 0 })
         {
-            OnCardChoiceClicked(Play, offered, offered[0].Id);
+            clickable = FindChild($"Choice_{offered[0].Id.value}", recursive: true, owned: false) is { } face
+                && face.FindChildren("*", nameof(Button), recursive: true, owned: false)
+                    .OfType<Button>().FirstOrDefault() is { } overlay
+                ? overlay.Disabled ? "DISABLED" : "yes"
+                : "not found";
+            if (clickable == "yes")
+                OnCardChoiceClicked(Play, offered, offered[0].Id);
             await Frames(2);
         }
         var after = driver.Current!;
-        GD.Print($"smoke-cauldron [{when}]: button {label} · prompt offered {offered?.Count ?? 0} · pot {potBefore}→"
+        GD.Print($"smoke-cauldron [{when}]: button {label} · prompt offered {offered?.Count ?? 0} (card clickable: {clickable}) · pot {potBefore}→"
             + $"{after.State.GetCardZones(after.HeroId).SetAside.Count} · energy {energyBefore}→{after.HeroEnergy}"
             + $" · error={Session?.Error ?? Play?.Error ?? "none"}");
     }

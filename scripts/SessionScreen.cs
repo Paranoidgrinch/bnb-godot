@@ -4094,7 +4094,9 @@ public partial class SessionScreen : Control
             {
                 var id = candidate.Id;
                 var selected = _selectedCards.Contains(id.value);
-                var block = CardBlockButton(combat, hero, candidate, selected, () => OnCardChoiceClicked(play, cardChoice, id));
+                var block = CardBlockButton(combat, hero, candidate, selected, () => OnCardChoiceClicked(play, cardChoice, id),
+                    chosenNotPlayed: true);
+                block.Name = $"Choice_{id.value}";
                 choiceRow.AddChild(block);
             }
             choiceBox.AddChild(choiceRow);
@@ -4770,14 +4772,19 @@ public partial class SessionScreen : Control
     // A THIN CALLER. Everything about how a card LOOKS lives in CardVisuals.Face; this decides only what is
     // true of this card right now — what it is called, what it costs, whether it can be paid for, what has
     // been done to this copy — and hands that over.
-    private Control CardBlockButton(InteractiveCombat combat, CombatantState hero, CardInstance card, bool highlighted, Action onClick)
+    private Control CardBlockButton(InteractiveCombat combat, CombatantState hero, CardInstance card, bool highlighted, Action onClick,
+        bool chosenNotPlayed = false)
     {
         var definition = card.DefinitionId.value;
         // TWO SEPARATE REASONS A CARD CANNOT BE PLAYED, and the card face has to show both. The purse is one
         // the screen can work out for itself; a RULE that forbids the play is not — a decree that caps the
         // turn at four cards, or forbids a kind following its own kind, makes the fifth card genuinely
         // unavailable, and a card refused only when it is clicked is a rule the player was never shown.
-        var affordable = CanPay(hero, definition) && combat.CanPlay(card.Id);
+        //
+        // A card offered by a PROMPT ("which card goes into the pot?", "discard a card") is not being played, so
+        // neither reason applies — and a dimmed face also loses its click. Player report 2026-10-04: at 0 Energy
+        // the free first ingredient could not be chosen, because every card in hand was dimmed as unaffordable.
+        var affordable = chosenNotPlayed || (CanPay(hero, definition) && combat.CanPlay(card.Id));
         var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definition);
         var rules = presentation?.FlavorText ?? "";
 
