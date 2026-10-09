@@ -175,7 +175,7 @@ public partial class SessionScreen : Control
             Rebuild();
         }
 
-        _fastForward = OS.GetCmdlineUserArgs().Any(a => a.StartsWith("--smoke", StringComparison.Ordinal))
+        _fastForward = OS.GetCmdlineUserArgs().Any(a => a.StartsWith("--smoke", StringComparison.Ordinal) && a != "--smoke-effects")
             || IsSimulating;
 
         if (IsSimulating)
@@ -188,6 +188,8 @@ public partial class SessionScreen : Control
             SmokeTarget();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-draw"))
             _ = SmokeDraw();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-effects"))
+            _ = SmokeEffects();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-piles"))
             _ = SmokePiles();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-keys"))
@@ -2804,6 +2806,7 @@ public partial class SessionScreen : Control
             _deckTopNode = null;
         _enemyRow = null;
         _healthBars.Clear();
+        _bodies.Clear();
         _regionArena = null;
         _regionHand = null;
         if (!inCombat)
@@ -2812,6 +2815,7 @@ public partial class SessionScreen : Control
             _chipsSeen.Clear();    // …and its statuses are all new, none of them has acted yet
             _chipsSeenAny = false;
             _relicFired.Clear();
+            _vitalsFight = "";     // …and the next one's first drawing has nothing to compare with
         }
 
         if (Play is null || session is null)
@@ -2843,6 +2847,7 @@ public partial class SessionScreen : Control
         else if (Play.CombatDriver?.Current is { } combat)
         {
             RenderCombatGraphical(session, combat);
+            ShowCombatChanges(session, combat);
             // What the chips said this time is what the next drawing compares against.
             (_chipsSeen, _chipsNow) = (_chipsNow, _chipsSeen);
             _chipsNow.Clear();
@@ -4587,7 +4592,8 @@ public partial class SessionScreen : Control
         box.AddChild(figure);
         spent += bodyHeight + 4;
 
-        box.AddChild(RegisterHealthBar(combatant, HealthBar(combatant, width - 30)));
+        var bar = RegisterHealthBar(combatant, HealthBar(combatant, width - 30));
+        box.AddChild(bar);
         spent += HealthBarHeight + 4;
 
         // The phase goes directly above what the body is about to do, because that is the line it corrects.
@@ -4649,6 +4655,7 @@ public partial class SessionScreen : Control
             isHero ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
             aimed ? MoonvineTheme.Signal : targetable ? MoonvineTheme.AccentLight : null));
         panel.AddChild(box);
+        RegisterBody(combatant, panel, figure, bar);
 
         if (targetable)
         {
