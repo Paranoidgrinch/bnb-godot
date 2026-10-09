@@ -3095,7 +3095,7 @@ public partial class SessionScreen : Control
             var cards = group.All(slot => RunEntityLabeler.ArtForGrant(slot.Entry.Payload) is { Kind: EntityArt.Card });
             Into(cards ? left : right, () =>
             {
-                _main.AddChild(MutedLabel(Say(group.Key)));
+                _main.AddChild(MutedLabel(group.Key == "cards-character" ? HeroCardsHeading() : Say(group.Key)));
                 HFlowContainer? gallery = null;
                 foreach (var slot in group)
                 {
@@ -3253,7 +3253,6 @@ public partial class SessionScreen : Control
         // "3 General cards and 4 Character cards" is a promise the player can only see kept if the headings
         // say which is which.
         "cards-general" => "Cards",
-        "cards-character" => "Bureaucrat cards",
         "relics-shop" => "Shop relics",
         "relics-normal" => "Relics",
         "stock" => "For sale",
@@ -3267,6 +3266,17 @@ public partial class SessionScreen : Control
         "spoils" => "The spoils",
         _ => key.Contains('.') || key.Contains('-') || key.Contains('_') ? Humanized(key) : key,
     };
+
+    // The character shelf is named for whoever is shopping: it said "Bureaucrat cards" over the Hedge Witch's own
+    // cards (playtest 2026-10-09). "The Hedge Witch" reads as "Hedge Witch cards" — the article is the hero's
+    // name, not the kind of card.
+    private string HeroCardsHeading()
+    {
+        var hero = Play?.HeroName is { Length: > 0 } named ? named : "Character";
+        if (hero.StartsWith("The ", StringComparison.Ordinal))
+            hero = hero[4..];
+        return $"{hero} cards";
+    }
 
     // THE REWARD SCREEN. Everything a fight, a chest or an event hands over comes through here — a card pick, a
     // relic, a deck card to be struck out — and until D5 all of it was a column of sentences. The pick now says
