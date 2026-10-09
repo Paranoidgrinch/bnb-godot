@@ -2815,7 +2815,6 @@ public partial class SessionScreen : Control
             _chipsSeen.Clear();    // …and its statuses are all new, none of them has acted yet
             _chipsSeenAny = false;
             _relicFired.Clear();
-            _vitalsFight = "";     // …and the next one's first drawing has nothing to compare with
         }
 
         if (Play is null || session is null)
