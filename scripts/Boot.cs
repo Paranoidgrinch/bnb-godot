@@ -311,6 +311,17 @@ public partial class Boot : Control
                 + $"open={Descendants(this).OfType<GameplayPanel>().Any()}");
             _ = CaptureThenQuit("user://smoke-gameplay.png");
         }
+        // SETTINGS ▸ VOLUME: master, music, effects, reached the way a player reaches them.
+        if (userArgs.Contains("--smoke-volume") && !DisplayServer.GetName().Contains("headless"))
+        {
+            OpenSettings();
+            var page = FindChildren("*", nameof(Button), recursive: true, owned: false).OfType<Button>()
+                .FirstOrDefault(b => b.Text.Contains("Volume settings"));
+            page?.EmitSignal(BaseButton.SignalName.Pressed);
+            GD.Print($"smoke-volume: page button={(page is not null)} "
+                + $"open={Descendants(this).OfType<VolumePanel>().Any()}");
+            _ = CaptureThenQuit("user://smoke-volume.png");
+        }
         // The settings dialog, opened the way a player opens it, with a picture of what they get.
         if (userArgs.Contains("--smoke-settings") && !DisplayServer.GetName().Contains("headless"))
         {
@@ -936,7 +947,9 @@ public partial class Boot : Control
             var chooser = new VBoxContainer { SizeFlagsVertical = SizeFlags.ShrinkBegin };
             chooser.AddThemeConstantOverride("separation", 12);
             chooser.AddChild(new Label { Text = "Choose your character", HorizontalAlignment = HorizontalAlignment.Center });
-            var roster = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+            // ONE UNDER THE OTHER (user, 2026-10-09): side by side, a second character pushed the menu column off
+            // to the right; stacked, the roster keeps one card's width however many heroes there are.
+            var roster = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
             roster.AddThemeConstantOverride("separation", 12);
             foreach (var character in host.Blueprint.Characters)
                 roster.AddChild(CharacterCard(host, character, available.Contains(character.Id)));

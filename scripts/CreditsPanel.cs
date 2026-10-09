@@ -3,7 +3,7 @@ using Godot;
 
 namespace BnbGodot;
 
-// WHO MADE THE MUSIC, said properly.
+// WHO MADE THE MUSIC AND THE SOUNDS, said properly.
 //
 // Every track in BnB is somebody else's work used under a Creative Commons licence, and all but one of those
 // licences REQUIRE attribution — this screen is not a courtesy, it is the condition the music is used on.
@@ -21,6 +21,10 @@ namespace BnbGodot;
 // endings and a game needs loops — and CC BY asks that modifications be indicated. Saying "edited to loop"
 // under the track is how that is done.
 //
+// The SOUND EFFECTS follow the same rule: three packs are CC0 and are credited anyway; "Spell 3" is CC BY
+// 3.0 (Bart Kelsey) and "Falling body" CC BY-SA 3.0 (remaxim, from a recording by qubodup), and both of those
+// REQUIRE the line. The hits were converted from FLAC to Ogg and nothing else was done to any of them.
+//
 // The URLs are real but never shown: a screen full of https://opengameart.org/content/… is unreadable, so
 // the word "Source" carries the link and the licence name carries its own.
 public partial class CreditsPanel : PanelContainer
@@ -30,6 +34,7 @@ public partial class CreditsPanel : PanelContainer
     private const string By3 = "CC BY 3.0";
     private const string By4 = "CC BY 4.0";
     private const string Zero = "CC0";
+    private const string BySa3 = "CC BY-SA 3.0";
 
     private static readonly Entry[] Music =
     [
@@ -55,10 +60,25 @@ public partial class CreditsPanel : PanelContainer
             "https://opengameart.org/content/land-of-the-great-gods", "edited to loop"),
     ];
 
+    private static readonly Entry[] Sounds =
+    [
+        new("37 hits/punches", "Independent.nu (Ljudbank)", Zero,
+            "https://opengameart.org/content/37-hitspunches", "converted to Ogg"),
+        new("Metal Interactions", "qubodup", Zero,
+            "https://opengameart.org/content/metal-interactions"),
+        new("Energy Drain", "qubodup", Zero,
+            "https://opengameart.org/content/energy-drain"),
+        new("Spell 3", "Bart Kelsey", By3,
+            "https://opengameart.org/content/spell-3"),
+        new("Falling body", "remaxim, based on a recording by qubodup", BySa3,
+            "https://opengameart.org/content/falling-body"),
+    ];
+
     private static string LicenseUrl(string license) => license switch
     {
         Zero => "https://creativecommons.org/publicdomain/zero/1.0/",
         By4 => "https://creativecommons.org/licenses/by/4.0/",
+        BySa3 => "https://creativecommons.org/licenses/by-sa/3.0/",
         _ => "https://creativecommons.org/licenses/by/3.0/",
     };
 
@@ -101,7 +121,10 @@ public partial class CreditsPanel : PanelContainer
 
         list.AddChild(Heading("Music"));
         foreach (var entry in Music)
-            list.AddChild(MusicRow(entry));
+            list.AddChild(EntryRow(entry));
+        list.AddChild(Heading("Sound effects"));
+        foreach (var entry in Sounds)
+            list.AddChild(EntryRow(entry));
 
         var close = new Button { Text = "Close", CustomMinimumSize = new Vector2(0, 40) };
         close.Pressed += () => _onClose?.Invoke();
@@ -116,7 +139,7 @@ public partial class CreditsPanel : PanelContainer
         return label;
     }
 
-    private static Control MusicRow(Entry entry)
+    private static Control EntryRow(Entry entry)
     {
         var row = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         row.AddThemeConstantOverride("separation", 2);

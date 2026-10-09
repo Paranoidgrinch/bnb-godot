@@ -96,6 +96,10 @@ public partial class SessionScreen
                         // Pop staggers by the body's row itself; the flash keeps time with its number.
                         var who = hit.TargetCombatantId.value;
                         var at = beat * Beat + row.GetValueOrDefault(who) * HitBeat;
+                        Sound(Sfx.Kind.Hit, at);
+                        // A body that this blow put down falls a moment after it lands.
+                        if (hit.HealthBefore > 0 && hit.HealthAfter <= 0 && hit.TargetCombatantId != combat.HeroId)
+                            Sound(Sfx.Kind.Death, at + 0.18);
                         if (hit.HealthLost > 0)
                         {
                             Wound(who, at);
@@ -114,10 +118,13 @@ public partial class SessionScreen
                         Pop(guard.TargetCombatantId.value, $"+{guard.BlockAfter - guard.BlockBefore} 🛡",
                             MoonvineTheme.Steel, 26, beat * Beat, row);
                         Shield(guard.TargetCombatantId.value, beat * Beat);
+                        Sound(Sfx.Kind.Block, beat * Beat);
                         break;
                     case StatusApplicationResolvedTraceEvent status
                         when StatusWord(combat, status, worn) is { } said:
                         Pop(status.TargetCombatantId.value, said.Text, said.Colour, 20, beat * Beat, row);
+                        if (said.Sound is { } sound)
+                            Sound(sound, beat * Beat);
                         break;
                 }
             }
@@ -130,7 +137,7 @@ public partial class SessionScreen
 
     // What a status put on a body says as it lands, or null when it says nothing: a status the chips do not
     // show, a neutral marker, a relic's own rule, a mechanic that has its plate in the middle of the room.
-    private (string Text, Color Colour)? StatusWord(
+    private (string Text, Color Colour, Sfx.Kind? Sound)? StatusWord(
         InteractiveCombat combat, StatusApplicationResolvedTraceEvent applied, HashSet<string> worn)
     {
         StatusDefinition? definition = null;
@@ -146,11 +153,12 @@ public partial class SessionScreen
             : Humanized(applied.StatusDefinitionId.value);
         var colour = definition.Polarity == StatusPolarity.Buff ? MoonvineTheme.Accent : MoonvineTheme.Harm;
         if (applied.Outcome == StatusApplicationOutcome.BlockedByInterceptor)
-            return ($"✕ {name}", MoonvineTheme.TextMuted);
+            return ($"✕ {name}", MoonvineTheme.TextMuted, null);
         if (applied.Outcome is not (StatusApplicationOutcome.Applied or StatusApplicationOutcome.Merged))
             return null;
         var amount = applied.RequestedStacks > 0 ? applied.RequestedStacks : applied.RequestedDurationTurns;
-        return (amount > 1 ? $"{name} +{amount}" : name, colour);
+        return (amount > 1 ? $"{name} +{amount}" : name, colour,
+            definition.Polarity == StatusPolarity.Buff ? Sfx.Kind.Buff : Sfx.Kind.Debuff);
     }
 
     // The layer the numbers rise on. It is the screen's own, not the fight's: a fight's nodes are freed on the
@@ -211,6 +219,15 @@ public partial class SessionScreen
             .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
         tween.TweenProperty(label, "modulate:a", 0.0f, 0.45);
         tween.TweenCallback(Callable.From(label.QueueFree));
+    }
+
+    // A sound, in time with the picture it belongs to (the same frame wait and delay as BodyAfter).
+    private async void Sound(Sfx.Kind kind, double delay)
+    {
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        if (delay > 0)
+            await ToSignal(GetTree().CreateTimer(delay), SceneTreeTimer.SignalName.Timeout);
+        Sfx.Play(kind);
     }
 
     // A wound: the body flashes red and shudders.
@@ -286,7 +303,8 @@ public partial class SessionScreen
                     GetViewport().GetTexture().GetImage().SavePng($"user://smoke-effects-{++shots}.png");
             }
         }
-        GD.Print($"smoke-effects: {shots} shots");
+        GD.Print($"smoke-effects: {shots} shots; sounds "
+            + string.Join(", ", Enum.GetValues<Sfx.Kind>().Select(k => $"{k}={Sfx.Played[(int)k]}")));
         GetTree().Quit();
 
         async System.Threading.Tasks.Task Snap(int n)

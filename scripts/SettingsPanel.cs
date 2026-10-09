@@ -21,8 +21,6 @@ public partial class SettingsPanel : PanelContainer
     private OptionButton _size = null!;
     private OptionButton _scale = null!;
     private CheckBox _vsync = null!;
-    private HSlider _music = null!;
-    private Label _musicValue = null!;
 
     public SettingsPanel(
         Action? onClose = null, Action? onReportBug = null, Action? onSaveAndQuit = null,
@@ -103,40 +101,18 @@ public partial class SettingsPanel : PanelContainer
         _vsync.Toggled += _ => Commit();
         column.AddChild(Row("Frames", _vsync));
 
-        // ⚠ ONE SLIDER, SHOWN TWICE. This panel is the title screen's Settings AND the Esc menu, so there is
-        // nothing here to keep in step with anything: both are this control, reading and writing the one
-        // stored setting. A player who finds the music too loud finds that out four rooms into a run, which
-        // is exactly why it may not live on the title screen alone.
-        AudioSettings.Load();
-        _music = new HSlider
+        // THE VOLUMES, on a page of their own (user, 2026-10-09): master, music and effects — three sliders
+        // would be most of this dialog, and they are touched once. This panel is the title screen's Settings AND
+        // the Esc menu, so the page is reachable from both, and a player who finds the blows too loud four rooms
+        // into a run does not have to leave it.
+        var volume = new Button
         {
-            MinValue = 0,
-            MaxValue = 100,
-            Step = 1,
-            Value = AudioSettings.MusicVolume,
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            CustomMinimumSize = new Vector2(0, 24),
-            TooltipText = "How loud the music is. 0 turns it off. Takes effect as you drag it.",
+            Text = "🔊  Volume settings",
+            CustomMinimumSize = new Vector2(0, 40),
+            TooltipText = "Master, music and sound effects.",
         };
-        _musicValue = new Label
-        {
-            Text = Volume(AudioSettings.MusicVolume),
-            CustomMinimumSize = new Vector2(46, 0),
-            HorizontalAlignment = HorizontalAlignment.Right,
-        };
-        _musicValue.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
-        // ValueChanged and not drag_ended: the whole point of a volume slider is that you hear the answer
-        // while you are still holding it.
-        _music.ValueChanged += value =>
-        {
-            AudioSettings.SetMusicVolume((int)value);
-            _musicValue.Text = Volume((int)value);
-        };
-        var music = new HBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        music.AddThemeConstantOverride("separation", 10);
-        music.AddChild(_music);
-        music.AddChild(_musicValue);
-        column.AddChild(Row("Music volume", music));
+        volume.Pressed += () => ShowPage(new VolumePanel(Restore));
+        column.AddChild(volume);
 
         // THE KEYS take this panel's place in the same dialog rather than opening a second window on top of it:
         // Esc then closes one thing, and "Back" is the only way between the two.
@@ -275,9 +251,6 @@ public partial class SettingsPanel : PanelContainer
         _page = null;
         Visible = true;
     }
-
-    // "Off" and not "0 %": zero is the one value on this slider that is a different KIND of answer.
-    private static string Volume(int percent) => percent <= 0 ? "Off" : $"{percent} %";
 
     private static Control Row(string label, Control control)
     {
