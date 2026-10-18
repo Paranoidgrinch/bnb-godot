@@ -1,6 +1,29 @@
 # bnb-godot
 
-The player-facing frontend for **Bureaucrats & Broomsticks — Act I**, built with Godot 4.7 (.NET).
+The player-facing frontend for **Bureaucrats & Broomsticks**, built with Godot 4.7 (.NET) — a satirical
+fantasy roguelike deckbuilder about magic, paperwork and deeply questionable career choices.
+
+| Repository | Role |
+| --- | --- |
+| [RogueDeck-Core](https://github.com/Paranoidgrinch/RogueDeck-Core) | the rules: combat and run engine, bot, replay |
+| [bnb-content](https://github.com/Paranoidgrinch/bnb-content) | the game as data, exported to `game.roguedeck.json` |
+| **bnb-godot** (this one) | the frontend: screens, cards, art, music, settings, bug reports, run recording |
+| [bnb-runs](https://github.com/Paranoidgrinch/bnb-runs) | recorded playtest runs |
+
+**What the player gets:** five acts on generated branching maps, two characters (Bureaucrat and Hedge Witch),
+combat with telegraphed enemy intents, elites and gods as bosses, events, shops, relics, an archive of
+everything met so far, a tutorial, ten music tracks, settings, save/continue and an in-game bug reporter.
+The game is in **closed alpha** (version `0.2.0`, distributed to testers via itch.io).
+
+**Quick start** (needs .NET 10, Godot 4.7 .NET and a sibling checkout of RogueDeck-Core):
+
+```
+git clone https://github.com/Paranoidgrinch/RogueDeck-Core
+git clone https://github.com/Paranoidgrinch/bnb-godot
+cd bnb-godot && dotnet build && godot --path .
+```
+
+The rest of this README is the developer reference: how the frontend is put together and how it is tested.
 
 The game rules run entirely in the [RogueDeck engine](../RogueDeck-Core) (a sibling checkout, referenced
 via `ProjectReference`); this project only renders state and forwards input, per the engine's
@@ -318,3 +341,9 @@ tints the hand, card/relic flavor shows as tooltips, character flavor shows on t
 resolves under `res://assets/art/`, which is why `cards/levy_stamp.png` in the document is
 `assets/art/cards/levy_stamp.png` on disk. A slot with no file is a normal state, not an error: the card
 draws an empty socket with its own code printed in it, and the relic draws its name.
+
+## License
+
+The code and the game's own content are licensed under [PolyForm Noncommercial 1.0.0](LICENSE) — free for
+noncommercial use with credit; commercial use needs permission. Third-party music and sound effects keep their
+own licenses: see `assets/music/SOURCES.md`, `assets/sfx/SOURCES.md` and the in-game Credits.
