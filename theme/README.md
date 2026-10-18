@@ -15,7 +15,7 @@ That is the whole change. `MoonvineTheme.Build()` writes the face into the Theme
 every `Label`, `Button`, `RichTextLabel` and card face in the game inherits it. A path that does not resolve
 prints a warning and falls back to the Godot default rather than crashing the run.
 
-⚠ **No screen may load a font of its own.** The moment one does, "change the font later" stops being this
+**No screen may load a font of its own.** The moment one does, "change the font later" stops being this
 one line and becomes twenty edits scattered across `SessionScreen`, `MapView` and `Boot`.
 
 **The card face is the strongest argument for changing it.** `CardVisuals` sizes a card's name to the frame's

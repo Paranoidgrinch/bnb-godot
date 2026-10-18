@@ -24,11 +24,11 @@ Verglichen werden je Lauf die beiden Berichtszeilen `sim-fitness:` und `sim-resu
 Kämpfe, HP, genommener und geheilter Schaden, die Schadenstabelle je Akt, `problems`, `error` und der Grund,
 aus dem der Lauf endete.
 
-⚠ **`seconds=` wird vorher weggeschnitten.** Die Uhr *soll* sich ändern — das ist der Sinn des ganzen Bogens.
+**`seconds=` wird vorher weggeschnitten.** Die Uhr *soll* sich ändern — das ist der Sinn des ganzen Bogens.
 Ein Tor, das durchfällt, wenn der Runner schneller wird, wäre ein Tor gegen seinen eigenen Zweck. Die Zeiten
 stehen trotzdem unten in der Datei, damit man sieht, wie viel schneller es geworden ist.
 
-⚠⚠ **Ein Lauf, der nichts meldet, ist ein Fehlschlag, kein bestandener Test.** Ein abgestürzter Prozess, eine
+**Ein Lauf, der nichts meldet, ist ein Fehlschlag, kein bestandener Test.** Ein abgestürzter Prozess, eine
 fehlende Fitness-Zeile, ein Lauf, der nie endete — jeder wird als genau diese Abwesenheit hineingeschrieben
 (`THE RUN PRODUCED NO RESULT LINE`) und fällt gegen eine Aufzeichnung durch, in der ein Ergebnis steht.
 Schweigen darf nie wie Zustimmung aussehen. (Das ist die Lehre aus D7, wo drei Screenshots derselbe
@@ -40,7 +40,7 @@ einem **sterblichen** Körper (Seeds 101–103), die in Akt I sterben: das deckt
 Run-Ende und die Schirme ab, die ein Sieger nie sieht, für etwa ein Zehntel der Kosten eines unsterblichen
 Laufs.
 
-⚠ Die Seeds sind **nicht nach ihrem Ausgang gewählt**. Ein Set aus lauter Siegen könnte nicht bemerken, dass
+Die Seeds sind **nicht nach ihrem Ausgang gewählt**. Ein Set aus lauter Siegen könnte nicht bemerken, dass
 Läufe anfangen zu verlieren.
 
 ## Wann neu aufzeichnen
