@@ -41,7 +41,7 @@ sitting() {  # <tag> <extra args for every process>
   local pids=($!)
   # A host in a window takes its time to come up; nobody knocks before it says it is open.
   for ((t = 0; t < 240; t++)); do grep -q "^net: Hosting on port" "$out/${tag}seat0.log" 2>/dev/null && break; sleep 0.5; done
-  local characters=(bureaucrat hedge_witch bureaucrat hedge_witch)
+  local characters=(bureaucrat hedge_witch sorcerers_apprentice bureaucrat)
   for ((i = 1; i < seats; i++)); do
     local extra=(); [[ $i == 1 && $tag == "" ]] && extra=("${drop[@]}")
     timeout 600 godot --headless -- --smoke-mp-join "$port" --mp-character "${characters[$i]}" --mp-id "smoke-seat-$i" "${common[@]}" "${extra[@]}" "$@" >"$out/${tag}seat$i.log" 2>&1 &
