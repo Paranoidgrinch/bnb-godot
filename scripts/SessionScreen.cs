@@ -5862,10 +5862,16 @@ public partial class SessionScreen : Control
         if (rows * ChipRow <= room)
             return chips;   // it fits in the room this column has; nothing to bound
 
+        // ⚠ THE SCROLLBAR'S WIDTH IS ALWAYS KEPT (Reserve). Shown only when needed, it took its 8 points out of the
+        // flow the moment the chips ran a row too tall; three chips that fit two rows across 200 needed three across
+        // 192, the bar stayed, the flow got its width back, fit in two, the bar went — and Godot sorted that pair of
+        // layouts until its message queue ran out (a Warrant Bailiff over an Apprentice, whose wand row is what made
+        // the room short; --smoke-screens, 2026-10-20).
         var view = new ScrollContainer
         {
             CustomMinimumSize = new Vector2(width, Mathf.Max(Floor, room)),
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Reserve,
         };
         chips.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         view.AddChild(chips);
