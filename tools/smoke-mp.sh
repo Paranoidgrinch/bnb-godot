@@ -63,6 +63,7 @@ lines=()
 for ((i = 0; i < seats; i++)); do
   line=$(grep -m1 '^smoke-mp:' "$out/seat$i.log" || echo "smoke-mp: seat $i SAID NOTHING")
   echo "$line"
+  grep -m1 '^smoke-mp-actions:' "$out/seat$i.log" || true
   lines+=("$(sed -E 's/^smoke-mp: seat=[0-9]+ //' <<<"$line")")
 done
 # A screen that threw while drawing a state is a failure even when the run itself stayed in step.

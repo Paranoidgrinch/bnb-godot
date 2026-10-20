@@ -33,6 +33,11 @@ public partial class MpSmoke : Godot.Node
     private int _votedAt = -1;
     private double _idle;
     private readonly HashSet<CardInstanceId> _tried = [];
+    private int _actionsThisTurn;
+
+    // How many of its own actions this seat used (a wand's casts and inscriptions): reported apart from the
+    // compared line, since each seat uses its own.
+    private int ActionsUsed { get; set; }
 
     // `screen`: play with the run screen drawn, so every state of a party run is put on the screen once — the
     // check that the party's fight, rooms and waits draw at all.
@@ -151,11 +156,24 @@ public partial class MpSmoke : Godot.Node
                 if (fight.ActiveMembers().Contains(mine))
                 {
                     var enemy = fight.State.Combatants.First(c => c.TeamId == StandardCombatIds.EnemyTeam && c.IsAlive).Id;
-                    if (fight.EnergyOf(mine) > 0 && fight.HandOf(mine).FirstOrDefault(c => _tried.Add(c.Id)) is { } card)
+                    // A seat's own actions (a wand's cast and inscription, a cauldron's), a few a turn, the way the
+                    // single-player bot takes them — so a party fight walks those too.
+                    var action = _actionsThisTurn < 3
+                        ? RogueDeck.Bot.WandBotPolicy.Order(fight.Registry, fight.State, mine, fight.ActionsOf(mine))
+                            .Select(a => (CardDefinitionId?)a).FirstOrDefault(a => fight.CanUse(mine, a!.Value, enemy))
+                        : null;
+                    if (action is { } usable)
+                    {
+                        _actionsThisTurn++;
+                        ActionsUsed++;
+                        net.Submit(new CombatActionEntry(mine, usable, enemy));
+                    }
+                    else if (fight.EnergyOf(mine) > 0 && fight.HandOf(mine).FirstOrDefault(c => _tried.Add(c.Id)) is { } card)
                         net.Submit(new CombatPlayEntry(mine, card.Id, enemy));
                     else
                     {
                         _tried.Clear();
+                        _actionsThisTurn = 0;
                         net.Submit(new CombatEndTurnEntry(mine));
                     }
                 }
@@ -255,6 +273,7 @@ public partial class MpSmoke : Godot.Node
             ? $"smoke-mp: seat={net.LocalSeat} entries={net.EntryCount} "
                 + $"result={play?.Session?.Run.Result} check={(play is null ? "—" : NetSession.Check(play))}"
             : $"smoke-mp: seat={net.LocalSeat} FAILED {fault}");
+        GD.Print($"smoke-mp-actions: seat={net.LocalSeat} used={ActionsUsed} wand-views={SessionScreen.WandsDrawn}");
         if (_screen)
             GD.Print($"smoke-mp-screen: seat={net.LocalSeat} scene={GetTree().CurrentScene?.Name} "
                 + $"draws={SessionScreen.Draws} party-fights-drawn={SessionScreen.PartyFightsDrawn} "
