@@ -21,8 +21,9 @@ public partial class SessionScreen
 
     public override void _Input(InputEvent @event)
     {
-        if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right } && _armedCard is not null)
+        if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right } && (_armedCard is not null || _armedCast))
         {
+            _armedCast = false;
             PutArmedCardBack();
             GetViewport().SetInputAsHandled();
             return;
@@ -96,7 +97,7 @@ public partial class SessionScreen
                     OnCardClicked(hand[i].Id);
                 return true;
             }
-        if (_armedCard is null)
+        if (_armedCard is null && !_armedCast)
             return false;
         if (@event.IsActionPressed(Controls.TargetNext) || @event.IsActionPressed(Controls.TargetPrevious))
         {
@@ -112,7 +113,10 @@ public partial class SessionScreen
         }
         if (@event.IsActionPressed(Controls.Confirm))
         {
-            PlayArmedCardAt(AimedEnemy(combat));
+            if (_armedCast && AimedEnemy(combat) is { } aimed)
+                CastAt(aimed);
+            else
+                PlayArmedCardAt(AimedEnemy(combat));
             return true;
         }
         return false;

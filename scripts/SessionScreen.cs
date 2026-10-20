@@ -186,6 +186,8 @@ public partial class SessionScreen : Control
             SmokeRun();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-cauldron"))
             _ = SmokeCauldron();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-wand"))
+            _ = SmokeWand();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-target"))
             SmokeTarget();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-draw"))
@@ -3570,7 +3572,7 @@ public partial class SessionScreen : Control
         definitionId = shown;
         upgradeLevel = plusInName;
         var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definitionId);
-        var rules = presentation?.FlavorText ?? "";
+        var rules = RulesFor(definitionId, presentation);
         var tooltip = string.Join("\n", new[] { CostLabel(definitionId), Glossary.Explain(rules) }
             .Where(part => !string.IsNullOrWhiteSpace(part)));
         var face = CardVisuals.Face(
@@ -3912,7 +3914,11 @@ public partial class SessionScreen : Control
     private const int HandBand = 214;      // a card plus the fan's lean
     private const int ControlBand = 44;    // End turn, consumables
     private const int DeckBand = 190;      // the pile's corner: 24 in + a 150-wide leaning stack + air
-    private static int BottomBand => HintBand + HandBand + ControlBand + 12;
+    private int BottomBand => HintBand + HandBand + ControlBand + 12 + _wandBand;
+
+    // The wand's own row over the buttons, when the hero carries one (SessionWand).
+    private const int WandBand = 40;
+    private int _wandBand;
 
     // The three shapes a region can have. All plain Controls on purpose — a container would report its
     // children's combined minimum upward and the region would stop being fixed.
@@ -4018,6 +4024,7 @@ public partial class SessionScreen : Control
             enemies.Select(e => (Name(e, combat), column)).Append((Name(hero, combat), HeroColumn))
                 .Concat(party.Select(a => (Name(a, combat), AllyColumn))));
         // The arena is what is left of the canvas between the bands above it and the hand below.
+        _wandBand = combat.Actions.Any(IsWandAction) ? WandBand : 0;
         var arenaHeight = PaneHeight - arenaTop - BottomBand - PaneInset;
         var bodyHeight = BodyHeightFor(arenaHeight, nameBand);
 
@@ -4271,6 +4278,10 @@ public partial class SessionScreen : Control
         // The hero's own actions and, for a hero with a cauldron, the pot itself (SessionCauldron).
         BuildHeroActions(controls, combat);
         controls.MoveChild(endTurn, -1); // End turn stays the last, rightmost button whatever else is offered
+        // The Apprentice's wand has a row of its own over the buttons: five actions and six slots would push End turn
+        // off the screen (SessionWand).
+        if (combat.Actions.Any(IsWandAction))
+            bottomBox.AddChild(WandRow(combat));
         bottomBox.AddChild(controls);
     }
 
@@ -4766,7 +4777,7 @@ public partial class SessionScreen : Control
 
         // A framed panel around the column; enemies highlight + become clickable when a card is armed.
         var panel = new PanelContainer();
-        var targetable = !friend && combatant.IsAlive && _armedCard is not null;
+        var targetable = !friend && combatant.IsAlive && (_armedCard is not null || _armedCast);
         // The body the keys are aiming at wears the signal colour; the others the ordinary "can be targeted".
         var aimed = targetable && AimedEnemy(combat)?.value == combatant.Id.value;
         panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
@@ -4780,10 +4791,18 @@ public partial class SessionScreen : Control
             var overlay = new Button { Flat = true };
             overlay.SetAnchorsPreset(LayoutPreset.FullRect);
             var targetId = combatant.Id;
-            overlay.Pressed += () => PlayArmedCardAt(targetId);
+            overlay.Pressed += () =>
+            {
+                if (_armedCast)
+                    CastAt(targetId);
+                else
+                    PlayArmedCardAt(targetId);
+            };
             overlay.MouseEntered += () =>
             {
-                if (_armedCard is { } armed)
+                if (_armedCast)
+                    ShowCastPreview(combat, targetId);
+                else if (_armedCard is { } armed)
                     ShowPreview(combat, armed, targetId);
             };
             overlay.MouseExited += RestorePreview;
@@ -4911,7 +4930,7 @@ public partial class SessionScreen : Control
         // the free first ingredient could not be chosen, because every card in hand was dimmed as unaffordable.
         var affordable = chosenNotPlayed || (CanPay(hero, definition) && combat.CanPlay(card.Id));
         var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definition);
-        var rules = presentation?.FlavorText ?? "";
+        var rules = RulesFor(definition, presentation);
 
         // WHAT HAS BEEN DONE TO THIS COPY, and not what kind of card it is. A per-instance mark is content's
         // way of making one copy of a card special — Inanna's claim is the first that the PLAYER is asked to

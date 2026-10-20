@@ -30,7 +30,7 @@ public partial class SessionScreen
             controls.AddChild(book);
         }
 
-        foreach (var action in combat.Actions)
+        foreach (var action in combat.Actions.Where(a => !IsWandAction(a)))
         {
             var target = FirstLivingEnemy(combat);
             var cost = combat.ActionCost(action, target).Sum(c => c.Amount);

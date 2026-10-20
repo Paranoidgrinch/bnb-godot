@@ -35,6 +35,8 @@ public partial class SessionScreen
     {
         if (Play?.Seat?.Current is { } combat && _armedCard is { } armed)
             ShowPreview(combat, armed, AimedEnemy(combat));
+        else if (Play?.Seat?.Current is { } casting && _armedCast)
+            ShowCastPreview(casting, AimedEnemy(casting));
         else
             ClearPreview();
     }

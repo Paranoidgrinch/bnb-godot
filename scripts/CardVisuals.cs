@@ -138,6 +138,15 @@ public static class CardVisuals
     // tall the block is; a Label then adds the theme's `line_spacing` (3 px by default) between every line,
     // so a paragraph measured to fit exactly loses its last line to the clip. The rules Label sets that
     // constant to 0 and this measures the same block — the two have to agree or the fit is a guess.
+    public const string WandLine = "\nWand: ";
+
+    // A card's text split into what it does when played and what it does in a wand (null: it has no wand part).
+    public static (string Play, string? Wand) SplitWand(string rules)
+    {
+        var at = rules.IndexOf(WandLine, StringComparison.Ordinal);
+        return at < 0 ? (rules, null) : (rules[..at], rules[(at + WandLine.Length)..]);
+    }
+
     private static int FitBlock(string text, Vector2 box, int max, int min)
     {
         for (var size = max; size >= min; size--)
@@ -264,20 +273,35 @@ public static class CardVisuals
         // ── the rules, on the plaque ─────────────────────────────────────────────
         var plaque = Window(root, PlaqueL + 0.035f, PlaqueT + 0.014f, PlaqueR - 0.035f, PlaqueB - 0.012f);
         var box = new Vector2((PlaqueR - PlaqueL - 0.07f) * w, (PlaqueB - PlaqueT - 0.026f) * h);
-        var rules = new Label
+        // A card with a WAND part (the Sorcerer's Apprentice's, and the general cards he can inscribe) carries it after
+        // a "Wand:" line: the play text above, the wand text under it in the wand's colour.
+        var (playText, wandText) = SplitWand(card.Rules);
+        var size = FitBlock(wandText is null ? playText : $"{playText}\n\nWAND {wandText}", box,
+            (int)Mathf.Round(11 * scale), Math.Max(6, (int)Mathf.Round(7 * scale)));
+        var column = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center, MouseFilter = Control.MouseFilterEnum.Ignore };
+        column.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        column.AddThemeConstantOverride("separation", 1);
+        Label Part(string text, Color colour, int fontSize)
         {
-            Text = card.Rules,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            ClipText = true,
-        };
-        rules.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        rules.AddThemeConstantOverride("line_spacing", 0);
-        rules.AddThemeColorOverride("font_color", card.Dimmed ? MoonvineTheme.TextMuted : MoonvineTheme.TextSoft);
-        rules.AddThemeFontSizeOverride("font_size",
-            FitBlock(card.Rules, box, (int)Mathf.Round(11 * scale), Math.Max(6, (int)Mathf.Round(7 * scale))));
-        plaque.AddChild(rules);
+            var label = new Label
+            {
+                Text = text,
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                // An autowrapping label in a box has no width of its own: it is given the plaque's.
+                CustomMinimumSize = new Vector2(box.X, 0),
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            };
+            label.AddThemeConstantOverride("line_spacing", 0);
+            label.AddThemeColorOverride("font_color", card.Dimmed ? MoonvineTheme.TextMuted : colour);
+            label.AddThemeFontSizeOverride("font_size", fontSize);
+            return label;
+        }
+        column.AddChild(Part(playText, MoonvineTheme.TextSoft, size));
+        if (wandText is not null)
+            column.AddChild(Part("WAND " + wandText, MoonvineTheme.Arcane, Math.Max(5, size - 1)));
+        plaque.AddChild(column);
 
         // ── the frame itself, over all of it ─────────────────────────────────────
         // IgnoreSize, or the TextureRect would report the artwork's own 1053 × 1494 as a minimum and blow the
