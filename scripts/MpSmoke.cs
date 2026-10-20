@@ -18,6 +18,10 @@ public partial class MpSmoke : Godot.Node
     private readonly string _character;
     private readonly int _seats;
     private readonly bool _screen;
+    private readonly int _dropAt;
+    private readonly bool _resume;
+    private readonly string? _id;
+    private bool _dropped;
     private bool _onScreen;
     private string? _shotKind;
     private int _shots;
@@ -32,8 +36,13 @@ public partial class MpSmoke : Godot.Node
 
     // `screen`: play with the run screen drawn, so every state of a party run is put on the screen once — the
     // check that the party's fight, rooms and waits draw at all.
-    public MpSmoke(bool hosting, int port, int seed, int limit, string character, int seats, bool screen = false)
+    // `dropAt`: a guest that pulls its own cable at that answer and must find its way back to the table.
+    public MpSmoke(bool hosting, int port, int seed, int limit, string character, int seats, bool screen = false,
+        int dropAt = -1, bool resume = false, string? id = null)
     {
+        _dropAt = dropAt;
+        _resume = resume;
+        _id = id;
         _screen = screen;
         _hosting = hosting;
         _port = port;
@@ -47,9 +56,13 @@ public partial class MpSmoke : Godot.Node
     {
         var net = NetSession.Instance;
         net.AnswerLimit = _limit;
+        NetSession.TableSavePath = "user://smoke-table-save.json";
         net.LocalName = _hosting ? "Host" : $"Guest {OS.GetProcessId()}";
-        net.LocalId = $"smoke-{OS.GetProcessId()}";
-        var error = _hosting ? net.Host(_port) : net.Join("127.0.0.1", _port);
+        net.LocalId = _id ?? $"smoke-{OS.GetProcessId()}";
+        // `resume`: the host opens the table it saved last time, and its players come back to their seats.
+        var error = _hosting
+            ? _resume ? net.HostSavedTable(_port) : net.Host(_port)
+            : net.Join("127.0.0.1", _port);
         if (error is not null)
             Finish($"could not open the table: {error}");
     }
@@ -70,7 +83,7 @@ public partial class MpSmoke : Godot.Node
 
         if (!net.Started)
         {
-            if (!_readied && net.LocalSeat >= 0)
+            if (!_readied && net.LocalSeat >= 0 && !_resume)
             {
                 net.ChooseCharacter(_character, ready: true);
                 _readied = true;
@@ -80,6 +93,13 @@ public partial class MpSmoke : Godot.Node
             return;
         }
 
+        if (!_hosting && !_dropped && _dropAt >= 0 && net.EntryCount >= _dropAt)
+        {
+            _dropped = true;
+            _waitingFor = -1;
+            net.DropLineForTest();
+            return;
+        }
         var play = GameHost.Instance.Play;
         if (play?.Session is not { } session)
             return;
@@ -110,15 +130,19 @@ public partial class MpSmoke : Godot.Node
         var before = net.EntryCount;
         if (play.PartyCombatDriver is { Current: { IsOver: false } fight } driver)
         {
-            // A question a card asked is answered by the host's player, so two machines never race to it.
+            // A question a card asked is its chooser's to answer (the host's, when it is nobody's in particular), so
+            // two machines never race to it.
+            var mineToAnswer = driver.PendingChooser is { } chooser
+                ? chooser.value == NetSession.CombatantOf(seat)
+                : _hosting;
             if (driver.PendingCardChoice is { } cards)
             {
-                if (_hosting)
+                if (mineToAnswer)
                     net.Submit(new CardPicksEntry([.. cards.Take(driver.PendingCardChoiceCount).Select(c => c.Id)]));
             }
             else if (driver.PendingOptionChoice is not null)
             {
-                if (_hosting)
+                if (mineToAnswer)
                     net.Submit(new OptionPicksEntry([0]));
             }
             else
@@ -228,7 +252,7 @@ public partial class MpSmoke : Godot.Node
         var net = NetSession.Instance;
         var play = GameHost.Instance.Play;
         GD.Print(fault is null
-            ? $"smoke-mp: seat={net.LocalSeat} entries={net.EntryCount} resyncs={net.Resyncs} "
+            ? $"smoke-mp: seat={net.LocalSeat} entries={net.EntryCount} "
                 + $"result={play?.Session?.Run.Result} check={(play is null ? "—" : NetSession.Check(play))}"
             : $"smoke-mp: seat={net.LocalSeat} FAILED {fault}");
         if (_screen)

@@ -76,8 +76,62 @@ public partial class NetSession : Godot.Node
         Multiplayer.PeerConnected += OnPeerConnected;
         Multiplayer.PeerDisconnected += OnPeerDisconnected;
         Multiplayer.ConnectedToServer += OnConnectedToServer;
-        Multiplayer.ConnectionFailed += () => Report("Could not reach the host.");
-        Multiplayer.ServerDisconnected += () => Report("The host closed the table.");
+        Multiplayer.ConnectionFailed += OnConnectionLost;
+        Multiplayer.ServerDisconnected += OnConnectionLost;
+    }
+
+    // ── A LINE THAT DROPS ────────────────────────────────────────────────────────────────────────────────
+    // A machine that stops answering for a few seconds — building a run, loading a screen, a laptop's Wi-Fi
+    // waking up — must not lose its seat over it: the connection is given half a minute before it counts as
+    // gone (ENet's default is about five seconds). And a client that does lose the host while a run is on goes
+    // back to the same address by itself; the host knows its player id, gives it its seat back and the whole run
+    // with it.
+    private const int PatienceMs = 30_000;
+    private string? _address;
+    private int _port;
+    private int _reconnects;
+    public const int MaxReconnects = 10;
+
+    private void Patient(long peer)
+    {
+        if (Multiplayer.MultiplayerPeer is ENetMultiplayerPeer enet && enet.GetPeer((int)peer) is { } line)
+            line.SetTimeout(0, PatienceMs, PatienceMs * 2);
+    }
+
+    private void OnConnectionLost()
+    {
+        if (Role != NetRole.Client)
+            return;
+        if (Started && _address is { } address && _reconnects < MaxReconnects)
+        {
+            _reconnects++;
+            Report($"Lost the host — reconnecting ({_reconnects}/{MaxReconnects}) …");
+            GetTree().CreateTimer(1.0).Timeout += () => Reconnect(address, _port);
+            return;
+        }
+        Report(Started ? "Lost the host." : "Could not reach the host.");
+    }
+
+    // For a probe: the line goes dead under this machine's feet, as a pulled cable would.
+    public void DropLineForTest()
+    {
+        if (Multiplayer.MultiplayerPeer is ENetMultiplayerPeer line)
+            line.Close();
+        OnConnectionLost();
+    }
+
+    // Back to the same table, keeping the run on screen until the host sends it again.
+    private void Reconnect(string address, int port)
+    {
+        if (Multiplayer.MultiplayerPeer is ENetMultiplayerPeer old)
+            old.Close();
+        var peer = new ENetMultiplayerPeer();
+        if (peer.CreateClient(address, port) != Error.Ok)
+        {
+            OnConnectionLost();
+            return;
+        }
+        Multiplayer.MultiplayerPeer = peer;
     }
 
     // ── HOSTING AND JOINING ──────────────────────────────────────────────────────────────────────────────
@@ -115,6 +169,9 @@ public partial class NetSession : Godot.Node
         }
         Multiplayer.MultiplayerPeer = peer;
         Role = NetRole.Client;
+        _address = address;
+        _port = port;
+        _reconnects = 0;
         Report($"Connecting to {address}:{port} …");
         return null;
     }
@@ -131,6 +188,8 @@ public partial class NetSession : Godot.Node
         _entries.Clear();
         _start = null;
         Votes.Clear();
+        _address = null;
+        _saved = null;
     }
 
     // A home router will usually not let a stranger in; ask it to (UPnP) and say so either way. Off the main
@@ -170,13 +229,80 @@ public partial class NetSession : Godot.Node
     public bool CanStart => Role == NetRole.Host && !Started && Seats.Count > 0
         && Seats.All(s => s.Connected && s.Ready && s.Character is not null);
 
+    // ── THE TABLE'S SAVE (host only) ──────────────────────────────────────────────────────────────────────
+    // A run of an evening is hours long, and a table does not finish in one sitting. The host writes the run down
+    // whenever nobody is in the middle of a question — between rooms, or in a fight with no card asking anything —
+    // with who sat in which seat. Opened again, the seats wait for their players by player id, and the run
+    // resumes for everyone from that save.
+    // A probe keeps its tables out of the player's (tools/smoke-mp.sh).
+    public static string TableSavePath { get; set; } = "user://table-save.json";
+
+    public static bool HasTableSave => Godot.FileAccess.FileExists(TableSavePath);
+
+    public static TableSave? ReadTableSave()
+    {
+        if (!HasTableSave)
+            return null;
+        try
+        {
+            return JsonSerializer.Deserialize<TableSave>(Godot.FileAccess.GetFileAsString(TableSavePath), Json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private void SaveTable()
+    {
+        if (Role != NetRole.Host || _start is null || GameHost.Instance.Play is not { Session: { } session } play)
+            return;
+        if (session.IsComplete)
+        {
+            DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TableSavePath));
+            return;
+        }
+        if (session.PendingSeats.Count > 0 || session.IsAwaitingChoice || session.IsAwaitingEntities
+            || play.PartyCombatDriver is { PendingCardChoice: not null } or { PendingOptionChoice: not null })
+            return;
+        if (play.SaveJson() is not { } json)
+            return;
+        var table = new TableSave(json, _start.Party, [.. Seats.Select(s => s.PlayerId)], [.. Seats.Select(s => s.Name)],
+            _start.Meta);
+        using var file = Godot.FileAccess.Open(TableSavePath, Godot.FileAccess.ModeFlags.Write);
+        file?.StoreString(JsonSerializer.Serialize(table, Json));
+    }
+
+    // Open the saved table: every seat is laid for the player who sat there, the host's own taken at once.
+    public string? HostSavedTable(int port = DefaultPort)
+    {
+        if (ReadTableSave() is not { } table)
+            return "There is no saved table.";
+        if (Host(port) is { } error)
+            return error;
+        _saved = table;
+        Seats.Clear();
+        for (var index = 0; index < table.Party.Length; index++)
+            Seats.Add(new Seat(index == 0 ? 1 : 0, index == 0 ? LocalName ?? PlayerIdentity.Name ?? table.Names[index] : table.Names[index],
+                index == 0 ? LocalId ?? PlayerIdentity.Id : table.PlayerIds[index], table.Party[index], Ready: true,
+                Connected: index == 0));
+        Report($"Waiting for {string.Join(", ", table.Names.Skip(1))} to take their seats again.");
+        BroadcastLobby();
+        return null;
+    }
+
+    private TableSave? _saved;
+
     // The host starts the run for everyone: one seed, one party in seat order, one profile.
     public void StartRun(int seed)
     {
         if (!CanStart)
             return;
         var host = GameHost.Instance;
-        _start = new StartMessage(seed, [.. Seats.Select(s => s.Character!)], host.Meta.Snapshot());
+        _start = _saved is { } saved
+            ? new StartMessage(0, saved.Party, saved.Meta, saved.Save)
+            : new StartMessage(seed, [.. Seats.Select(s => s.Character!)], host.Meta.Snapshot());
+        _saved = null;
         Started = true;
         _entries.Clear();
         Votes.Clear();
@@ -188,7 +314,10 @@ public partial class NetSession : Godot.Node
 
     private void BeginRun(StartMessage start)
     {
-        GameHost.Instance.StartPartyRun(start.Seed, start.Party, start.Meta);
+        if (start.Save is { } save)
+            GameHost.Instance.ResumePartyRun(save, start.Meta);
+        else
+            GameHost.Instance.StartPartyRun(start.Seed, start.Party, start.Meta);
         // This machine's screen shows this machine's member's questions, from the first one on.
         if (GameHost.Instance.Play?.Session is { } session)
             session.ViewSeat = MemberOf(LocalSeat);
@@ -268,15 +397,34 @@ public partial class NetSession : Godot.Node
             CombatPlayEntry play => Mine(SeatOfCombatant(play.Member?.value)),
             CombatActionEntry action => Mine(SeatOfCombatant(action.Member?.value)),
             CombatEndTurnEntry end => Mine(SeatOfCombatant(end.Member?.value)),
-            // A question a card asked in the fight: answered by whoever is at the table — the party is in it together.
-            CardPicksEntry or OptionPicksEntry => true,
-            CombatConsumableEntry => seat == 0,
+            // A question a card asked in the fight: its chooser's — the hero whose cards are offered, or whose move
+            // raised it — and anyone's when the fight asked nobody in particular.
+            CardPicksEntry or OptionPicksEntry =>
+                GameHost.Instance.Play?.PartyCombatDriver?.PendingChooser is not { } chooser
+                || Mine(SeatOfCombatant(chooser.value)),
+            // A consumable is its carrier's to drink.
+            CombatConsumableEntry use => Mine(CarrierOf(use.Instance)),
             _ => Mine(SeatOfMember(entry.Seat)),
         };
     }
 
+    // The seat whose member carries this consumable, or -1.
+    private static int CarrierOf(RogueDeck.Run.ConsumableInstanceId instance)
+    {
+        var party = GameHost.Instance.Play?.Session?.Run.Party ?? [];
+        for (var seat = 0; seat < party.Count; seat++)
+            if (party[seat].FindConsumable(instance) is not null)
+                return seat;
+        return -1;
+    }
+
     private void TakeVote(int seat, string choice, int at)
     {
+        // A vote cast at an answer this machine is already past: the voter has not heard of some of them. They
+        // are sent again — a client takes an answer it already has as the duplicate it is.
+        if (Role == NetRole.Host && Started && at >= 0 && at < _entries.Count && seat > 0 && seat < Seats.Count)
+            for (var index = at; index < _entries.Count; index++)
+                Send(Seats[seat].Peer, new NetMessage { Kind = "entry", Index = index, Answer = _entries[index] });
         if (Role != NetRole.Host || GameHost.Instance.Play?.Session is not { } session
             || _entries.Count >= (AnswerLimit ?? int.MaxValue) || at != _entries.Count)
             return;
@@ -318,6 +466,7 @@ public partial class NetSession : Godot.Node
         };
         foreach (var seat in Seats.Skip(1).Where(s => s.Connected))
             Send(seat.Peer, message);
+        SaveTable();
     }
 
     // How the run stands, in one line two machines can compare: the room and every member's numbers, and the
@@ -350,6 +499,8 @@ public partial class NetSession : Godot.Node
         if (message is null)
             return;
         var from = Multiplayer.GetRemoteSenderId();
+        if (Trace)
+            GD.Print($"net-trace: in {message.Kind} from {from} index={message.Index} entries={_entries.Count} seat={LocalSeat}");
         if (Role == NetRole.Host)
             OnHostReceives(from, message);
         else if (Role == NetRole.Client && from == 1)
@@ -364,7 +515,8 @@ public partial class NetSession : Godot.Node
             case "hello":
                 Welcome(peer, message);
                 break;
-            case "seat" when seat > 0 && !Started:
+            // A seat laid from a saved table keeps the hero it was saved with.
+            case "seat" when seat > 0 && !Started && _saved is null:
                 Seats[seat] = Seats[seat] with { Character = message.Character, Ready = message.Ready };
                 BroadcastLobby();
                 break;
@@ -376,6 +528,11 @@ public partial class NetSession : Godot.Node
                 break;
             case "resync" when seat > 0 && Started:
                 SendWholeRun(peer, seat);
+                break;
+            case "sync" when seat > 0 && Started && message.Index is { } has:
+                for (var index = Math.Max(0, has); index < _entries.Count; index++)
+                    Send(peer, new NetMessage { Kind = "entry", Index = index, Answer = _entries[index] });
+                Send(peer, new NetMessage { Kind = "votes", VoteTable = new Dictionary<int, string>(Votes) });
                 break;
         }
     }
@@ -398,6 +555,11 @@ public partial class NetSession : Godot.Node
             if (Started)
                 SendWholeRun(peer, returning);
             BroadcastLobby();
+            return;
+        }
+        if (_saved is not null)
+        {
+            Send(peer, new NetMessage { Kind = "refused", Text = "This table is waiting for the players of its saved run." });
             return;
         }
         if (Started || Seats.Count >= MaxSeats)
@@ -429,6 +591,7 @@ public partial class NetSession : Godot.Node
                 EmitSignal(SignalName.LobbyChanged);
                 break;
             case "votes" when message.VoteTable is { } table:
+                _heard = 0;
                 Votes.Clear();
                 foreach (var (seat, vote) in table)
                     Votes[seat] = vote;
@@ -436,6 +599,7 @@ public partial class NetSession : Godot.Node
                 break;
             case "start" when message.Start is { } start:
                 // The whole run from its seed: a fresh start, or a way back in after falling out of step.
+                _heard = 0;
                 _start = start;
                 Started = true;
                 LocalSeat = message.Seat ?? LocalSeat;
@@ -447,7 +611,10 @@ public partial class NetSession : Godot.Node
                         break;
                 break;
             case "entry" when message.Answer is { } answer && message.Index is { } index:
-                if (index != _entries.Count)
+                _heard = 0;
+                if (index < _entries.Count)
+                    break; // sent again for somebody who had missed it; this machine has it
+                if (index > _entries.Count)
                 {
                     AskForResync($"answer {index} arrived while {_entries.Count} was due");
                     break;
@@ -481,6 +648,23 @@ public partial class NetSession : Godot.Node
     private int _resyncs;
     public int Resyncs => _resyncs;
 
+    // SILENCE IS A QUESTION TOO. A client that has heard nothing from the host for a while says how many answers
+    // it has; the host sends whatever it is missing, and the votes as they stand — which is also how a client
+    // that is merely waiting on a slow thinker knows the table is still there. Cheap: nothing is replayed.
+    private double _heard;
+    private const double SilenceBeforeAsking = 10;
+
+    public override void _Process(double delta)
+    {
+        if (Role != NetRole.Client || !Started || GameHost.Instance.Play?.Session is not { IsComplete: false })
+            return;
+        _heard += Math.Min(delta, 0.5);
+        if (_heard < SilenceBeforeAsking)
+            return;
+        _heard = 0;
+        SendToHost(new NetMessage { Kind = "sync", Index = _entries.Count });
+    }
+
     private void AskForResync(string why)
     {
         _resyncs++;
@@ -493,6 +677,7 @@ public partial class NetSession : Godot.Node
 
     private void OnPeerConnected(long peer)
     {
+        Patient(peer);
         if (Role == NetRole.Host)
             GD.Print($"net: peer {peer} connected");
     }
@@ -516,7 +701,14 @@ public partial class NetSession : Godot.Node
         BroadcastLobby();
     }
 
-    private void OnConnectedToServer() => SendToHost(new NetMessage
+    private void OnConnectedToServer()
+    {
+        Patient(1);
+        Report(Started ? "Back at the table." : "Connected — waiting for the host.");
+        SendHello();
+    }
+
+    private void SendHello() => SendToHost(new NetMessage
     {
         Kind = "hello",
         Protocol = Protocol,
@@ -544,8 +736,13 @@ public partial class NetSession : Godot.Node
 
     private void SendToHost(NetMessage message) => Send(1, message);
 
+    // BNB_NET_TRACE=1 prints every message in and out — for following a table that stopped.
+    private static readonly bool Trace = System.Environment.GetEnvironmentVariable("BNB_NET_TRACE") is not null;
+
     private void Send(long peer, NetMessage message)
     {
+        if (Trace)
+            GD.Print($"net-trace: out {message.Kind} to {peer} index={message.Index}");
         if (Multiplayer.MultiplayerPeer is null)
             return;
         RpcId(peer, MethodName.Receive, JsonSerializer.Serialize(message, Json));
@@ -579,5 +776,9 @@ public partial class NetSession : Godot.Node
         public Dictionary<int, string>? VoteTable { get; init; }
     }
 
-    public sealed record StartMessage(int Seed, string[] Party, MetaStateData Meta);
+    // `Save`: a run taken up again from the host's save rather than begun from the seed.
+    public sealed record StartMessage(int Seed, string[] Party, MetaStateData Meta, string? Save = null);
+
+    // What the host keeps of a table between evenings: the run as it stood, and who sat where.
+    public sealed record TableSave(string Save, string[] Party, string[] PlayerIds, string[] Names, MetaStateData Meta);
 }

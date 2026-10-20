@@ -99,6 +99,20 @@ public partial class GameHost : Godot.Node
         EmitChanged();
     }
 
+    // A table's run taken up again from the host's save of it (NetSession): every machine resumes the same save on
+    // the same profile, so they stand together exactly where the table stopped.
+    public void ResumePartyRun(string saveJson, MetaStateData meta)
+    {
+        IsTutorial = false;
+        IsMultiplayer = true;
+        Play?.Dispose();
+        var profile = new MemoryMetaStore();
+        profile.Save(MetaState.FromSnapshot(meta));
+        Play = new RunPlayback(OnPlayChanged, profile);
+        Play.Resume(Blueprint, RunSaveJson.FromJson(saveJson), interactive: true);
+        EmitChanged();
+    }
+
     public void StartNewRun(int seed, string? characterId = null, int? health = null, string? mapGenerator = null)
     {
         IsTutorial = false;

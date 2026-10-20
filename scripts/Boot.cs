@@ -117,7 +117,9 @@ public partial class Boot : Control
             // must outlive the scene change.
             GetTree().Root.CallDeferred(Godot.Node.MethodName.AddChild, new MpSmoke(hosting, port,
                 SessionScreen.SimArg("--mp-seed", 1), SessionScreen.SimArg("--mp-answers", 300), character,
-                SessionScreen.SimArg("--mp-seats", 2), userArgs.Contains("--mp-screen")));
+                SessionScreen.SimArg("--mp-seats", 2), userArgs.Contains("--mp-screen"),
+                SessionScreen.SimArg("--mp-drop-at", -1), userArgs.Contains("--mp-resume"),
+                userArgs.SkipWhile(a => a != "--mp-id").Skip(1).FirstOrDefault()));
             return;
         }
         // THE ART CENSUS. Which pictures the document asks for and which of them exist — a question about the

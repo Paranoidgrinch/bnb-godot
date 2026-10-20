@@ -84,6 +84,23 @@ public partial class LobbyPanel : PanelContainer
             "Up to four players play one run together, each with their own hero, deck and gold. "
             + "The host's friends join by address; everyone needs the same version of the game."));
 
+        // The table played last time, taken up again: its seats wait for the same players.
+        if (NetSession.ReadTableSave() is { } saved)
+        {
+            var resume = new Button
+            {
+                Text = $"Continue the saved table — {string.Join(", ", saved.Names)}",
+                CustomMinimumSize = new Vector2(0, 40),
+                Name = "ContinueTable",
+            };
+            resume.Pressed += () =>
+            {
+                NetSession.Instance.HostSavedTable();
+                Redraw();
+            };
+            _column.AddChild(resume);
+        }
+
         var host = new Button { Text = $"Host a table (port {NetSession.DefaultPort})", CustomMinimumSize = new Vector2(0, 40) };
         host.Pressed += () =>
         {
