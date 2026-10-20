@@ -41,7 +41,7 @@ public partial class SessionScreen
         }
         if (AnyMenuOpen || Session is null)
             return;
-        var combat = Play?.CombatDriver?.Current;
+        var combat = Play?.Seat?.Current;
         if (pile != Pile.Deck && combat is null)
             return;
 
@@ -87,7 +87,7 @@ public partial class SessionScreen
         return [new PileSection("How often each card was played in this run's finished fights (all copies together)", deck)];
     }
 
-    private List<PileSection> DrawSections(InteractiveCombat combat)
+    private List<PileSection> DrawSections(ICombatView combat)
     {
         var pile = combat.State.GetCardZones(combat.HeroId).GetCardsInZone(CardZone.DrawPile);
         var revealed = combat.RevealedDrawPile;
@@ -105,7 +105,7 @@ public partial class SessionScreen
         return sections;
     }
 
-    private static List<PileSection> ZoneSections(InteractiveCombat combat, CardZone zone, string note) =>
+    private static List<PileSection> ZoneSections(ICombatView combat, CardZone zone, string note) =>
         [new PileSection(note, combat.State.GetCardZones(combat.HeroId).GetCardsInZone(zone)
             .Select(card => (card.DefinitionId.value, 0, (string?)null)).ToList())];
 
@@ -191,7 +191,7 @@ public partial class SessionScreen
     private Control? _discardTop;
     private Label? _discardCount;
 
-    private void BuildDiscardPile(InteractiveCombat combat)
+    private void BuildDiscardPile(ICombatView combat)
     {
         var zones = combat.State.GetCardZones(combat.HeroId);
         var discarded = zones.GetCardsInZone(CardZone.DiscardPile).Count;

@@ -371,7 +371,7 @@ public static class Archive
         var before = Found.Count;
 
         // WHO IS IN THE ROOM. The definition id is the enemy's own id — the same one that names its picture.
-        if (play?.CombatDriver?.Current is { } fight)
+        if (play?.Seat?.Current is { } fight)
         {
             foreach (var combatant in fight.State.Combatants.Where(c => c.TeamId == StandardCombatIds.EnemyTeam))
                 Found.Add($"enemy:{combatant.DefinitionId.value}");

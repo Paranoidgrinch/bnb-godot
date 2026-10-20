@@ -14,7 +14,7 @@ public partial class SessionScreen
 
     private void RequestEndTurn()
     {
-        if (Play?.CombatDriver?.Current is not { IsHeroTurn: true } combat)
+        if (Play?.Seat?.Current is not { IsHeroTurn: true } combat)
             return;
         if (GetNodeOrNull(EndTurnAskName) is not null)
         {
@@ -45,13 +45,13 @@ public partial class SessionScreen
         return true;
     }
 
-    private int PlayableCount(InteractiveCombat combat)
+    private int PlayableCount(ICombatView combat)
     {
         var hero = combat.State.GetCombatant(combat.HeroId);
         return combat.Hand.Count(card => combat.CanPlay(card.Id) && CanPay(hero, card.DefinitionId.value));
     }
 
-    private CanvasLayer EndTurnAsk(InteractiveCombat combat, int playable)
+    private CanvasLayer EndTurnAsk(ICombatView combat, int playable)
     {
         var layer = new CanvasLayer { Name = EndTurnAskName, Layer = 55 };
         var veil = new Control { MouseFilter = MouseFilterEnum.Stop, Theme = Theme };

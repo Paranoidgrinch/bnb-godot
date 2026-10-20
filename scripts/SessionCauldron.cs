@@ -17,7 +17,7 @@ public partial class SessionScreen
     private const string BrewAction = "cauldron_brew";
     private static readonly string[] FamilyTags = ["fam_fang", "fam_hex", "fam_husk", "fam_hearth", "fam_fortune"];
 
-    private void BuildHeroActions(HBoxContainer controls, InteractiveCombat combat)
+    private void BuildHeroActions(HBoxContainer controls, ICombatView combat)
     {
         if (combat.Actions.Count == 0)
             return;
@@ -52,7 +52,7 @@ public partial class SessionScreen
             var chosen = action;
             button.Pressed += () =>
             {
-                if (Play?.CombatDriver is not { } driver || driver.Current is not { } now)
+                if (Play?.Seat is not { } driver || driver.Current is not { } now)
                     return;
                 _armedCard = null;
                 driver.UseAction(chosen, FirstLivingEnemy(now));
@@ -63,7 +63,7 @@ public partial class SessionScreen
         }
     }
 
-    private static string? WhyNot(InteractiveCombat combat, CardDefinitionId action, int cost)
+    private static string? WhyNot(ICombatView combat, CardDefinitionId action, int cost)
     {
         if (!combat.IsHeroTurn)
             return "Not now: it is not your turn.";
@@ -87,12 +87,12 @@ public partial class SessionScreen
         return "A rule in this fight forbids it right now.";
     }
 
-    private static CombatantId? FirstLivingEnemy(InteractiveCombat combat) =>
+    private static CombatantId? FirstLivingEnemy(ICombatView combat) =>
         combat.State.Combatants
             .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
 
     // The pot: three slots, its state, and what it would brew.
-    private static Control CauldronView(InteractiveCombat combat)
+    private static Control CauldronView(ICombatView combat)
     {
         var pot = combat.State.GetCardZones(combat.HeroId).SetAside;
         var box = new PanelContainer { Name = "Cauldron", TooltipText = "The cauldron." };
@@ -242,7 +242,7 @@ public partial class SessionScreen
     private async System.Threading.Tasks.Task SmokeCauldron()
     {
         var session = Session;
-        for (var guard = 0; guard < 10 && session is not null && Play?.CombatDriver?.Current is null; guard++)
+        for (var guard = 0; guard < 10 && session is not null && Play?.Seat?.Current is null; guard++)
         {
             if (session.IsAwaitingNodeChoice)
                 session.PickNode(session.PendingNodeChoices[0].Id.Value);
@@ -251,7 +251,7 @@ public partial class SessionScreen
             else
                 break;
         }
-        if (Play?.CombatDriver is not { Current: { } } driver)
+        if (Play?.Seat is not { Current: { } } driver)
         {
             GD.Print("smoke-cauldron: no fight reached");
             GetTree().Quit();
@@ -328,7 +328,7 @@ public partial class SessionScreen
     private async System.Threading.Tasks.Task PressIntoThePot(string when)
     {
         await Frames(2);
-        var driver = Play!.CombatDriver!;
+        var driver = Play!.Seat!;
         var before = driver.Current!;
         var potBefore = before.State.GetCardZones(before.HeroId).SetAside.Count;
         var energyBefore = before.HeroEnergy;

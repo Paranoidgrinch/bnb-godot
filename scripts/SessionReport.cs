@@ -258,7 +258,7 @@ public partial class SessionScreen
     private async System.Threading.Tasks.Task SmokeReport()
     {
         var combat = WalkToFirstFight();
-        for (var guard = 0; guard < 60 && Play?.CombatDriver?.Current is { IsOver: false } fight; guard++)
+        for (var guard = 0; guard < 60 && Play?.Seat?.Current is { IsOver: false } fight; guard++)
             if (fight.IsHeroTurn)
                 EndTurnNow();
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);

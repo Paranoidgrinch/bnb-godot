@@ -62,7 +62,7 @@ public static class RunTally
         }
         if (play?.Session?.Run is not { } run)
             return;
-        if (play.CombatDriver?.Current is { IsOver: false } live)
+        if (play.Seat?.Current is { IsOver: false } live)
             LastFoes = live.State.Combatants
                 .Where(c => c.Id != live.HeroId && c.TeamId == RogueDeck.Core.Combat.StandardCombatIds.EnemyTeam
                     && c.IsAlive)

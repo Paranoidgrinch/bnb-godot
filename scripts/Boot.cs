@@ -90,7 +90,7 @@ public partial class Boot : Control
                 + $" · error={play?.Error ?? "none"}"
                 + $" · room={play?.Session?.Run.CurrentNodeId?.Value ?? "—"}"
                 + $" · result={play?.Session?.Run.Result.ToString() ?? "—"}"
-                + $" · in a fight={play?.CombatDriver?.Current is not null}");
+                + $" · in a fight={play?.Seat?.Current is not null}");
             GD.Print($"smoke-quit: what the resumed session is waiting for — "
                 + $"choice={play?.Session?.IsAwaitingChoice} entities={play?.Session?.IsAwaitingEntities} "
                 + $"node={play?.Session?.IsAwaitingNodeChoice} interlude={play?.Session?.IsAwaitingInterlude} "
@@ -104,6 +104,20 @@ public partial class Boot : Control
         if (userArgs.Contains("--smoke"))
         {
             GetTree().Quit();
+            return;
+        }
+        // A player at a multiplayer table, headless (tools/smoke-mp.sh): one process hosts, the others join.
+        if (userArgs.Contains("--smoke-mp-host") || userArgs.Contains("--smoke-mp-join"))
+        {
+            var hosting = userArgs.Contains("--smoke-mp-host");
+            var port = SessionScreen.SimArg(hosting ? "--smoke-mp-host" : "--smoke-mp-join", NetSession.DefaultPort);
+            var character = userArgs.SkipWhile(a => a != "--mp-character").Skip(1).FirstOrDefault()
+                ?? (hosting ? "bureaucrat" : "hedge_witch");
+            // On the root, not on this screen: with --mp-screen the run screen replaces the title, and the player
+            // must outlive the scene change.
+            GetTree().Root.CallDeferred(Godot.Node.MethodName.AddChild, new MpSmoke(hosting, port,
+                SessionScreen.SimArg("--mp-seed", 1), SessionScreen.SimArg("--mp-answers", 300), character,
+                SessionScreen.SimArg("--mp-seats", 2), userArgs.Contains("--mp-screen")));
             return;
         }
         // THE ART CENSUS. Which pictures the document asks for and which of them exist — a question about the
@@ -989,6 +1003,12 @@ public partial class Boot : Control
             };
             actions.AddChild(tutorial);
         }
+
+        // PLAY TOGETHER (multiplayer): host a table or join one; the run begins for everyone at the host's word.
+        var together = new Button { Text = "Play together", Name = "PlayTogetherButton", CustomMinimumSize = new Vector2(160, 44) };
+        together.TooltipText = "Up to four players, one run, a hero each.";
+        together.Pressed += () => LobbyPanel.Open(this, GoToSession, _selectedCharacter);
+        actions.AddChild(together);
 
         if (host.HasSave)
         {

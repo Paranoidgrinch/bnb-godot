@@ -44,7 +44,7 @@ public partial class SessionScreen
                 return ["rest"];
             return ["event"];
         }
-        if (Play?.CombatDriver?.Current is { IsHeroTurn: true } combat)
+        if (Play?.Seat?.Current is { IsHeroTurn: true } combat)
         {
             // The tutorial's walk is fixed — there is no fork to stand at — so the welcome and the map are told
             // at the first fight's first turn, with the map opened for the purpose.
@@ -69,7 +69,7 @@ public partial class SessionScreen
     // HER SIDE OF THE LESSON (Tutorial.WitchSteps): told only while the hero has a cauldron, each the first time the
     // fight shows it — the pot and its lid at once, the families when the first card is in, Brew when it is Ready,
     // and Hexed, Misfortune and Hearth the first time an enemy carries the one or she has HP to heal.
-    private static IEnumerable<string> WitchMomentsHere(RogueDeck.Scenario.Scripting.InteractiveCombat combat)
+    private static IEnumerable<string> WitchMomentsHere(RogueDeck.Scenario.Scripting.ICombatView combat)
     {
         if (!combat.Actions.Any(a => a.value == CauldronAction))
             yield break;
@@ -281,7 +281,7 @@ public partial class SessionScreen
                 CoachAfterDraw(session);
                 continue;
             }
-            if (play.CombatDriver is { Current: not null } driver)
+            if (play.Seat is { Current: not null } driver)
             {
                 if (driver.PendingOptionChoice is { } options)
                     driver.SupplyOptionChoice([.. Enumerable.Range(0, Math.Min(driver.PendingOptionChoiceCount, options.Count))]);
@@ -332,7 +332,7 @@ public partial class SessionScreen
     private bool _cookedThisTurn;
     private int _cookRound = -1;
 
-    private bool WitchMove(InteractiveCombatDriver driver)
+    private bool WitchMove(ICombatSeat driver)
     {
         var combat = driver.Current!;
         var add = combat.Actions.FirstOrDefault(a => a.value == CauldronAction);

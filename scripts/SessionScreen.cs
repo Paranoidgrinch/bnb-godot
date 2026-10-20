@@ -292,9 +292,9 @@ public partial class SessionScreen : Control
         var play = Play;
         for (var step = 0; step < 400 && session is not null && play is not null; step++)
         {
-            if (play.CombatDriver?.Current is not null && session.Run.VisitedNodes.Count > 1)
+            if (play.Seat?.Current is not null && session.Run.VisitedNodes.Count > 1)
                 break;
-            if (play.CombatDriver?.Current is { } fight)
+            if (play.Seat?.Current is { } fight)
             {
                 if (!fight.IsHeroTurn)
                     break;
@@ -305,9 +305,9 @@ public partial class SessionScreen : Control
                     .FirstOrDefault(c => c.Id != fight.HeroId && c.IsAlive
                         && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
                 if (card is not null)
-                    play.CombatDriver.PlayCard(card.Id, target);
+                    play.Seat.PlayCard(card.Id, target);
                 else
-                    play.CombatDriver.EndTurn();
+                    play.Seat.EndTurn();
             }
             else if (session.IsAwaitingNodeChoice)
                 session.PickNode(session.PendingNodeChoices
@@ -473,7 +473,7 @@ public partial class SessionScreen : Control
         // is allowed to put a fresh copy of itself back in your hand — Act III's Make Amends does it on purpose
         // — and a greedy player will then play it for ever), and both a turn and a fight need a ceiling. A
         // probe without them does not fail: it spends its whole step budget in one room and reports "Ongoing".
-        // Note what a fight is NOT identified by: the InteractiveCombat object. Under the replay model the
+        // Note what a fight is NOT identified by: the ICombatView object. Under the replay model the
         // fight is rebuilt from the blueprint on every single answer, so comparing instances says "a new fight"
         // every step and silently resets every counter below. A fight begins when the driver has one and ends
         // when it no longer does; turns are counted where this probe itself ends them.
@@ -524,14 +524,14 @@ public partial class SessionScreen : Control
                     + $"act {session.Run.ActNumber} {here} {rooms[^1].Split(':')[1]}");
             }
 
-            if (play.CombatDriver?.Current is null && inFight)
+            if (play.Seat?.Current is null && inFight)
             {
                 inFight = false;
                 turn = 0;
                 NewTurn();
             }
 
-            if (play.CombatDriver is { Current: not null } driver)
+            if (play.Seat is { Current: not null } driver)
             {
                 inFight = true;
                 if (driver.PendingOptionChoice is { } options)
@@ -697,10 +697,16 @@ public partial class SessionScreen : Control
 
     // Everything about the table a play could visibly move — the reading that tells a barren play from a
     // useful one. One definition, in the bot (R4), where the guard that uses it lives.
-    private static string TableState(InteractiveCombat combat) => RunBot.TableState(combat);
+    private static string TableState(ICombatView combat) => combat switch
+    {
+        InteractiveCombat solo => RunBot.TableState(solo),
+        PartyCombatSeatView seat => RunBot.TableState(seat.Combat, seat.HeroId),
+        _ => "",
+    };
 
     // Did the play go through? One definition, in the bot (R4).
-    private static bool Refused(InteractiveCombat? combat, int stepsBefore) => RunBot.Refused(combat, stepsBefore);
+    private static bool Refused(ICombatView? combat, int stepsBefore) =>
+        RunBot.Refused(combat as InteractiveCombat, stepsBefore);
 
     // Where the run stands, in the two names that identify a room. ⚠ One definition, in the bot (R4): this
     // string is in every probe's report and in every runner's log, and two copies of it drift.
@@ -775,7 +781,7 @@ public partial class SessionScreen : Control
             GameHost.Instance.StartNewRun(pinned, health: ProbeBody, mapGenerator: WalkedGenerator());
 
         bool Found() => Session is { } s && s.Run.ActNumber >= act
-            && Play?.CombatDriver?.Current is not null && AtABoss()
+            && Play?.Seat?.Current is not null && AtABoss()
             && (wanted.Length == 0 || Enemies().Any(e =>
                 e.DefinitionId.value.Contains(wanted, StringComparison.OrdinalIgnoreCase)));
 
@@ -811,13 +817,13 @@ public partial class SessionScreen : Control
         // the Nth card played in a turn, and a probe that never plays a card counts nothing and reports an
         // empty hand — which would read as "the stamp never reaches the screen" when the truth is that the
         // probe never gave it anything to stamp.
-        for (var round = 0; round < BossRoundsArgument() && Play?.CombatDriver?.Current is { } waiting; round++)
+        for (var round = 0; round < BossRoundsArgument() && Play?.Seat?.Current is { } waiting; round++)
         {
             if (waiting.IsHeroTurn)
             {
                 for (var played = 0; played < BossPlaysArgument(); played++)
                 {
-                    if (Play?.CombatDriver is not { } driver || driver.Current is not { } fight
+                    if (Play?.Seat is not { } driver || driver.Current is not { } fight
                         || !fight.IsHeroTurn)
                         break;
                     // A card that asks a question parks the whole fight until it is answered — and an
@@ -847,10 +853,10 @@ public partial class SessionScreen : Control
                     await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
                 }
 
-                if (Play?.CombatDriver is { Current: { IsHeroTurn: true } }
-                    && Play.CombatDriver.PendingOptionChoice is null
-                    && Play.CombatDriver.PendingCardChoice is null)
-                    Play.CombatDriver.EndTurn();
+                if (Play?.Seat is { Current: { IsHeroTurn: true } }
+                    && Play.Seat.PendingOptionChoice is null
+                    && Play.Seat.PendingCardChoice is null)
+                    Play.Seat.EndTurn();
             }
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         }
@@ -859,7 +865,7 @@ public partial class SessionScreen : Control
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
 
-        var combat = Play?.CombatDriver?.Current;
+        var combat = Play?.Seat?.Current;
         GD.Print($"smoke-boss {act}: act={Session?.Run.ActNumber} boss={(AtABoss() ? "yes" : "NO")} "
             + $"round={combat?.Round} ended={_walkEnded} error={Session?.Error ?? Play?.Error ?? "none"}");
         GD.Print($"  facing: {Facing()}");
@@ -876,7 +882,7 @@ public partial class SessionScreen : Control
         // days at once, and until this step the screen drew one whatever the player had been granted.
         GD.Print($"  forecast: {ForecastOnScreen()}");
         // What the worn relics have DONE this fight, as the engine counted it — what the grid lights up by.
-        if (Play?.CombatDriver?.Current is { } fought)
+        if (Play?.Seat?.Current is { } fought)
             GD.Print($"  relic activity: {string.Join(", ", _relicTiles.Keys.Select(relic => $"{relic}={fought.State.TriggerActivity.Where(t => t.Key.value.StartsWith(relic, StringComparison.Ordinal)).Sum(t => t.Value)}"))}"
                 + $" · flares so far {_flares}");
         if (combat is not null)
@@ -910,7 +916,7 @@ public partial class SessionScreen : Control
         if (_combatRoot is not null)
             Collect(_combatRoot);
 
-        var marked = Play?.CombatDriver?.Current is { } fight
+        var marked = Play?.Seat?.Current is { } fight
             ? fight.Hand.Count(c => c.Marks.Any(m => CardMarks.ContainsKey(m.value)))
             : 0;
         return labels.Count == 0 && marked == 0
@@ -923,7 +929,7 @@ public partial class SessionScreen : Control
     // screen never drew.
     private string ForecastOnScreen()
     {
-        if (Play?.CombatDriver?.Current is not { } fight)
+        if (Play?.Seat?.Current is not { } fight)
             return "no fight";
 
         var enemy = fight.State.Combatants.FirstOrDefault(c => c.Id != fight.HeroId && c.IsAlive);
@@ -1023,12 +1029,12 @@ public partial class SessionScreen : Control
         && node.HasTag(MapNodeTags.Boss);
 
     private IReadOnlyList<CombatantState> Enemies() =>
-        Play?.CombatDriver?.Current is { } fight
+        Play?.Seat?.Current is { } fight
             ? [.. fight.State.Combatants.Where(c => c.Id != fight.HeroId && c.TeamId == StandardCombatIds.EnemyTeam)]
             : [];
 
     private string Facing() =>
-        Play?.CombatDriver?.Current is { } fight
+        Play?.Seat?.Current is { } fight
             ? string.Join(", ", Enemies().Select(c => Name(c, fight)))
             : "-";
 
@@ -1172,7 +1178,7 @@ public partial class SessionScreen : Control
                 RunResult.Defeat => "defeat",
                 _ => null,
             };
-        if (play.CombatDriver is { Current: not null } driver)
+        if (play.Seat is { Current: not null } driver)
         {
             if (driver.PendingOptionChoice is not null)
                 return "combat: option choice";
@@ -1339,7 +1345,7 @@ public partial class SessionScreen : Control
             // Who was on the table last. A run that ends names the fight it ended in — without this, a defeat
             // reports a room code and leaves the next reader to walk there again to find out who was standing
             // in it.
-            if (play.CombatDriver?.Current is not null && Facing() is { Length: > 0 } facing && facing != "-")
+            if (play.Seat?.Current is not null && Facing() is { Length: > 0 } facing && facing != "-")
                 lastFight = facing;
             if (session.Run.CurrentNodeId?.Value is { } here && here != lastRoom)
             {
@@ -1366,7 +1372,7 @@ public partial class SessionScreen : Control
                 break;
             }
 
-            if (play.CombatDriver is { Current: not null } driver)
+            if (play.Seat is { Current: not null } driver)
             {
                 // Stop only with the turn in the player's hands and nothing half-answered, or the screen the
                 // probe captures is a screen no player ever sees.
@@ -1498,7 +1504,7 @@ public partial class SessionScreen : Control
     // The name of whatever is holding the walk, in the same words the walk's own branches are written in —
     // so a stuck report says which branch was firing instead of leaving the next reader to re-derive it.
     private static string Awaiting(InteractiveRunSession session, RunPlayback play) =>
-        play.CombatDriver switch
+        play.Seat switch
         {
             { PendingOptionChoice: not null } => "an option choice in a fight",
             { PendingCardChoice: not null } => "a card choice in a fight",
@@ -1530,10 +1536,10 @@ public partial class SessionScreen : Control
                 : null;
             // Parked at a room of the wanted kind, with something on screen to look at.
             if (here is not null && here.HasTag(role)
-                && (session.IsAwaitingChoice || session.IsAwaitingEntities || play.CombatDriver?.Current is not null))
+                && (session.IsAwaitingChoice || session.IsAwaitingEntities || play.Seat?.Current is not null))
                 break;
 
-            if (play.CombatDriver is { Current: not null } driver)
+            if (play.Seat is { Current: not null } driver)
             {
                 // ⚠⚠ A CARD THAT ASKS A QUESTION PARKS THE WALK. The marathon and the simulator both answer
                 // these two before anything else; this loop did not, so the first card that asked something
@@ -1912,7 +1918,7 @@ public partial class SessionScreen : Control
         var play = Play;
         for (var step = 0; step < 60 && session is not null && play is not null; step++)
         {
-            if (play.CombatDriver?.Current is not null) break;
+            if (play.Seat?.Current is not null) break;
             if (session.IsAwaitingNodeChoice) session.PickNode(session.PendingNodeChoices[0].Id.Value);
             else if (session.IsAwaitingInterlude) session.Continue();
             else if (session.IsAwaitingEntities) session.PickEntities([0]);
@@ -1923,7 +1929,7 @@ public partial class SessionScreen : Control
         // Through _Input, where the shortcuts are read, and on whatever key the map is bound to.
         _Input(new InputEventKey { Keycode = Controls.KeyOf(Controls.Map), Pressed = true });
         GD.Print($"smoke-mapkey: overlay open={GetNodeOrNull(MapOverlayName) is not null}"
-            + $" · in a fight={play?.CombatDriver?.Current is not null}");
+            + $" · in a fight={play?.Seat?.Current is not null}");
         await CaptureThenQuit("smoke-mapkey.png");
     }
 
@@ -1949,14 +1955,14 @@ public partial class SessionScreen : Control
         var play = Play;
         for (var step = 0; step < 60 && session is not null && play is not null; step++)
         {
-            if (play.CombatDriver?.Current is not null) break;
+            if (play.Seat?.Current is not null) break;
             if (session.IsAwaitingNodeChoice) session.PickNode(session.PendingNodeChoices[0].Id.Value);
             else if (session.IsAwaitingInterlude) session.Continue();
             else if (session.IsAwaitingEntities) session.PickEntities([0]);
             else if (session.IsAwaitingChoice) session.Pick(session.PendingChoices[^1].Id);
             else break;
         }
-        if (Play?.CombatDriver?.Current is null || DisplayServer.GetName().Contains("headless"))
+        if (Play?.Seat?.Current is null || DisplayServer.GetName().Contains("headless"))
         {
             GD.Print("smoke-window: needs a window and a fight");
             GetTree().Quit();
@@ -2074,7 +2080,7 @@ public partial class SessionScreen : Control
                 session.PickEntities([0]); // the bundled spoils (no descriptions) — take it and move on
                 continue;
             }
-            if (play.CombatDriver?.Current is { } combat)
+            if (play.Seat?.Current is { } combat)
             {
                 if (combat.IsHeroTurn)
                 {
@@ -2084,9 +2090,9 @@ public partial class SessionScreen : Control
                     var target = combat.State.Combatants
                         .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
                     if (card is not null)
-                        play.CombatDriver.PlayCard(card.Id, target);
+                        play.Seat.PlayCard(card.Id, target);
                     else
-                        play.CombatDriver.EndTurn();
+                        play.Seat.EndTurn();
                 }
                 else
                     break;
@@ -2128,7 +2134,7 @@ public partial class SessionScreen : Control
         var session = Session;
         var play = Play;
         var reachWatch = System.Diagnostics.Stopwatch.StartNew();
-        for (var i = 0; i < 8 && play?.CombatDriver?.Current is null && session is not null; i++)
+        for (var i = 0; i < 8 && play?.Seat?.Current is null && session is not null; i++)
         {
             if (session.IsAwaitingNodeChoice)
                 session.PickNode(session.PendingNodeChoices[0].Id.Value);
@@ -2137,7 +2143,7 @@ public partial class SessionScreen : Control
             else
                 break;
         }
-        var combat = play?.CombatDriver?.Current;
+        var combat = play?.Seat?.Current;
         if (combat is null || play is null)
         {
             GD.Print("smoke-timing: no fight reached");
@@ -2147,7 +2153,7 @@ public partial class SessionScreen : Control
         GD.Print($"smoke-timing: reached fight in {reachWatch.ElapsedMilliseconds} ms");
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var actions = 0;
-        for (; actions < 2 && play.CombatDriver!.Current is { } live && !live.IsOver; actions++)
+        for (; actions < 2 && play.Seat!.Current is { } live && !live.IsOver; actions++)
         {
             var before = watch.ElapsedMilliseconds;
             var hero = live.State.GetCombatant(live.HeroId);
@@ -2157,11 +2163,11 @@ public partial class SessionScreen : Control
             {
                 var target = live.State.Combatants
                     .FirstOrDefault(c => c.Id != live.HeroId && c.IsAlive && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
-                play.CombatDriver.PlayCard(card.Id, target);
+                play.Seat.PlayCard(card.Id, target);
             }
             else
             {
-                play.CombatDriver.EndTurn();
+                play.Seat.EndTurn();
             }
             GD.Print($"smoke-timing: action {actions} took {watch.ElapsedMilliseconds - before} ms");
         }
@@ -2186,21 +2192,21 @@ public partial class SessionScreen : Control
         {
             if (session.Error is not null || play.Error is not null)
                 break;
-            if (session.Run.VisitedNodes.Count >= NodeBudget && play.CombatDriver?.Current is null
+            if (session.Run.VisitedNodes.Count >= NodeBudget && play.Seat?.Current is null
                 && !session.IsAwaitingChoice && !session.IsAwaitingEntities)
                 break; // budget reached at a clean boundary
 
-            if (play.CombatDriver?.Current is { } combat)
+            if (play.Seat?.Current is { } combat)
             {
-                if (play.CombatDriver.PendingOptionChoice is { } options)
+                if (play.Seat.PendingOptionChoice is { } options)
                 {
-                    play.CombatDriver.SupplyOptionChoice(
-                        Enumerable.Range(0, Math.Min(play.CombatDriver.PendingOptionChoiceCount, options.Count)).ToList());
+                    play.Seat.SupplyOptionChoice(
+                        Enumerable.Range(0, Math.Min(play.Seat.PendingOptionChoiceCount, options.Count)).ToList());
                 }
-                else if (play.CombatDriver.PendingCardChoice is { } candidates)
+                else if (play.Seat.PendingCardChoice is { } candidates)
                 {
-                    play.CombatDriver.SupplyCardChoice(
-                        candidates.Take(play.CombatDriver.PendingCardChoiceCount).Select(c => c.Id).ToList());
+                    play.Seat.SupplyCardChoice(
+                        candidates.Take(play.Seat.PendingCardChoiceCount).Select(c => c.Id).ToList());
                 }
                 else if (combat.IsHeroTurn)
                 {
@@ -2212,12 +2218,12 @@ public partial class SessionScreen : Control
                     {
                         var target = combat.State.Combatants
                             .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
-                        play.CombatDriver.PlayCard(playable.Id, target);
+                        play.Seat.PlayCard(playable.Id, target);
                     }
                     else
                     {
                         fights++;
-                        play.CombatDriver.EndTurn();
+                        play.Seat.EndTurn();
                     }
                 }
                 else
@@ -2285,9 +2291,9 @@ public partial class SessionScreen : Control
 
         // Let the fight put something ON the table first: two turns of the Notary's wax is Paperwork stacking
         // on the hero, which is what a chip with a magnitude has to look like.
-        for (var turn = 0; turn < 2 && Play?.CombatDriver?.Current is not null; turn++)
-            Play.CombatDriver.EndTurn();
-        combat = Play?.CombatDriver?.Current ?? combat;
+        for (var turn = 0; turn < 2 && Play?.Seat?.Current is not null; turn++)
+            Play.Seat.EndTurn();
+        combat = Play?.Seat?.Current ?? combat;
 
         // Statuses the Act-II bosses put on the table, plus two ordinary ones for contrast.
         string[] sample =
@@ -2326,10 +2332,10 @@ public partial class SessionScreen : Control
     }
 
     // The first fight of a fresh run, reached through the same session calls the buttons make.
-    private InteractiveCombat? WalkToFirstFight()
+    private ICombatView? WalkToFirstFight()
     {
         var session = Session;
-        for (var guard = 0; guard < 20 && session is not null && Play?.CombatDriver?.Current is null; guard++)
+        for (var guard = 0; guard < 20 && session is not null && Play?.Seat?.Current is null; guard++)
         {
             if (session.IsAwaitingNodeChoice)
             {
@@ -2346,7 +2352,7 @@ public partial class SessionScreen : Control
             else
                 break;
         }
-        return Play?.CombatDriver?.Current;
+        return Play?.Seat?.Current;
     }
 
     // Headless proof of the whole Godot-side loop: walk to the first fight THROUGH the same methods the
@@ -2361,7 +2367,7 @@ public partial class SessionScreen : Control
             return;
         }
 
-        for (var guard = 0; guard < 10 && Play?.CombatDriver?.Current is null; guard++)
+        for (var guard = 0; guard < 10 && Play?.Seat?.Current is null; guard++)
         {
             if (session.IsAwaitingNodeChoice)
                 session.PickNode(session.PendingNodeChoices[0].Id.Value);
@@ -2371,7 +2377,7 @@ public partial class SessionScreen : Control
                 break;
         }
 
-        var combat = Play?.CombatDriver?.Current;
+        var combat = Play?.Seat?.Current;
         if (combat is null)
         {
             GD.Print($"smoke-run: no fight reached (error={session.Error ?? Play?.Error ?? "none"})");
@@ -2386,7 +2392,7 @@ public partial class SessionScreen : Control
         if (_armedCard is not null)
             PlayArmedCardAt(null);
 
-        var after = Play?.CombatDriver?.Current;
+        var after = Play?.Seat?.Current;
         var enemyAfter = after?.State.Combatants.First(c => c.Id != after.HeroId);
         GD.Print("smoke-run: "
             + $"fight={combat.State.Combatants.Count(c => c.Id != combat.HeroId)}v1 "
@@ -2594,6 +2600,13 @@ public partial class SessionScreen : Control
             Toast($"Not saved, so not leaving: {problem}");
             return;
         }
+        // A table's run is not this machine's to save: leaving it is getting up from the table. The host keeps
+        // the seat, and the player can join again and take it back.
+        if (AtTable)
+        {
+            NetSession.Instance.Leave();
+            GameHost.Instance.AbandonRunInMemory();
+        }
         GetTree().ChangeSceneToFile("res://scenes/Boot.tscn");
     }
 
@@ -2729,6 +2742,11 @@ public partial class SessionScreen : Control
         var key = Session is { } s ? ScreenKind(s) : "";
         int? keep = _scrollByScreen.TryGetValue(key, out var kept) ? kept : null;
         _screenKey = key;
+        // AT A TABLE THE SCREEN IS DRAWN AS THIS MACHINE'S MEMBER: the run's single-hero accessors — health, gold,
+        // deck, relics, consumables — answer for that member while the page is built, so the HUD, the inventory and
+        // the relics over the hero are this player's own and not the first seat's. Only reading happens here; the
+        // run every answer replays is a fresh one, untouched by the scope.
+        var scope = MyMemberScope(Session);
         try
         {
             RebuildScreen();
@@ -2753,6 +2771,10 @@ public partial class SessionScreen : Control
             if (!IsSimulating)
                 Toast($"The screen could not be drawn: {ex.Message}");
         }
+        finally
+        {
+            scope?.Dispose();
+        }
     }
 
     private void RebuildScreen()
@@ -2761,7 +2783,7 @@ public partial class SessionScreen : Control
         // Combat gets the graphical scene (_combatRoot); everything else the ordinary list (_mainScroll).
         var inCombat = session is not null && Play?.Error is null && session.Error is null
             && !session.IsAwaitingChoice && !session.IsAwaitingEntities && !session.IsAwaitingNodeChoice
-            && !session.IsAwaitingInterlude && Play?.CombatDriver?.Current is not null;
+            && !session.IsAwaitingInterlude && Play?.Seat?.Current is not null;
 
         ShowActPicture(session, inCombat);
 
@@ -2823,6 +2845,8 @@ public partial class SessionScreen : Control
             return;
         }
 
+        FaceMySeat(session);
+        Draws++;
         if (Play.Error is { } hostError)
             Title($"Error: {hostError}", MoonvineTheme.Harm);
         else if (session.Error is { } runError)
@@ -2831,6 +2855,8 @@ public partial class SessionScreen : Control
             RenderChoices(session, situation);
         else if (session.IsAwaitingEntities && session.PendingEntities is { } entities)
             RenderEntityPick(session, entities);
+        else if (session.IsWaitingOnOthers)
+            RenderWaitingOnOthers(session);
         else if (session.IsAwaitingNodeChoice)
             RenderNodeFork(session);
         else if (session.IsAwaitingInterlude)
@@ -2839,12 +2865,16 @@ public partial class SessionScreen : Control
             // the run now saves itself; all it did besides was make the player press Continue to be allowed to
             // look at the map. So it is walked straight through, and what it offered — consumables, and the
             // map itself — is on the room-choice screen the player lands on instead.
-            session.Continue();
+            AnswerContinue(session);
             GameHost.Instance.AutoSave();
-            return;
+            if (!AtTable)
+                return;
+            Title("Waiting for the party …");
         }
-        else if (Play.CombatDriver?.Current is { } combat)
+        else if (Play.Seat?.Current is { } combat)
         {
+            if (combat is PartyCombatSeatView)
+                PartyFightsDrawn++;
             RenderCombatGraphical(session, combat);
             ShowCombatChanges(session, combat);
             // What the chips said this time is what the next drawing compares against.
@@ -2890,7 +2920,7 @@ public partial class SessionScreen : Control
         // again after it is won, collecting the reward — and the document asks for the act's theme at both,
         // with the boss theme only for the fight itself. So the tags say WHICH battle music, and the combat
         // driver says WHETHER there is a battle.
-        var inCombat = Play?.CombatDriver?.Current is not null;
+        var inCombat = Play?.Seat?.Current is not null;
         MusicDirector.Instance?.Want(MusicDirector.Cue(
             actNumber: session.Run.ActNumber,
             inCombat: inCombat,
@@ -3017,7 +3047,7 @@ public partial class SessionScreen : Control
             block?.AddThemeConstantOverride("separation", 2);
 
             var button = new Button { Text = text, TooltipText = Glossary.Explain(null, text) };
-            button.Pressed += () => { session.Pick(id); GameHost.Instance.AutoSave(); };
+            button.Pressed += () => { AnswerChoice(session, id); GameHost.Instance.AutoSave(); };
             (block ?? (Container)_main).AddChild(button);
             if (block is null)
                 continue;
@@ -3128,7 +3158,7 @@ public partial class SessionScreen : Control
             if (ShopHere() is { Reroll: { } reroll })
                 AddShopRow(session, affordable, ShopNodeResolver.RerollChoiceId, "Restock the shelves", reroll.Price);
 
-            AddButton("Leave", () => session.Pick(ShopNodeResolver.LeaveChoiceId));
+            AddButton("Leave", () => AnswerChoice(session, ShopNodeResolver.LeaveChoiceId));
         });
     }
 
@@ -3174,7 +3204,7 @@ public partial class SessionScreen : Control
         return CardPick(
             definitionId, upgradeLevel: 0, selected: false,
             caption: canBuy ? $"{price} gold" : $"{price} gold — too dear",
-            onClick: canBuy ? () => session.Pick(choiceId) : null,
+            onClick: canBuy ? () => AnswerChoice(session, choiceId) : null,
             dimmed: !canBuy);
     }
 
@@ -3188,7 +3218,7 @@ public partial class SessionScreen : Control
         var column = new VBoxContainer { TooltipText = hover, MouseFilter = MouseFilterEnum.Pass };
         column.AddThemeConstantOverride("separation", 0);
         var button = new Button { Text = $"{name}   —   {price} gold", Disabled = !canBuy };
-        button.Pressed += () => session.Pick(choiceId);
+        button.Pressed += () => AnswerChoice(session, choiceId);
         button.TooltipText = hover;
         if (!canBuy)
             button.AddThemeColorOverride("font_disabled_color", MoonvineTheme.TextMuted);
@@ -3317,7 +3347,7 @@ public partial class SessionScreen : Control
                 if (oneClick)
                 {
                     _selectedEntities.Clear();
-                    session.PickEntities([index]);
+                    AnswerEntities(session, [index]);
                     return;
                 }
                 if (!_selectedEntities.Remove(index))
@@ -3357,7 +3387,7 @@ public partial class SessionScreen : Control
             {
                 var picks = _selectedEntities.ToList();
                 _selectedEntities.Clear();
-                session.PickEntities(picks);
+                AnswerEntities(session, picks);
             });
             confirm.Disabled = _selectedEntities.Count != entities.Count;
         }
@@ -3369,7 +3399,7 @@ public partial class SessionScreen : Control
                 : IsImprovement(entities) ? "◂ Back — improve nothing" : "Skip — take none", () =>
             {
                 _selectedEntities.Clear();
-                session.PickEntities([]);
+                AnswerEntities(session, []);
             });
     }
 
@@ -3708,11 +3738,14 @@ public partial class SessionScreen : Control
                 $"Use {ConsumableName(definition)}",
                 GameHost.Instance.Blueprint.Presentation.Consumables.GetValueOrDefault(definition)?.FlavorText ?? "",
                 selected: false,
-                () => session.UseConsumable(id),
+                () => AnswerConsumable(session, id),
                 ConsumableIcon(definition)));
         }
+        if (AtTable && NetSession.Instance.IsOnline)
+            foreach (var (node, voters) in VotesByNode())
+                Muted($"{string.Join(", ", voters)} → {session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == node)?.Tags.FirstOrDefault() ?? node}");
         AddMap(session.PendingNodeChoices.Select(n => n.Id.Value),
-            node => { session.PickNode(node); GameHost.Instance.AutoSave(); });
+            node => { AnswerNode(session, node); GameHost.Instance.AutoSave(); });
     }
 
     private void RenderInterlude(InteractiveRunSession session)
@@ -3727,10 +3760,10 @@ public partial class SessionScreen : Control
                 $"Use {ConsumableName(definition)}",
                 GameHost.Instance.Blueprint.Presentation.Consumables.GetValueOrDefault(definition)?.FlavorText ?? "",
                 selected: false,
-                () => session.UseConsumable(id),
+                () => AnswerConsumable(session, id),
                 ConsumableIcon(definition)));
         }
-        AddButton("Continue ▸", session.Continue);
+        AddButton("Continue ▸", () => AnswerContinue(session));
         AddButton("Save run", () => Toast(GameHost.Instance.SaveRun() ?? "Saved."));
         AddMap(null, null);
     }
@@ -3909,7 +3942,7 @@ public partial class SessionScreen : Control
         ? root.Size.Y
         : GetViewportRect().Size.Y - 2;
 
-    private void RenderCombatGraphical(InteractiveRunSession session, InteractiveCombat combat)
+    private void RenderCombatGraphical(InteractiveRunSession session, ICombatView combat)
     {
         var play = Play!;
         var hero = combat.State.GetCombatant(combat.HeroId);
@@ -3971,8 +4004,13 @@ public partial class SessionScreen : Control
         // Arena: hero far left, enemies far right, a stretchy gap between.
         var arena = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         var column = EnemyColumn(enemies.Count);
+        // The rest of a party stands in the arena too, in narrower columns, and their names wrap like any other.
+        var party = combat is PartyCombatSeatView
+            ? combat.State.Combatants.Where(c => c.Id != combat.HeroId && c.TeamId == StandardCombatIds.PlayerTeam).ToList()
+            : [];
         var nameBand = NameBandFor(
-            enemies.Select(e => (Name(e, combat), column)).Append((Name(hero, combat), HeroColumn)));
+            enemies.Select(e => (Name(e, combat), column)).Append((Name(hero, combat), HeroColumn))
+                .Concat(party.Select(a => (Name(a, combat), AllyColumn))));
         // The arena is what is left of the canvas between the bands above it and the hand below.
         var arenaHeight = PaneHeight - arenaTop - BottomBand - PaneInset;
         var bodyHeight = BodyHeightFor(arenaHeight, nameBand);
@@ -3983,6 +4021,15 @@ public partial class SessionScreen : Control
         // different part of every column. Hung, the row reads as a row and the overflow is in one place.
         heroBox.SizeFlagsVertical = SizeFlags.ShrinkBegin;
         arena.AddChild(heroBox);
+        // THE REST OF THE PARTY stands behind this machine's hero, a size smaller: their health, their guard,
+        // their energy, and whether they have ended their turn — what a player needs to know of the others to
+        // play beside them. A solo fight has nobody here.
+        foreach (var ally in party)
+        {
+            var allyBox = CombatantBox(combat, ally, isHero: false, AllyColumn, nameBand, bodyHeight * 3 / 4, arenaHeight);
+            allyBox.SizeFlagsVertical = SizeFlags.ShrinkBegin;
+            arena.AddChild(allyBox);
+        }
         // The enemies take the rest of the room and stand at the far end of it. A FLOW row, not a fixed one:
         // the widest fight in the game is four bodies beside the hero, and five 200-wide columns with their
         // gaps do not fit across 1280 — a fixed row does not shrink, it simply walks off the right edge and
@@ -4042,12 +4089,12 @@ public partial class SessionScreen : Control
         // An OPTION prompt comes first: a card parked on one is mid-resolution, so nothing else is playable
         // until it is answered. Picking is by position — one option supplies at once, several toggle into an
         // ordered set, and the order they are picked is the order they resolve.
-        if (play.CombatDriver!.PendingOptionChoice is { } optionChoice)
+        if (play.Seat!.PendingOptionChoice is { } optionChoice)
         {
             var box = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
             box.AddChild(new Label
             {
-                Text = $"{play.CombatDriver.PendingOptionChoicePurpose}  (pick {play.CombatDriver.PendingOptionChoiceCount})",
+                Text = $"{play.Seat.PendingOptionChoicePurpose}  (pick {play.Seat.PendingOptionChoiceCount})",
                 HorizontalAlignment = HorizontalAlignment.Center,
             });
 
@@ -4059,7 +4106,7 @@ public partial class SessionScreen : Control
                 var order = _selectedOptions.IndexOf(index);
                 var button = new Button
                 {
-                    Text = order >= 0 && play.CombatDriver.PendingOptionChoiceCount > 1
+                    Text = order >= 0 && play.Seat.PendingOptionChoiceCount > 1
                         ? $"{order + 1}. {optionChoice[index]}"
                         : optionChoice[index],
                     CustomMinimumSize = new Vector2(180, 48),
@@ -4076,15 +4123,15 @@ public partial class SessionScreen : Control
             }
             box.AddChild(row);
 
-            if (play.CombatDriver.PendingOptionChoiceCount > 1)
+            if (play.Seat.PendingOptionChoiceCount > 1)
             {
                 var confirm = new Button { Text = "Confirm" };
-                confirm.Disabled = _selectedOptions.Count != play.CombatDriver.PendingOptionChoiceCount;
+                confirm.Disabled = _selectedOptions.Count != play.Seat.PendingOptionChoiceCount;
                 confirm.Pressed += () =>
                 {
                     var picks = _selectedOptions.ToList();
                     _selectedOptions.Clear();
-                    play.CombatDriver.SupplyOptionChoice(picks);
+                    play.Seat.SupplyOptionChoice(picks);
                 };
                 box.AddChild(confirm);
             }
@@ -4093,12 +4140,12 @@ public partial class SessionScreen : Control
             return;
         }
 
-        if (play.CombatDriver!.PendingCardChoice is { } cardChoice)
+        if (play.Seat!.PendingCardChoice is { } cardChoice)
         {
             var choiceBox = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
             var title = new Label
             {
-                Text = $"{play.CombatDriver.PendingCardChoicePurpose}  (pick {play.CombatDriver.PendingCardChoiceCount})",
+                Text = $"{play.Seat.PendingCardChoicePurpose}  (pick {play.Seat.PendingCardChoiceCount})",
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             choiceBox.AddChild(title);
@@ -4114,15 +4161,15 @@ public partial class SessionScreen : Control
                 choiceRow.AddChild(block);
             }
             choiceBox.AddChild(choiceRow);
-            if (play.CombatDriver.PendingCardChoiceCount > 1)
+            if (play.Seat.PendingCardChoiceCount > 1)
             {
                 var confirm = new Button { Text = "Confirm" };
-                confirm.Disabled = _selectedCards.Count != play.CombatDriver.PendingCardChoiceCount;
+                confirm.Disabled = _selectedCards.Count != play.Seat.PendingCardChoiceCount;
                 confirm.Pressed += () =>
                 {
                     var picks = cardChoice.Where(c => _selectedCards.Contains(c.Id.value)).Select(c => c.Id).ToList();
                     _selectedCards.Clear();
-                    play.CombatDriver.SupplyCardChoice(picks);
+                    play.Seat.SupplyCardChoice(picks);
                 };
                 choiceBox.AddChild(confirm);
             }
@@ -4132,7 +4179,11 @@ public partial class SessionScreen : Control
 
         if (!combat.IsHeroTurn)
         {
-            bottomBox.AddChild(new Label { Text = "Resolving enemy actions…", HorizontalAlignment = HorizontalAlignment.Center });
+            // In a party fight a hero who has ended waits for the others; the enemies only move once all have.
+            var waiting = combat is PartyCombatSeatView seat && seat.Combat.ActiveMembers() is { Count: > 0 } still
+                ? "Waiting for " + string.Join(", ", still.Select(m => Name(combat.State.GetCombatant(m), combat))) + " …"
+                : "Resolving enemy actions…";
+            bottomBox.AddChild(new Label { Text = waiting, HorizontalAlignment = HorizontalAlignment.Center });
             return;
         }
 
@@ -4202,7 +4253,7 @@ public partial class SessionScreen : Control
 
     private void EndTurnNow()
     {
-        if (Play?.CombatDriver is not { } driver)
+        if (Play?.Seat is not { } driver)
             return;
         _armedCard = null;
         driver.EndTurn();
@@ -4215,7 +4266,7 @@ public partial class SessionScreen : Control
     // Built once per fight and UPDATED afterwards — see the note in Rebuild(): the animated back is a video,
     // and a video that is re-created cannot play. So the nodes here are made on the first render of a fight
     // and only their visibility, their position and the count change from then on.
-    private void BuildDeckPile(InteractiveCombat combat)
+    private void BuildDeckPile(ICombatView combat)
     {
         var drawCount = combat.State.GetCardZones(combat.HeroId).GetCardsInZone(CardZone.DrawPile).Count;
 
@@ -4294,7 +4345,7 @@ public partial class SessionScreen : Control
 
     // The hand as manually-placed card faces (a centered row), so newly-drawn cards can fly in from the deck.
     // It is laid inside the hand REGION — the bottom band minus the draw pile's corner — and centred in that.
-    private void BuildHand(Control region, InteractiveCombat combat, CombatantState hero)
+    private void BuildHand(Control region, ICombatView combat, CombatantState hero)
     {
         var cards = combat.Hand.ToList();
 
@@ -4469,6 +4520,7 @@ public partial class SessionScreen : Control
     }
 
     private const int HeroColumn = 200;
+    private const int AllyColumn = 150;
     private const int CombatRelicTile = 24;
     private const int CombatRelicsPerRow = 15;
     // The relic tiles of the fight on screen, by relic id — what a relic that fires lights up.
@@ -4555,7 +4607,7 @@ public partial class SessionScreen : Control
     }
 
     private Control CombatantBox(
-        InteractiveCombat combat, CombatantState combatant, bool isHero, int width, int nameBand,
+        ICombatView combat, CombatantState combatant, bool isHero, int width, int nameBand,
         int bodyHeight, float arenaHeight)
     {
         var box = new VBoxContainer { CustomMinimumSize = new Vector2(width, 0) };
@@ -4591,10 +4643,11 @@ public partial class SessionScreen : Control
 
         // The body: its picture if the file is there, the stick figure until it is. A hero has a character
         // slot rather than an enemy one, so it keeps the figure for now.
+        var friend = isHero || combatant.TeamId == StandardCombatIds.PlayerTeam;
         var figure = CardVisuals.Body(
-            isHero ? null : combatant.DefinitionId.value,
-            isHero ? MoonvineTheme.Accent : MoonvineTheme.Harm,
-            facing: isHero ? 1 : -1,
+            friend ? null : combatant.DefinitionId.value,
+            friend ? MoonvineTheme.Accent : MoonvineTheme.Harm,
+            facing: friend ? 1 : -1,
             dead: !combatant.IsAlive,
             width: width - 20,
             height: bodyHeight);
@@ -4635,6 +4688,22 @@ public partial class SessionScreen : Control
                 spent += 24 + 4;
             }
         }
+        else if (friend)
+        {
+            // Another hero of the party: what they have to spend, and whether they are still choosing.
+            var energy = new Label { Text = ResourcePoolsLine(combatant), HorizontalAlignment = HorizontalAlignment.Center };
+            energy.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
+            box.AddChild(energy);
+            var ended = combat is PartyCombatSeatView seat && seat.Combat.HasEnded(combatant.Id);
+            var turn = new Label
+            {
+                Text = !combatant.IsAlive ? "down" : ended ? "turn ended" : "choosing…",
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            turn.AddThemeColorOverride("font_color", ended || !combatant.IsAlive ? MoonvineTheme.TextMuted : MoonvineTheme.Text);
+            box.AddChild(turn);
+            spent += 2 * (24 + 4);
+        }
         else if (combatant.IsAlive)
         {
             // WHAT IT IS ABOUT TO DO, AND AS FAR PAST THAT AS THE PLAYER CAN SEE. The engine has always been
@@ -4650,6 +4719,23 @@ public partial class SessionScreen : Control
                     ahead == 0 ? ForeseenBlow(combat, combatant.Id) : null));
                 spent += (ahead == 0 ? PromisePlate : ForecastPlate) + 4;
             }
+            // In a party fight the promise says WHOM: the hero this enemy picked for the round.
+            if (combat is PartyCombatSeatView && days.Count > 0
+                && combat.IntendedTarget(combatant.Id) is { } aim
+                && combat.State.TryGetCombatant(aim, out var victim) && victim is not null)
+            {
+                var atWhom = new Label
+                {
+                    Name = "IntentTarget",
+                    Text = aim == combat.HeroId ? "→ you" : $"→ {Name(victim, combat)}",
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                    CustomMinimumSize = new Vector2(width, 0),
+                };
+                atWhom.AddThemeColorOverride("font_color", aim == combat.HeroId ? MoonvineTheme.Harm : MoonvineTheme.TextSoft);
+                box.AddChild(atWhom);
+                spent += 24 + 4;
+            }
         }
 
         if (StatusChips(combat, combatant) is { } chips)
@@ -4657,11 +4743,11 @@ public partial class SessionScreen : Control
 
         // A framed panel around the column; enemies highlight + become clickable when a card is armed.
         var panel = new PanelContainer();
-        var targetable = !isHero && combatant.IsAlive && _armedCard is not null;
+        var targetable = !friend && combatant.IsAlive && _armedCard is not null;
         // The body the keys are aiming at wears the signal colour; the others the ordinary "can be targeted".
         var aimed = targetable && AimedEnemy(combat)?.value == combatant.Id.value;
         panel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(
-            isHero ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
+            friend ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
             aimed ? MoonvineTheme.Signal : targetable ? MoonvineTheme.AccentLight : null));
         panel.AddChild(box);
         RegisterBody(combatant, panel, figure, bar);
@@ -4685,9 +4771,9 @@ public partial class SessionScreen : Control
 
     // ONE FORESIGHT PER DRAWN TABLE. The "Incoming" line and every enemy's intent chips read the same forecast;
     // forking the enemy turn once per enemy would be the same answer bought several times over.
-    private (InteractiveCombat Combat, int Steps, Foresight? Sight)? _foresightCache;
+    private (ICombatView Combat, int Steps, Foresight? Sight)? _foresightCache;
 
-    private Foresight? ForeseenNow(InteractiveCombat combat)
+    private Foresight? ForeseenNow(ICombatView combat)
     {
         if (!GameplaySettings.DamageCalculator || !combat.IsHeroTurn)
             return null;
@@ -4700,12 +4786,12 @@ public partial class SessionScreen : Control
 
     // What this enemy's next turn will actually take off the hero (health + block), played out on the fork —
     // null when the calculator is off, or when the hero would fall before the enemy acts and the blow is cut short.
-    private int? ForeseenBlow(InteractiveCombat combat, CombatantId enemy) =>
+    private int? ForeseenBlow(ICombatView combat, CombatantId enemy) =>
         ForeseenNow(combat) is { HeroDies: false } sight
             ? sight.Blows.Where(b => b.Enemy == enemy).Sum(b => b.Amount)
             : null;
 
-    private Label? IncomingLine(InteractiveCombat combat, CombatantState hero)
+    private Label? IncomingLine(ICombatView combat, CombatantState hero)
     {
         if (ForeseenNow(combat) is not { } foresight)
             return null;
@@ -4788,7 +4874,7 @@ public partial class SessionScreen : Control
     // A THIN CALLER. Everything about how a card LOOKS lives in CardVisuals.Face; this decides only what is
     // true of this card right now — what it is called, what it costs, whether it can be paid for, what has
     // been done to this copy — and hands that over.
-    private Control CardBlockButton(InteractiveCombat combat, CombatantState hero, CardInstance card, bool highlighted, Action onClick,
+    private Control CardBlockButton(ICombatView combat, CombatantState hero, CardInstance card, bool highlighted, Action onClick,
         bool chosenNotPlayed = false)
     {
         var definition = card.DefinitionId.value;
@@ -4834,7 +4920,7 @@ public partial class SessionScreen : Control
 
     private void OnCardChoiceClicked(RunPlayback play, IReadOnlyList<CardInstance> candidates, CardInstanceId id)
     {
-        var driver = play.CombatDriver!;
+        var driver = play.Seat!;
         if (driver.PendingCardChoiceCount == 1)
         {
             _selectedCards.Clear();
@@ -4848,7 +4934,7 @@ public partial class SessionScreen : Control
 
     private void OnOptionChoiceClicked(RunPlayback play, int index)
     {
-        var driver = play.CombatDriver!;
+        var driver = play.Seat!;
         if (driver.PendingOptionChoiceCount == 1)
         {
             _selectedOptions.Clear();
@@ -4864,13 +4950,13 @@ public partial class SessionScreen : Control
     private async System.Threading.Tasks.Task SmokeDraw()
     {
         var session = Session;
-        for (var i = 0; i < 8 && Play?.CombatDriver?.Current is null && session is not null; i++)
+        for (var i = 0; i < 8 && Play?.Seat?.Current is null && session is not null; i++)
         {
             if (session.IsAwaitingNodeChoice) session.PickNode(session.PendingNodeChoices[0].Id.Value);
             else if (session.IsAwaitingInterlude) session.Continue();
             else break;
         }
-        if (Play?.CombatDriver?.Current is null || DisplayServer.GetName().Contains("headless"))
+        if (Play?.Seat?.Current is null || DisplayServer.GetName().Contains("headless"))
         {
             GetTree().Quit();
             return;
@@ -4889,13 +4975,13 @@ public partial class SessionScreen : Control
     private async System.Threading.Tasks.Task SmokeDeck()
     {
         var session = Session;
-        for (var i = 0; i < 8 && Play?.CombatDriver?.Current is null && session is not null; i++)
+        for (var i = 0; i < 8 && Play?.Seat?.Current is null && session is not null; i++)
         {
             if (session.IsAwaitingNodeChoice) session.PickNode(session.PendingNodeChoices[0].Id.Value);
             else if (session.IsAwaitingInterlude) session.Continue();
             else break;
         }
-        if (Play?.CombatDriver?.Current is null || DisplayServer.GetName().Contains("headless"))
+        if (Play?.Seat?.Current is null || DisplayServer.GetName().Contains("headless"))
         {
             GD.Print("smoke-deck: needs a window (the clip does not decode headless)");
             GetTree().Quit();
@@ -4922,13 +5008,13 @@ public partial class SessionScreen : Control
                 first ??= seen;
                 last = seen;
             }
-            if (Play?.CombatDriver?.Current is { } fight && fight.IsHeroTurn)
+            if (Play?.Seat?.Current is { } fight && fight.IsHeroTurn)
             {
                 var hero = fight.State.GetCombatant(fight.HeroId);
                 var card = fight.Hand.FirstOrDefault(c => CanPay(hero, c.DefinitionId.value));
                 var target = fight.State.Combatants.FirstOrDefault(c => c.Id != fight.HeroId && c.IsAlive
                     && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
-                if (card is not null) Play.CombatDriver.PlayCard(card.Id, target);
+                if (card is not null) Play.Seat.PlayCard(card.Id, target);
             }
         }
 
@@ -4946,7 +5032,7 @@ public partial class SessionScreen : Control
     private void SmokeTarget()
     {
         var session = Session;
-        for (var i = 0; i < 8 && Play?.CombatDriver?.Current is null && session is not null; i++)
+        for (var i = 0; i < 8 && Play?.Seat?.Current is null && session is not null; i++)
         {
             if (session.IsAwaitingNodeChoice)
                 session.PickNode(session.PendingNodeChoices[0].Id.Value);
@@ -4955,7 +5041,7 @@ public partial class SessionScreen : Control
             else
                 break;
         }
-        var combat = Play?.CombatDriver?.Current;
+        var combat = Play?.Seat?.Current;
         if (combat is null)
         {
             GD.Print("smoke-target: no fight reached");
@@ -4969,12 +5055,12 @@ public partial class SessionScreen : Control
 
         if (block is not null)
             OnCardClicked(block.Id); // should PLAY immediately (no arm)
-        var afterBlock = Play?.CombatDriver?.Current;
+        var afterBlock = Play?.Seat?.Current;
         GD.Print($"smoke-target: block played={afterBlock?.Hand.Count < handBefore} armed={_armedCard is not null}");
 
         if (attack is not null)
             OnCardClicked(attack.Id); // should ARM (wait for enemy)
-        GD.Print($"smoke-target: attack armed={_armedCard is not null} played={Play?.CombatDriver?.Current?.Hand.Count < (afterBlock?.Hand.Count ?? 0)}");
+        GD.Print($"smoke-target: attack armed={_armedCard is not null} played={Play?.Seat?.Current?.Hand.Count < (afterBlock?.Hand.Count ?? 0)}");
         GetTree().Quit();
     }
 
@@ -5008,7 +5094,7 @@ public partial class SessionScreen : Control
         var play = Play;
         for (var step = 0; step < 300 && session is not null && play is not null; step++)
         {
-            if (play.CombatDriver?.Current is { IsHeroTurn: true })
+            if (play.Seat?.Current is { IsHeroTurn: true })
                 break;
             if (session.IsAwaitingNodeChoice)
                 session.PickNode((session.PendingNodeChoices.FirstOrDefault(n => n.HasTag(MapNodeTags.Combat))
@@ -5019,8 +5105,8 @@ public partial class SessionScreen : Control
                 session.PickEntities([0]);
             else if (session.IsAwaitingChoice)
                 session.Pick(session.PendingChoices[^1].Id);
-            else if (play.CombatDriver?.Current is { } combat)
-                play.CombatDriver.EndTurn();
+            else if (play.Seat?.Current is { } combat)
+                play.Seat.EndTurn();
             else
                 break;
         }
@@ -5097,7 +5183,7 @@ public partial class SessionScreen : Control
             var play = Play;
             if (session is null || play is null)
                 break;
-            if (play.CombatDriver?.Current is { IsHeroTurn: true })
+            if (play.Seat?.Current is { IsHeroTurn: true })
                 break;
             if (session.IsAwaitingNodeChoice)
                 session.PickNode(session.PendingNodeChoices[0].Id.Value);
@@ -5107,8 +5193,8 @@ public partial class SessionScreen : Control
                 session.PickEntities([0]);
             else if (session.IsAwaitingChoice)
                 session.Pick(session.PendingChoices[^1].Id);
-            else if (play.CombatDriver?.Current is not null)
-                play.CombatDriver.EndTurn();
+            else if (play.Seat?.Current is not null)
+                play.Seat.EndTurn();
             // Nothing pending is not the same as nothing happening: the session settles between frames, so a
             // loop that broke here walked exactly one room and called it a walk.
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -5135,7 +5221,7 @@ public partial class SessionScreen : Control
 
         SmokeQuitLeftAt = Session?.Run.CurrentNodeId?.Value ?? "—";
         SmokeQuitVisited = Session?.Run.VisitedNodes.Count ?? 0;
-        var fighting = Play?.CombatDriver?.Current;
+        var fighting = Play?.Seat?.Current;
         SmokeQuitLeftMidFight = fighting is not null;
         GD.Print($"smoke-quit: leaving act {Session?.Run.ActNumber} at {SmokeQuitLeftAt} after "
             + $"{SmokeQuitVisited} room(s), "
@@ -5166,7 +5252,7 @@ public partial class SessionScreen : Control
             : session.IsAwaitingEntities ? "an entity pick"
             : session.IsAwaitingNodeChoice ? "the room fork"
             : session.IsAwaitingInterlude ? "an interlude"
-            : play.CombatDriver?.Current is not null ? "the fight"
+            : play.Seat?.Current is not null ? "the fight"
             : session.IsComplete ? "the end of the run"
             : "NOTHING — the bare \u201c\u2026\u201d screen";
 
@@ -5178,7 +5264,7 @@ public partial class SessionScreen : Control
 
         var landed = play?.Error is null && session?.Error is null
             && (session?.IsAwaitingChoice == true || session?.IsAwaitingEntities == true
-                || session?.IsAwaitingNodeChoice == true || play?.CombatDriver?.Current is not null
+                || session?.IsAwaitingNodeChoice == true || play?.Seat?.Current is not null
                 || session?.IsComplete == true);
         GD.Print(landed && Boot.ResumeVerdict
             ? "smoke-quit: save, quit, and carry on — the run came back to a screen that can be played"
@@ -5283,13 +5369,13 @@ public partial class SessionScreen : Control
     private async System.Threading.Tasks.Task SmokeFormat()
     {
         var session = Session;
-        for (var i = 0; i < 8 && Play?.CombatDriver?.Current is null && session is not null; i++)
+        for (var i = 0; i < 8 && Play?.Seat?.Current is null && session is not null; i++)
         {
             if (session.IsAwaitingNodeChoice) session.PickNode(session.PendingNodeChoices[0].Id.Value);
             else if (session.IsAwaitingInterlude) session.Continue();
             else break;
         }
-        if (Play?.CombatDriver?.Current is not { } combat)
+        if (Play?.Seat?.Current is not { } combat)
         {
             GD.Print("smoke-format: no fight reached");
             GetTree().Quit();
@@ -5321,7 +5407,7 @@ public partial class SessionScreen : Control
         Measure();
         for (var click = 0; click < 10 && _handFaces.Count > 0; click++)
         {
-            var hand = Play?.CombatDriver?.Current?.Hand.ToList() ?? [];
+            var hand = Play?.Seat?.Current?.Hand.ToList() ?? [];
             if (hand.Count == 0) break;
             _armedCard = hand[click % hand.Count].Id;
             Rebuild();
@@ -5358,7 +5444,7 @@ public partial class SessionScreen : Control
     // again to cancel).
     private void OnCardClicked(CardInstanceId cardId)
     {
-        var combat = Play?.CombatDriver?.Current;
+        var combat = Play?.Seat?.Current;
         var definition = combat?.Hand.FirstOrDefault(c => c.Id.value == cardId.value)?.DefinitionId.value;
 
         if (definition is not null && !NeedsTarget(definition))
@@ -5384,7 +5470,7 @@ public partial class SessionScreen : Control
 
     private void PlayArmedCardAt(CombatantId? target)
     {
-        var driver = Play?.CombatDriver;
+        var driver = Play?.Seat;
         var combat = driver?.Current;
         if (driver is null || combat is null || _armedCard is not { } armed)
             return;
@@ -5398,7 +5484,7 @@ public partial class SessionScreen : Control
     // Rejected plays are recorded as step problems, not thrown — surface newly-appeared ones as a toast.
     private void SurfaceNewProblems()
     {
-        var steps = Play?.CombatDriver?.Current?.Steps;
+        var steps = Play?.Seat?.Current?.Steps;
         if (steps is null)
         {
             _seenProblems = 0;
@@ -5577,10 +5663,25 @@ public partial class SessionScreen : Control
 
     // ── ported display helpers (RunSessionView.razor) ────────────────────────────
 
-    private string Name(CombatantState combatant, InteractiveCombat combat) =>
-        combatant.Id == combat.HeroId
+    private string Name(CombatantState combatant, ICombatView combat) =>
+        combat is PartyCombatSeatView && combatant.TeamId == StandardCombatIds.PlayerTeam
+            ? HeroAtTheTable(combatant)
+            : combatant.Id == combat.HeroId
             ? Play?.HeroName ?? "You"
             : Play!.EnemyNames.TryGetValue(combatant.Id.value, out var name) ? name : combatant.Id.value;
+
+    // A hero of a party fight, as the table knows them: the player's name and the character they play.
+    private string HeroAtTheTable(CombatantState hero)
+    {
+        var seat = hero.Id.value == "hero" ? 0
+            : hero.Id.value.StartsWith("member#", StringComparison.Ordinal)
+              && int.TryParse(hero.Id.value["member#".Length..], out var at) ? at : -1;
+        var character = seat == 0 ? Play?.HeroName ?? "Hero" : hero.DisplayNameKey;
+        var net = NetSession.Instance;
+        return net.IsOnline && seat >= 0 && seat < net.Seats.Count
+            ? $"{net.Seats[seat].Name} · {character}"
+            : character;
+    }
 
 
     private string CardName(string definitionId)
@@ -5662,7 +5763,7 @@ public partial class SessionScreen : Control
     // from Entombed — because then the mark was never refreshed and the distance was measured from a turn
     // that was already over. Measured: 8 turns "missed by 2" against a filter that CANNOT overshoot, which is
     // how a bookkeeping error announces itself. `Weighed` reads this same counter, so the walker reads it too.
-    private static int Spent(InteractiveCombat combat) =>
+    private static int Spent(ICombatView combat) =>
         combat.State.GetCardPlayTurnStats(combat.HeroId).ResourceSpentThisTurn;
 
     private static int Measure(CombatantState hero) =>
@@ -5937,7 +6038,7 @@ public partial class SessionScreen : Control
         return label;
     }
 
-    private static Control? PhaseBanner(InteractiveCombat combat, CombatantState combatant)
+    private static Control? PhaseBanner(ICombatView combat, CombatantState combatant)
     {
         var registry = combat.State.DefinitionRegistry;
         var phases = combatant.Statuses
@@ -6015,7 +6116,7 @@ public partial class SessionScreen : Control
     private readonly List<(CombatantState Owner, StatusInstance Status, StatusDefinition Definition)> _ruled = [];
     private static HashSet<string>? _everyFightStatuses;
 
-    private void DecideRules(InteractiveCombat combat, CombatantState hero, IReadOnlyList<CombatantState> enemies)
+    private void DecideRules(ICombatView combat, CombatantState hero, IReadOnlyList<CombatantState> enemies)
     {
         _ruled.Clear();
         if (enemies.Count > 2 || !enemies.Any(e => e.IsAlive && IsEliteOrBoss(e)))
@@ -6046,7 +6147,7 @@ public partial class SessionScreen : Control
     private bool OnAPlate(CombatantState owner, StatusInstance status) =>
         _ruled.Any(r => r.Owner.Id == owner.Id && r.Status.DefinitionId == status.DefinitionId);
 
-    private Control? FightRules(InteractiveCombat combat, IReadOnlyList<CombatantState> enemies)
+    private Control? FightRules(ICombatView combat, IReadOnlyList<CombatantState> enemies)
     {
         var plates = _ruled.Take(5).Select(r => RulePlate(combat, r.Owner, r.Status, r.Definition,
             onHero: r.Owner.Id == combat.HeroId)).ToList();
@@ -6074,7 +6175,7 @@ public partial class SessionScreen : Control
     }
 
     private Control RulePlate(
-        InteractiveCombat combat, CombatantState owner, StatusInstance status, StatusDefinition definition, bool onHero)
+        ICombatView combat, CombatantState owner, StatusInstance status, StatusDefinition definition, bool onHero)
     {
         var plate = new PanelContainer { MouseFilter = MouseFilterEnum.Pass, TooltipText = definition.DescriptionKey };
         var box = MoonvineTheme.Panel(MoonvineTheme.BgRaised, MoonvineTheme.Arcane, radius: 6);
@@ -6127,7 +6228,7 @@ public partial class SessionScreen : Control
         return plate;
     }
 
-    private Control? StatusChips(InteractiveCombat combat, CombatantState combatant)
+    private Control? StatusChips(ICombatView combat, CombatantState combatant)
     {
         var registry = combat.State.DefinitionRegistry;
         // …minus the phase, which is not one fact among the others: it says what all of them are FOR, and it
@@ -6223,7 +6324,7 @@ public partial class SessionScreen : Control
     // that went DOWN is a fresh baseline, not a firing.
     private readonly Dictionary<string, int> _relicFired = new(StringComparer.Ordinal);
 
-    private void LightRelics(InteractiveCombat combat, CombatantState hero)
+    private void LightRelics(ICombatView combat, CombatantState hero)
     {
         var worn = _relicTiles.Keys.ToHashSet(StringComparer.Ordinal);
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -6316,7 +6417,7 @@ public partial class SessionScreen : Control
     }
 
     // The chips as one line of text — what the headless checks read, and what a log line would say.
-    private static string StatusLine(InteractiveCombat combat, CombatantState combatant)
+    private static string StatusLine(ICombatView combat, CombatantState combatant)
     {
         var registry = combat.State.DefinitionRegistry;
         return combatant.Statuses.Count == 0

@@ -116,7 +116,7 @@ public static class RecipeBook
     // brew; the first time a number is seen it is news, and its name comes back for the screen to announce.
     public static string? Observe(RunPlayback? play, RunBlueprint blueprint)
     {
-        if (play?.CombatDriver?.Current is not { } fight)
+        if (play?.Seat?.Current is not { } fight)
             return null;
         var number = fight.State.GetCombatant(fight.HeroId).GetCounter(Brewed);
         if (number <= 0)

@@ -142,7 +142,7 @@ public static class BugReport
                 Say("map", $"{run.Map.Nodes.Count} nodes · laid out by "
                     + $"{MapGenerators.Name(run.GeneratedMapGenerator)} · at {run.CurrentNodeId?.Value ?? "—"}");
             }
-            if (play.CombatDriver?.Current is { } combat)
+            if (play.Seat?.Current is { } combat)
                 Say("combat", $"round {combat.Round} · hand {combat.Hand.Count} "
                     + $"· {combat.State.Combatants.Count} combatants");
         }

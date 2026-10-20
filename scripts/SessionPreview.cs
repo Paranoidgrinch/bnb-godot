@@ -11,7 +11,7 @@ namespace BnbGodot;
 // pointer is over.
 //
 // ⚠⚠ THE NUMBER IS NOT CALCULATED, IT IS PLAYED OUT — the same rule the enemy telegraph follows
-// (InteractiveCombat.Foresee). The fight is forked and the card is played on the copy; what comes back already
+// (ICombatView.Foresee). The fight is forked and the card is played on the copy; what comes back already
 // has every strength, vulnerability, relic and decree in it, because it is the code that will run. A preview
 // that did the arithmetic itself would part company with the fight on the first modifier nobody told it about.
 //
@@ -33,7 +33,7 @@ public partial class SessionScreen
     // What the screen should preview when nothing is being pointed at: the picked card, if there is one.
     private void RestorePreview()
     {
-        if (Play?.CombatDriver?.Current is { } combat && _armedCard is { } armed)
+        if (Play?.Seat?.Current is { } combat && _armedCard is { } armed)
             ShowPreview(combat, armed, AimedEnemy(combat));
         else
             ClearPreview();
@@ -41,16 +41,19 @@ public partial class SessionScreen
 
     private void PreviewHandCard(CardInstanceId card)
     {
-        if (Play?.CombatDriver?.Current is not { } combat)
+        if (Play?.Seat?.Current is not { } combat)
             return;
         var definition = combat.Hand.FirstOrDefault(c => c.Id.value == card.value)?.DefinitionId.value;
         // A card that is aimed is previewed at the enemy the keys are aiming at — the one it would hit.
         ShowPreview(combat, card, definition is not null && NeedsTarget(definition) ? AimedEnemy(combat) : null);
     }
 
-    private void ShowPreview(InteractiveCombat combat, CardInstanceId card, CombatantId? target)
+    private void ShowPreview(ICombatView combat, CardInstanceId card, CombatantId? target)
     {
         ClearPreview();
+        // Only a fight with one hero can be tried on a copy here; a party's fight is previewed by nobody yet.
+        if (combat is not InteractiveCombat solo)
+            return;
         if (!GameplaySettings.DamageCalculator || !combat.IsHeroTurn || !combat.CanPlay(card)
             || combat.Hand.FirstOrDefault(c => c.Id.value == card.value) is not { } inHand
             || !CanPay(combat.State.GetCombatant(combat.HeroId), inHand.DefinitionId.value))
@@ -69,11 +72,11 @@ public partial class SessionScreen
         {
             if (queued)
             {
-                var without = combat.Fork();
+                var without = solo.Fork();
                 without.EndTurn();
                 before = Standing(without);
             }
-            var fork = combat.Fork();
+            var fork = solo.Fork();
             fork.PlayCard(card, target);
             if (queued)
                 fork.EndTurn();
@@ -92,7 +95,7 @@ public partial class SessionScreen
                 Decorate(bar.Bar, bar.Max, then, now, queued ? "next turn:" : null);
     }
 
-    private static bool Queued(InteractiveCombat combat, CardDefinitionId definition) =>
+    private static bool Queued(ICombatView combat, CardDefinitionId definition) =>
         combat.State.DefinitionRegistry is { } registry
         && registry.TryGetCard(definition, out var card) && card is { QueueOnPlay: true };
 
@@ -110,7 +113,7 @@ public partial class SessionScreen
     // visible statuses by name and size, so a card that only applies Paperwork still has something to show.
     private sealed record Stand(int Health, int Block, bool Alive, IReadOnlyDictionary<string, int> Statuses);
 
-    private static Dictionary<string, Stand> Standing(InteractiveCombat combat) =>
+    private static Dictionary<string, Stand> Standing(ICombatView combat) =>
         combat.State.Combatants.ToDictionary(c => c.Id.value, c => new Stand(c.Health.Current, Block(c), c.IsAlive,
             c.Statuses
                 .Where(status => status.Visibility == StatusVisibility.Visible && !IsPhase(status))
@@ -121,7 +124,7 @@ public partial class SessionScreen
                     StringComparer.Ordinal)),
             StringComparer.Ordinal);
 
-    private static string StatusName(InteractiveCombat combat, StatusInstance status)
+    private static string StatusName(ICombatView combat, StatusInstance status)
     {
         StatusDefinition? definition = null;
         combat.State.DefinitionRegistry?.TryGetStatus(status.DefinitionId, out definition);
@@ -235,7 +238,7 @@ public partial class SessionScreen
         var shown = _healthBars.TryGetValue(aimed, out var bar) && bar.Bar.GetNodeOrNull(PreviewName) is { } layer
             ? layer.GetChildren().OfType<Label>().FirstOrDefault()?.Text ?? ""
             : "";
-        var untouched = Standing(Play!.CombatDriver!.Current!).All(pair =>
+        var untouched = Standing(Play!.Seat!.Current!).All(pair =>
             before[pair.Key] is var was && was.Health == pair.Value.Health && was.Block == pair.Value.Block
             && was.Alive == pair.Value.Alive && !StatusChanges(was, pair.Value).Any());
         var ok = shown.Contains('−') && untouched;

@@ -79,7 +79,7 @@ public partial class SessionScreen
 
         // Everything below plays the fight, and is only meaningful with nothing covering it.
         if (CardViewerOpen is not null || GetNodeOrNull(MapOverlayName) is not null
-            || Play?.CombatDriver is not { } driver || driver.Current is not { IsHeroTurn: true } combat
+            || Play?.Seat is not { } driver || driver.Current is not { IsHeroTurn: true } combat
             || driver.PendingCardChoice is not null || driver.PendingOptionChoice is not null)
             return false;
 
@@ -118,13 +118,13 @@ public partial class SessionScreen
         return false;
     }
 
-    private static List<CombatantId> LivingEnemies(InteractiveCombat combat) =>
+    private static List<CombatantId> LivingEnemies(ICombatView combat) =>
         combat.State.Combatants
             .Where(c => c.Id != combat.HeroId && c.IsAlive && c.TeamId == StandardCombatIds.EnemyTeam)
             .Select(c => c.Id)
             .ToList();
 
-    private CombatantId? AimedEnemy(InteractiveCombat combat)
+    private CombatantId? AimedEnemy(ICombatView combat)
     {
         var living = LivingEnemies(combat);
         return _keyTarget is { } aimed && living.Any(id => id.value == aimed.value)
@@ -180,7 +180,7 @@ public partial class SessionScreen
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         report.Add($"inventory-closed={GetNodeOrNull(InventoryOverlayName) is null}");
 
-        var fight = Play!.CombatDriver!.Current!;
+        var fight = Play!.Seat!.Current!;
         var hero = fight.State.GetCombatant(fight.HeroId);
         var index = fight.Hand.ToList().FindIndex(c => NeedsTarget(c.DefinitionId.value)
             && CanPay(hero, c.DefinitionId.value) && fight.CanPlay(c.Id));
@@ -191,13 +191,13 @@ public partial class SessionScreen
             report.Add($"armed={_armedCard is not null}");
             Press(Controls.TargetNext);
             Press(Controls.Confirm);
-            report.Add($"played={Play.CombatDriver.Current!.Hand.Count < before}");
+            report.Add($"played={Play.Seat.Current!.Hand.Count < before}");
         }
         else
             report.Add("no-targeted-card");
 
-        var round = Play.CombatDriver.Current!.Round;
-        var asks = GameplaySettings.ConfirmEndTurn && PlayableCount(Play.CombatDriver.Current!) > 0;
+        var round = Play.Seat.Current!.Round;
+        var asks = GameplaySettings.ConfirmEndTurn && PlayableCount(Play.Seat.Current!) > 0;
         Press(Controls.EndTurn);
         report.Add($"asked={GetNodeOrNull(EndTurnAskName) is not null == asks}");
         if (asks)
@@ -209,7 +209,7 @@ public partial class SessionScreen
             }
             Press(Controls.EndTurn); // the second press is the yes
         }
-        report.Add($"turn-ended={Play.CombatDriver.Current is not { } now || now.Round > round}");
+        report.Add($"turn-ended={Play.Seat.Current is not { } now || now.Round > round}");
 
         // And the dialog the keys are chosen in, photographed from the Esc menu.
         _UnhandledInput(new InputEventAction { Action = "ui_cancel", Pressed = true });

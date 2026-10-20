@@ -50,7 +50,7 @@ public partial class SessionScreen
         _watchedSession = session;
         session.CaptureCombat = () =>
         {
-            var steps = Play?.CombatDriver?.Current?.Steps;
+            var steps = Play?.Seat?.Current?.Steps;
             var fight = capture();
             if (fight is not null && steps is not null)
                 _handedOver = steps;
@@ -59,7 +59,7 @@ public partial class SessionScreen
     }
 
     // Called after a fight is drawn: shows every step the fight took since the last drawing of the SAME fight.
-    private void ShowCombatChanges(InteractiveRunSession session, InteractiveCombat combat)
+    private void ShowCombatChanges(InteractiveRunSession session, ICombatView combat)
     {
         WatchHandovers(session);
         var key = session.Run.CurrentNodeId?.Value ?? "";
@@ -138,7 +138,7 @@ public partial class SessionScreen
     // What a status put on a body says as it lands, or null when it says nothing: a status the chips do not
     // show, a neutral marker, a relic's own rule, a mechanic that has its plate in the middle of the room.
     private (string Text, Color Colour, Sfx.Kind? Sound)? StatusWord(
-        InteractiveCombat combat, StatusApplicationResolvedTraceEvent applied, HashSet<string> worn)
+        ICombatView combat, StatusApplicationResolvedTraceEvent applied, HashSet<string> worn)
     {
         StatusDefinition? definition = null;
         if (combat.State.DefinitionRegistry?.TryGetStatus(applied.StatusDefinitionId, out definition) != true
@@ -262,13 +262,13 @@ public partial class SessionScreen
     private async System.Threading.Tasks.Task SmokeEffects()
     {
         var session = Session;
-        for (var i = 0; i < 8 && Play?.CombatDriver?.Current is null && session is not null; i++)
+        for (var i = 0; i < 8 && Play?.Seat?.Current is null && session is not null; i++)
         {
             if (session.IsAwaitingNodeChoice) session.PickNode(session.PendingNodeChoices[0].Id.Value);
             else if (session.IsAwaitingInterlude) session.Continue();
             else break;
         }
-        if (Play?.CombatDriver is not { Current: not null } driver)
+        if (Play?.Seat is not { Current: not null } driver)
         {
             GD.Print("smoke-effects: no fight reached");
             GetTree().Quit(1);

@@ -1,6 +1,7 @@
 using Godot;
 using RogueDeck.Run;
 using RogueDeck.Sandbox.Composition;
+using RogueDeck.Sandbox.Run;
 
 namespace BnbGodot;
 
@@ -75,13 +76,33 @@ public partial class GameHost : Godot.Node
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
         IsTutorial = true;
+        IsMultiplayer = false;
         Play.Start(Blueprint.ForTutorial(characterId), seed: 1, interactive: true);
+        EmitChanged();
+    }
+
+    // A RUN PLAYED AT A TABLE (multiplayer, NetSession): every machine starts it the same way — the host's seed,
+    // the party in seat order, the design's own maps, and the HOST'S profile, because the profile becomes run
+    // flags and two machines on two profiles would walk two runs. It touches nobody's own profile, it is not
+    // the player's save, and it is not recorded: the table, not this machine, is where it lives.
+    public bool IsMultiplayer { get; private set; }
+
+    public void StartPartyRun(int seed, IReadOnlyList<string> party, MetaStateData meta)
+    {
+        IsTutorial = false;
+        IsMultiplayer = true;
+        Play?.Dispose();
+        var profile = new MemoryMetaStore();
+        profile.Save(MetaState.FromSnapshot(meta));
+        Play = new RunPlayback(OnPlayChanged, profile);
+        Play.Start(Blueprint, seed, interactive: true, party[0], MapGenerators.Strategic, party);
         EmitChanged();
     }
 
     public void StartNewRun(int seed, string? characterId = null, int? health = null, string? mapGenerator = null)
     {
         IsTutorial = false;
+        IsMultiplayer = false;
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
         var generator = mapGenerator ?? RunPreferences.MapGenerator;
@@ -108,6 +129,26 @@ public partial class GameHost : Godot.Node
         };
     }
 
+    // The seat this machine plays a fight from (CombatSeats): the solo driver, or this machine's member's seat at
+    // a party fight — the same object for as long as the fight driver is, so a screen may hold on to it.
+    private PartyCombatSeat? _partySeat;
+
+    public ICombatSeat? SeatOf(RunPlayback play)
+    {
+        if (play.PartyCombatDriver is not { } party)
+            return play.CombatDriver;
+        var member = new RogueDeck.Core.Combat.CombatantId(
+            NetSession.CombatantOf(System.Math.Max(0, NetSession.Instance.LocalSeat)));
+        if (_partySeat is null || _partySeat.Member != member || !ReferenceEquals(_partyDriver, party))
+        {
+            _partySeat = new PartyCombatSeat(party, member, NetSession.Instance.Submit);
+            _partyDriver = party;
+        }
+        return _partySeat;
+    }
+
+    private PartyInteractiveCombatDriver? _partyDriver;
+
     public bool HasSave => Godot.FileAccess.FileExists(SavePath);
 
     // Save the live run (valid only at a clean interlude — the engine guards this and reports why not).
@@ -120,8 +161,8 @@ public partial class GameHost : Godot.Node
 
     public string? SaveRun()
     {
-        if (IsTutorial)
-            return null; // a lesson is not a run: the player's real save stays where it is
+        if (IsTutorial || IsMultiplayer)
+            return null; // a lesson is not a run, nor is the table's: the player's real save stays where it is
         var json = Play?.SaveJson();
         if (json is null)
             return Play?.Error ?? "No run to save.";
@@ -137,6 +178,7 @@ public partial class GameHost : Godot.Node
             return false;
         var save = RunSaveJson.FromJson(Godot.FileAccess.GetFileAsString(SavePath));
         IsTutorial = false;
+        IsMultiplayer = false;
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
         Play.Resume(Blueprint, save, interactive: true);
@@ -174,7 +216,7 @@ public partial class GameHost : Godot.Node
     {
         // The history first: RunLog.Observe lets go of the recording the history takes its room count from.
         // A tutorial is neither history nor a recording.
-        if (!IsTutorial)
+        if (!IsTutorial && !IsMultiplayer)
         {
             RunHistory.Observe(Play, RunLog.Current);
             RunLog.Observe(this);
