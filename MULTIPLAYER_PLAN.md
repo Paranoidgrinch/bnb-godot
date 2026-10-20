@@ -73,15 +73,20 @@ speichert). Darum wird kein Spielzustand übertragen, nur Antworten:
 
 Beobachtung Balance: Mit dem Würfel-Bot und 0,75 sind Partys noch deutlich stärker (Solo stirbt im Schnitt nach ~6 Kämpfen, 2er-Party nach ~10 bis 14, 4er-Party nach ~28). Gegnerschaden verteilt sich auf mehr Helden. Echte Spieltests entscheiden, ob der Faktor steigen oder auch Schaden skalieren soll.
 
+Seit dem zweiten Durchgang (2026-10-20) erledigt:
+- Relikte der Mitglieder reagieren auf Party-Ereignisse und wirken im Kampf ihres Besitzers; Eröffnungen ("nächster Kampf beginnt mit ...") gehören dem Mitglied, das sie bekommen hat, auch über Speichern.
+- Verbrauchsgegenstände im Party-Kampf benutzt, wer sie trägt.
+- Eine Kartenfrage im Kampf beantwortet nur der Held, dem die Karte gehört; die anderen sehen "Waiting for X to choose".
+- Schadensvorschau beim Zielen und Schritt-Berichte (Treffer-Animationen, Log) auch im Party-Kampf.
+- Stimmen als Marker unter den Kartenknoten.
+- Verbindung: 30 s Geduld statt ENet-Standard, automatisches Wiederverbinden des Clients, fehlende Antworten werden nachgeschickt, ein Client meldet sich nach 10 s Stille.
+- Gespeicherte Tische: der Host speichert den Run, wann immer niemand mitten in einer Frage steckt; "Continue the saved table" wartet auf dieselben Spieler (Spieler-ID) und setzt für alle fort.
+- Smoke: `--drop` (Verbindungsabbruch und Rückkehr), `--resume` (zweite Sitzung aus dem Spielstand).
+
 Bekannte Lücken:
-- Relikte von Mitgliedern 2 bis 4 wirken noch nicht im Kampf (nur die des ersten Helden).
-- Event-Effekte "nächster Kampf beginnt mit ..." landen beim ersten Helden.
-- Verbrauchsgegenstände im Party-Kampf nutzt nur Sitz 0.
-- Keine Schadensvorschau beim Zielen im Party-Kampf (die Solo-Vorschau forkt `InteractiveCombat`); die Vorschau "was kommt beim Zugende" funktioniert.
-- Party-Kämpfe schreiben keine Schritt-Berichte, daher keine Treffer-Animationen.
-- Eine Kartenwahl, die eine Karte im Kampf auslöst, darf jeder am Tisch beantworten.
-- Mehrspieler-Runs werden weder gespeichert noch aufgezeichnet; Wiedereinstieg geht nur, solange der Host läuft.
-- Stimmen sind nur eine Textzeile, noch keine Marker auf den Kartenknoten.
+- Kampf-Beiträge von Relikten in Code-Form (`CombatContributions`) werden nur für den ersten Helden projiziert; BnB benutzt keine.
+- Mehrspieler-Runs werden nicht aufgezeichnet (kein Run-Log-Upload).
+- Kein Relay: Spieler in verschiedenen Netzen brauchen Portfreigabe oder ein VPN wie Tailscale.
 
 ## Phasen
 
