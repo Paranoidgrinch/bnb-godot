@@ -132,12 +132,6 @@ public static class CardVisuals
         return min;
     }
 
-    // The largest size at which a wrapped paragraph fits a box. What still does not fit is clipped, and the
-    // hover has it in full — a plaque that grew to fit its longest card is the bug this whole file exists for.
-    // ⚠ MEASURE WITH THE SAME LINE SPACING THE LABEL WILL DRAW WITH. GetMultilineStringSize asks the FONT how
-    // tall the block is; a Label then adds the theme's `line_spacing` (3 px by default) between every line,
-    // so a paragraph measured to fit exactly loses its last line to the clip. The rules Label sets that
-    // constant to 0 and this measures the same block — the two have to agree or the fit is a guess.
     public const string WandLine = "\nWand: ";
 
     // A card's text split into what it does when played and what it does in a wand (null: it has no wand part).
@@ -147,6 +141,12 @@ public static class CardVisuals
         return at < 0 ? (rules, null) : (rules[..at], rules[(at + WandLine.Length)..]);
     }
 
+    // The largest size at which a wrapped paragraph fits a box. What still does not fit is clipped, and the
+    // hover has it in full — a plaque that grew to fit its longest card is the bug this whole file exists for.
+    // ⚠ MEASURE WITH THE SAME LINE SPACING THE LABEL WILL DRAW WITH. GetMultilineStringSize asks the FONT how
+    // tall the block is; a Label then adds the theme's `line_spacing` (3 px by default) between every line,
+    // so a paragraph measured to fit exactly loses its last line to the clip. The rules Label sets that
+    // constant to 0 and this measures the same block — the two have to agree or the fit is a guess.
     private static int FitBlock(string text, Vector2 box, int max, int min)
     {
         for (var size = max; size >= min; size--)
@@ -278,30 +278,43 @@ public static class CardVisuals
         var (playText, wandText) = SplitWand(card.Rules);
         var size = FitBlock(wandText is null ? playText : $"{playText}\n\nWAND {wandText}", box,
             (int)Mathf.Round(11 * scale), Math.Max(6, (int)Mathf.Round(7 * scale)));
-        var column = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center, MouseFilter = Control.MouseFilterEnum.Ignore };
-        column.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        column.AddThemeConstantOverride("separation", 1);
-        Label Part(string text, Color colour, int fontSize)
+        // ⚠ NO CONTAINER ON THE PLAQUE. The two parts stood in a VBoxContainer once, and a wrapping label in a box
+        // asks the box for its width while the box asks it for its height: the hand never settled, and Godot sorted
+        // it until its message queue ran out (--smoke-screens as the Apprentice, 2026-10-20). Each part is measured
+        // here and pinned where it goes, the pair centred on the plaque the way the single paragraph was.
+        Label Part(string text, Color colour, int fontSize, float top, float height)
         {
             var label = new Label
             {
                 Text = text,
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
                 HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                ClipText = true,
                 MouseFilter = Control.MouseFilterEnum.Ignore,
-                // An autowrapping label in a box has no width of its own: it is given the plaque's.
-                CustomMinimumSize = new Vector2(box.X, 0),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                AnchorRight = 1,
+                OffsetTop = top,
+                OffsetBottom = top + height,
             };
             label.AddThemeConstantOverride("line_spacing", 0);
             label.AddThemeColorOverride("font_color", card.Dimmed ? MoonvineTheme.TextMuted : colour);
             label.AddThemeFontSizeOverride("font_size", fontSize);
+            plaque.AddChild(label);
             return label;
         }
-        column.AddChild(Part(playText, MoonvineTheme.TextSoft, size));
-        if (wandText is not null)
-            column.AddChild(Part("WAND " + wandText, MoonvineTheme.Arcane, Math.Max(5, size - 1)));
-        plaque.AddChild(column);
+        if (wandText is null)
+            Part(playText, MoonvineTheme.TextSoft, size, 0, box.Y);
+        else
+        {
+            var wandSize = Math.Max(5, size - 1);
+            const float Gap = 2;
+            var playHeight = TypeFace.GetMultilineStringSize(playText, HorizontalAlignment.Left, box.X, size).Y;
+            var wandHeight = TypeFace.GetMultilineStringSize("WAND " + wandText, HorizontalAlignment.Left, box.X, wandSize).Y;
+            var top = Math.Max(0, (box.Y - playHeight - Gap - wandHeight) / 2);
+            Part(playText, MoonvineTheme.TextSoft, size, top, playHeight);
+            Part("WAND " + wandText, MoonvineTheme.Arcane, wandSize, top + playHeight + Gap,
+                Math.Max(0, Math.Min(wandHeight, box.Y - top - playHeight - Gap)));
+        }
 
         // ── the frame itself, over all of it ─────────────────────────────────────
         // IgnoreSize, or the TextureRect would report the artwork's own 1053 × 1494 as a minimum and blow the
