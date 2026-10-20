@@ -1061,19 +1061,23 @@ public partial class SessionScreen : Control
     // The walk STEERS: at a fork it prefers a room whose screen this act has not shown yet. A fork answered
     // at random walks past the shop three acts running and then reports the shop as unreached — a finding
     // about the walker, dressed as a finding about the screen.
+    // Who a probe that starts its own runs plays: `--character=<id>`, the roster's first otherwise.
+    private static string? ProbedCharacter =>
+        OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--character=", StringComparison.Ordinal))?["--character=".Length..];
+
     private async System.Threading.Tasks.Task SmokeScreens()
     {
         var immortalSeed = SimArg("--seed", 7);
         var mortalSeed = SimArg("--mortal-seed", 101);
 
-        GameHost.Instance.StartNewRun(immortalSeed, health: ProbeBody, mapGenerator: WalkedGenerator());
+        GameHost.Instance.StartNewRun(immortalSeed, ProbedCharacter, health: ProbeBody, mapGenerator: WalkedGenerator());
         await WalkUntil(stop: () => false, prefer: ShowsSomethingNew, budget: 30000, observe: NoteScreen);
         NoteScreen();   // the run ENDED on the last answer; its final screen is a state like any other
         var immortalEnded = _walkEnded;
 
         // The defeat screen. On the game's own health the greedy walker dies in Act I, which is the whole
         // reason this second walk is short.
-        GameHost.Instance.StartNewRun(mortalSeed, health: 400, mapGenerator: WalkedGenerator());
+        GameHost.Instance.StartNewRun(mortalSeed, ProbedCharacter, health: 400, mapGenerator: WalkedGenerator());
         await WalkUntil(stop: () => false, prefer: ShowsSomethingNew, budget: 4000, observe: NoteScreen);
         NoteScreen();
         var mortalEnded = _walkEnded;
