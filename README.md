@@ -9,7 +9,8 @@ The Godot 4.7 (.NET) frontend of Bureaucrats & Broomsticks, a satirical fantasy 
 | bnb-godot (this repository) | frontend: screens, cards, art, music, settings, bug reports, run recording |
 | [bnb-runs](https://github.com/Paranoidgrinch/bnb-runs) | recorded playtest runs |
 
-The game has five acts on generated branching maps, two playable characters (Bureaucrat and Hedge Witch),
+The game has five acts on generated branching maps, three playable characters (Bureaucrat, Hedge Witch and
+Sorcerer's Apprentice),
 combat with telegraphed enemy intents, elites and gods as bosses, events, shops, relics, an archive of
 everything encountered, a tutorial, ten music tracks and save/continue. It is in closed alpha (version 0.2.0,
 distributed to testers through itch.io).
@@ -53,6 +54,10 @@ Host and screens
   - The relic shelf on the right is an `HFlowContainer`. Horizontal scrolling of the sidebar is disabled on
     purpose: a horizontally scrolling `ScrollContainer` gives its child only its minimum width, which for a
     wrapping container is one tile (checked by `--smoke-shelf` with 69 relics).
+- `SessionWand.cs`: the Sorcerer's Apprentice's wand, a row of its own over the combat controls: Focus and
+  Exhaustion, each slot with what it will do in the next cast (the engine's `WandCompiler` plan, so a fizzle or
+  a Stop is shown before anything is paid), and the five wand actions with their Focus cost and, when greyed
+  out, the reason. Cast is aimed like a card and previewed on a fork of the fight (checked by `--smoke-wand`).
 - `MapView.cs`: the current act's map as a graph, entry at the top and boss at the bottom. It draws
   `RunState.Map`, because the blueprint's own `Map` is empty in a generated game. Hovering a room shows who is
   in it. Names are only written across rooms in a gauntlet act with several boss rooms.
