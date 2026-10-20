@@ -22,6 +22,8 @@ public partial class MapView : Control
     private readonly RunState _run;
     private readonly System.Collections.Generic.HashSet<string> _reachable;
     private readonly Action<string>? _onPick;
+    // Who at a multiplayer table has voted for which room (node id → names); null alone.
+    private readonly System.Collections.Generic.IReadOnlyDictionary<string, System.Collections.Generic.List<string>>? _votes;
     private System.Collections.Generic.Dictionary<NodeId, Vector2> _positions = new();
 
     private const int NodeW = 116;
@@ -34,12 +36,14 @@ public partial class MapView : Control
     public MapView(
         RunMap map, RunState run,
         System.Collections.Generic.IEnumerable<string>? reachable = null,
-        Action<string>? onPick = null)
+        Action<string>? onPick = null,
+        System.Collections.Generic.IReadOnlyDictionary<string, System.Collections.Generic.List<string>>? votes = null)
     {
         _map = map;
         _run = run;
         _reachable = reachable is null ? [] : [.. reachable];
         _onPick = onPick;
+        _votes = votes;
     }
 
     // The fight a room runs, by the name the document gives it. Falls back to the encounter id, so a missing
@@ -97,6 +101,24 @@ public partial class MapView : Control
                 button.Pressed += () => pick(id);
             }
             AddChild(button);
+            // THE TABLE'S VOTES hang under the room they are for: who wants to go there, by name.
+            if (_votes is not null && _votes.TryGetValue(node.Id.Value, out var voters) && voters.Count > 0)
+            {
+                var badge = new Label
+                {
+                    Text = $"◆ {string.Join(", ", voters)}",
+                    Position = pos + new Vector2(0, NodeH - 2),
+                    Size = new Vector2(button.Size.X, 18),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    ClipText = true,
+                    TooltipText = $"Voted for this room: {string.Join(", ", voters)}",
+                    MouseFilter = MouseFilterEnum.Pass,
+                    Name = $"Votes_{node.Id.Value}",
+                };
+                badge.AddThemeFontSizeOverride("font_size", 12);
+                badge.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
+                AddChild(badge);
+            }
             if (_run.CurrentNodeId?.Value == node.Id.Value)
                 CurrentRoomPosition = pos;
         }

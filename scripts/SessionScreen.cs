@@ -172,6 +172,8 @@ public partial class SessionScreen : Control
         if (_drawing)
         {
             GameHost.Instance.StateChanged += Rebuild;
+            // At a table the votes move without the run moving; the map's markers follow them.
+            NetSession.Instance.LobbyChanged += Rebuild;
             Rebuild();
         }
 
@@ -2429,7 +2431,11 @@ public partial class SessionScreen : Control
         GetTree().Quit(code);
     }
 
-    public override void _ExitTree() => GameHost.Instance.StateChanged -= Rebuild;
+    public override void _ExitTree()
+    {
+        GameHost.Instance.StateChanged -= Rebuild;
+        NetSession.Instance.LobbyChanged -= Rebuild;
+    }
 
     // ── the dispatcher ───────────────────────────────────────────────────────────
 
@@ -3742,8 +3748,7 @@ public partial class SessionScreen : Control
                 ConsumableIcon(definition)));
         }
         if (AtTable && NetSession.Instance.IsOnline)
-            foreach (var (node, voters) in VotesByNode())
-                Muted($"{string.Join(", ", voters)} → {session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == node)?.Tags.FirstOrDefault() ?? node}");
+            Muted("The party goes where most of you vote; a tie goes the host's way.");
         AddMap(session.PendingNodeChoices.Select(n => n.Id.Value),
             node => { AnswerNode(session, node); GameHost.Instance.AutoSave(); });
     }
@@ -3833,7 +3838,8 @@ public partial class SessionScreen : Control
     {
         if (Session is not { } session)
             return;
-        var map = new MapView(session.Run.Map, session.Run, reachable, onPick)
+        var map = new MapView(session.Run.Map, session.Run, reachable, onPick,
+            AtTable && NetSession.Instance.IsOnline ? VotesByNode() : null)
         {
             SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
         };
@@ -4089,6 +4095,17 @@ public partial class SessionScreen : Control
         // An OPTION prompt comes first: a card parked on one is mid-resolution, so nothing else is playable
         // until it is answered. Picking is by position — one option supplies at once, several toggle into an
         // ordered set, and the order they are picked is the order they resolve.
+        // A question one of the OTHER heroes' cards asked is theirs to answer; this player waits for it.
+        if (play.PartyCombatDriver?.PendingChooser is { } chooser && chooser != combat.HeroId
+            && combat.State.TryGetCombatant(chooser, out var asked) && asked is not null)
+        {
+            bottomBox.AddChild(new Label
+            {
+                Text = $"Waiting for {Name(asked, combat)} to choose …",
+                HorizontalAlignment = HorizontalAlignment.Center,
+            });
+            return;
+        }
         if (play.Seat!.PendingOptionChoice is { } optionChoice)
         {
             var box = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
@@ -4242,7 +4259,13 @@ public partial class SessionScreen : Control
         {
             var id = consumable.Id;
             var use = new Button { Text = $"Use {consumable.DefinitionId.Value}" };
-            use.Pressed += () => play.UseConsumableInCombat(id);
+            use.Pressed += () =>
+            {
+                if (AtTable)
+                    NetSession.Instance.Submit(new CombatConsumableEntry(id));
+                else
+                    play.UseConsumableInCombat(id);
+            };
             controls.AddChild(use);
         }
         // The hero's own actions and, for a hero with a cauldron, the pot itself (SessionCauldron).

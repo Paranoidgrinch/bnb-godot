@@ -51,9 +51,6 @@ public partial class SessionScreen
     private void ShowPreview(ICombatView combat, CardInstanceId card, CombatantId? target)
     {
         ClearPreview();
-        // Only a fight with one hero can be tried on a copy here; a party's fight is previewed by nobody yet.
-        if (combat is not InteractiveCombat solo)
-            return;
         if (!GameplaySettings.DamageCalculator || !combat.IsHeroTurn || !combat.CanPlay(card)
             || combat.Hand.FirstOrDefault(c => c.Id.value == card.value) is not { } inHand
             || !CanPay(combat.State.GetCombatant(combat.HeroId), inHand.DefinitionId.value))
@@ -71,16 +68,8 @@ public partial class SessionScreen
         try
         {
             if (queued)
-            {
-                var without = solo.Fork();
-                without.EndTurn();
-                before = Standing(without);
-            }
-            var fork = solo.Fork();
-            fork.PlayCard(card, target);
-            if (queued)
-                fork.EndTurn();
-            after = Standing(fork);
+                before = Standing(Tried(combat, card, target, play: false, handOver: true));
+            after = Standing(Tried(combat, card, target, play: true, handOver: queued));
         }
         catch (Exception ex)
         {
@@ -93,6 +82,32 @@ public partial class SessionScreen
             if (after.TryGetValue(id, out var now) && _healthBars.TryGetValue(id, out var bar)
                 && IsInstanceValid(bar.Bar))
                 Decorate(bar.Bar, bar.Max, then, now, queued ? "next turn:" : null);
+    }
+
+    // The fight played on a copy: the card (or not), then the turn handed over (or not). A party fight hands it over
+    // the way a party does — every hero still in the phase ends — and is read back from this player's seat.
+    private static ICombatView Tried(ICombatView combat, CardInstanceId card, CombatantId? target, bool play, bool handOver)
+    {
+        switch (combat)
+        {
+            case InteractiveCombat solo:
+                var fork = solo.Fork();
+                if (play)
+                    fork.PlayCard(card, target);
+                if (handOver)
+                    fork.EndTurn();
+                return fork;
+            case PartyCombatSeatView seat:
+                var copy = seat.Combat.Fork();
+                if (play)
+                    copy.PlayCard(seat.HeroId, card, target);
+                if (handOver)
+                    foreach (var member in copy.ActiveMembers())
+                        copy.EndTurn(member);
+                return new PartyCombatSeatView(copy, seat.HeroId);
+            default:
+                return combat;
+        }
     }
 
     private static bool Queued(ICombatView combat, CardDefinitionId definition) =>
