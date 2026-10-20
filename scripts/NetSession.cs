@@ -178,6 +178,7 @@ public partial class NetSession : Godot.Node
 
     public void Leave()
     {
+        RunLog.LeaveTable();
         if (Multiplayer.MultiplayerPeer is ENetMultiplayerPeer peer)
             peer.Close();
         Multiplayer.MultiplayerPeer = null;
@@ -269,8 +270,9 @@ public partial class NetSession : Godot.Node
             return;
         var table = new TableSave(json, _start.Party, [.. Seats.Select(s => s.PlayerId)], [.. Seats.Select(s => s.Name)],
             _start.Meta);
-        using var file = Godot.FileAccess.Open(TableSavePath, Godot.FileAccess.ModeFlags.Write);
-        file?.StoreString(JsonSerializer.Serialize(table, Json));
+        using (var file = Godot.FileAccess.Open(TableSavePath, Godot.FileAccess.ModeFlags.Write))
+            file?.StoreString(JsonSerializer.Serialize(table, Json));
+        RunLog.TableSaved();
     }
 
     // Open the saved table: every seat is laid for the player who sat there, the host's own taken at once.
@@ -302,11 +304,20 @@ public partial class NetSession : Godot.Node
         _start = _saved is { } saved
             ? new StartMessage(0, saved.Party, saved.Meta, saved.Save)
             : new StartMessage(seed, [.. Seats.Select(s => s.Character!)], host.Meta.Snapshot());
+        var resumed = _saved;
         _saved = null;
         Started = true;
         _entries.Clear();
         Votes.Clear();
         BeginRun(_start);
+        // The host keeps the table's recording — a new one, or the saved table's own picked back up.
+        if (GameHost.Instance.Play is { } play)
+        {
+            if (resumed is not null)
+                RunLog.ResumeTable(play, resumed);
+            else
+                RunLog.BeginTable(play, _start, Seats, GameHost.Instance.ContentHash);
+        }
         foreach (var (seat, index) in Seats.Select((s, i) => (s, i)).Skip(1))
             if (seat.Connected)
                 Send(seat.Peer, new NetMessage { Kind = "start", Start = _start, Seat = index, Entries = [] });

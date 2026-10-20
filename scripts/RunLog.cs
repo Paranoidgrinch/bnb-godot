@@ -153,6 +153,104 @@ public static class RunLog
             DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(OpenPath));
     }
 
+    // ── A TABLE'S RUN (multiplayer) ───────────────────────────────────────────────────────────────────────
+    // Kept beside the player's own run, never in its place: a table must not abandon the solo run waiting in this
+    // player's save. Only the HOST keeps it — four machines sending the same run would be four runs — and it names
+    // every seat (RunRecording.Table) beside the party (Start.Party). Written whenever the table is saved, so the
+    // recording and the saved table always agree on how far the run got; a saved table taken up again picks it
+    // back up, so a run that spans three evenings is one recording here too.
+    private const string TableOpenPath = "user://table-record.json";
+    private static RunRecorder? _table;
+
+    public static void BeginTable(
+        RunPlayback play, NetSession.StartMessage start, IReadOnlyList<NetSession.Seat> seats, string? contentHash)
+    {
+        if (!Enabled)
+            return;
+        AbandonTable();
+        var recording = RunRecorder.Begin(
+            start.Seed, start.Party[0], MapGenerators.Strategic, MetaState.FromSnapshot(start.Meta),
+            new RunRecordingPlayer(PlayerIdentity.Name ?? "unnamed", PlayerIdentity.Id),
+            contentHash, $"bnb-godot {ProjectSettings.GetSetting("application/config/version").AsString()}",
+            DateTime.UtcNow, start.Party) with
+        {
+            Table = [.. seats.Select(s => new RunRecordingPlayer(s.Name, s.PlayerId))],
+        };
+        AttachTable(play, new RunRecorder(recording));
+    }
+
+    // A saved table taken up again: its recording, if it is this table's and still open.
+    public static void ResumeTable(RunPlayback play, NetSession.TableSave saved)
+    {
+        if (!Enabled)
+            return;
+        _table?.Detach();
+        _table = null;
+        if (Read(TableOpenPath) is not { Result: null } open
+            || open.Start.Party is not { } party || !party.SequenceEqual(saved.Party))
+            return;
+        open.Resumes++;
+        AttachTable(play, new RunRecorder(open));
+    }
+
+    private static void AttachTable(RunPlayback play, RunRecorder recorder)
+    {
+        try
+        {
+            recorder.Attach(play);
+            _table = recorder;
+            Write(TableOpenPath, recorder.Recording);
+        }
+        catch (Exception ex)
+        {
+            GD.PushWarning($"run log: not recording this table ({ex.Message})");
+            _table = null;
+        }
+    }
+
+    public static void TableSaved()
+    {
+        if (_table is { } recorder)
+            Write(TableOpenPath, recorder.Recording);
+    }
+
+    // A table's run that has ended is sealed, queued and sent.
+    public static void ObserveTable(Godot.Node host)
+    {
+        if (_table is not { Recording.Result: not null } recorder)
+            return;
+        recorder.Detach();
+        _table = null;
+        recorder.Recording.EndedUtc = DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+        Enqueue(recorder.Recording);
+        DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TableOpenPath));
+        _ = Flush(host);
+    }
+
+    // A new table over an open one: the old one is over. Leaving a table is NOT this — its save waits for another
+    // evening, and so does its recording.
+    public static void AbandonTable()
+    {
+        var open = _table?.Recording ?? Read(TableOpenPath);
+        _table?.Detach();
+        _table = null;
+        if (open is { Result: null } && open.Answers.Count > 0)
+        {
+            open.Result = "Abandoned";
+            open.EndedUtc = DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+            Enqueue(open);
+        }
+        if (Godot.FileAccess.FileExists(TableOpenPath))
+            DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TableOpenPath));
+    }
+
+    // The machine got up from the table; the recording stays on disk for the saved table.
+    public static void LeaveTable()
+    {
+        _table?.Detach();
+        _table = null;
+    }
+
     private static string Enqueue(RunRecording recording)
     {
         DirAccess.MakeDirRecursiveAbsolute(QueueFolder);
@@ -227,7 +325,10 @@ public static class RunLog
         {
             var recording = RunRecordingJson.FromJson(text);
             var last = recording.Rooms.Count > 0 ? recording.Rooms[^1].State.Split(" | ")[0] : "—";
-            return $"🎲 **{recording.Player?.Name ?? "?"}** · {recording.Result ?? "?"} · reached {last}"
+            var who = recording.Table is { Count: > 1 } table
+                ? $"**{string.Join(", ", table.Select(p => p.Name))}** (table of {table.Count})"
+                : $"**{recording.Player?.Name ?? "?"}**";
+            return $"🎲 {who} · {recording.Result ?? "?"} · reached {last}"
                 + $" · seed {recording.Start.Seed} · {recording.Answers.Count} answers";
         }
         catch (Exception)

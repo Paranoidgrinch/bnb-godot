@@ -235,6 +235,9 @@ public partial class GameHost : Godot.Node
             RunHistory.Observe(Play, RunLog.Current);
             RunLog.Observe(this);
         }
+        // A table's run is the host's to send when it ends (RunLog.BeginTable).
+        if (IsMultiplayer)
+            RunLog.ObserveTable(this);
         EmitSignal(SignalName.StateChanged);
     }
 }
