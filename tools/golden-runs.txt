@@ -1,20 +1,20 @@
 # THE GOLDEN RUN SET — what these runs did, so that making them faster can be proved harmless.
-# Recorded 2026-10-21T03:28:08+02:00 by tools/golden.sh --record. Re-record ONLY when a change to the GAME
+# Recorded 2026-10-21T10:09:48+02:00 by tools/golden.sh --record. Re-record ONLY when a change to the GAME
 # is intended, and say in the commit which lines moved and why.
 # 'seconds=' is stripped: the clock is meant to change. Timings at the bottom are informational.
 #
-apprentice-immortal seed1     sim-fitness: policy=random seed=1 maps=v0.0.1 deepestActBoss=5 damageTaken=3024 healed=2956 actBossDamage=1:53,2:461,3:899,4:2487,5:3024 actBossHp=1:9999,2:9999,3:9999,4:8436,5:9931 rooms=110 result=Victory
-apprentice-immortal seed1     sim-result: seed=1 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=76 hp=9920/10007 problems=0 error=none stopped because the run finished
-apprentice-immortal seed2     sim-fitness: policy=random seed=2 maps=v0.0.1 deepestActBoss=5 damageTaken=7307 healed=7310 actBossDamage=1:170,2:1416,3:4322,4:7106,5:7307 actBossHp=1:9829,2:9275,3:9050,4:10002,5:9922 rooms=110 result=Victory
-apprentice-immortal seed2     sim-result: seed=2 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=71 hp=9922/10002 problems=0 error=none stopped because the run finished
-apprentice-immortal seed3     sim-fitness: policy=random seed=3 maps=v0.0.1 deepestActBoss=5 damageTaken=5091 healed=4367 actBossDamage=1:143,2:569,3:1339,4:4199,5:5091 actBossHp=1:9856,2:9999,3:9291,4:7441,5:9275 rooms=110 result=Victory
-apprentice-immortal seed3     sim-result: seed=3 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=73 hp=9202/9993 problems=0 error=none stopped because the run finished
-apprentice-immortal seed4     sim-fitness: policy=random seed=4 maps=v0.0.1 deepestActBoss=5 damageTaken=4366 healed=4135 actBossDamage=1:60,2:635,3:1158,4:3769,5:4366 actBossHp=1:9939,2:9999,3:9995,4:8920,5:9768 rooms=110 result=Victory
-apprentice-immortal seed4     sim-result: seed=4 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=72 hp=9615/9995 problems=0 error=none stopped because the run finished
-apprentice-mortal seed101   sim-fitness: policy=random seed=101 maps=v0.0.1 deepestActBoss=1 damageTaken=649 healed=260 actBossDamage=1:196 actBossHp=1:204 rooms=45 result=Defeat
-apprentice-mortal seed101   sim-result: seed=101 maps=v0.0.1 result=Defeat acts=2 rooms=45 fights=27 hp=0/400 problems=0 error=none stopped because the run finished
-apprentice-mortal seed102   sim-fitness: policy=random seed=102 maps=v0.0.1 deepestActBoss=2 damageTaken=920 healed=531 actBossDamage=1:72,2:325 actBossHp=1:328,2:329 rooms=69 result=Defeat
-apprentice-mortal seed102   sim-result: seed=102 maps=v0.0.1 result=Defeat acts=3 rooms=69 fights=43 hp=0/400 problems=0 error=none stopped because the run finished
+apprentice-immortal seed1     sim-fitness: policy=random seed=1 maps=v0.0.1 deepestActBoss=5 damageTaken=4408 healed=4356 actBossDamage=1:161,2:722,3:1729,4:4281,5:4408 actBossHp=1:9854,2:9999,3:9297,4:10005,5:9947 rooms=110 result=Victory
+apprentice-immortal seed1     sim-result: seed=1 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=80 hp=9748/10005 problems=0 error=none stopped because the run finished
+apprentice-immortal seed2     sim-fitness: policy=random seed=2 maps=v0.0.1 deepestActBoss=1 damageTaken=962 healed=828 actBossDamage=1:315 actBossHp=1:9999 rooms=40 result=Ongoing
+apprentice-immortal seed2     sim-result: seed=2 maps=v0.0.1 result=Ongoing acts=2 rooms=40 fights=25 hp=9865/9999 problems=0 error=none stopped because the fight at act 2 r16c0 (archives_hours_duo_01) did not end in 100 turns
+apprentice-immortal seed3     sim-fitness: policy=random seed=3 maps=v0.0.1 deepestActBoss=5 damageTaken=3335 healed=3258 actBossDamage=1:157,2:843,3:1667,4:3180,5:3335 actBossHp=1:9850,2:9879,3:9318,4:9999,5:9922 rooms=110 result=Victory
+apprentice-immortal seed3     sim-result: seed=3 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=75 hp=9885/9999 problems=0 error=none stopped because the run finished
+apprentice-immortal seed4     sim-fitness: policy=random seed=4 maps=v0.0.1 deepestActBoss=5 damageTaken=3640 healed=3487 actBossDamage=1:242,2:812,3:2054,4:3485,5:3640 actBossHp=1:9999,2:9510,3:8881,4:9999,5:9846 rooms=110 result=Victory
+apprentice-immortal seed4     sim-result: seed=4 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=74 hp=9848/9999 problems=0 error=none stopped because the run finished
+apprentice-mortal seed101   sim-fitness: policy=random seed=101 maps=v0.0.1 deepestActBoss=3 damageTaken=1195 healed=858 actBossDamage=1:95,2:472,3:842 actBossHp=1:400,2:156,3:99 rooms=82 result=Defeat
+apprentice-mortal seed101   sim-result: seed=101 maps=v0.0.1 result=Defeat acts=4 rooms=82 fights=53 hp=0/390 problems=0 error=none stopped because the run finished
+apprentice-mortal seed102   sim-fitness: policy=random seed=102 maps=v0.0.1 deepestActBoss=2 damageTaken=930 healed=538 actBossDamage=1:98,2:394 actBossHp=1:302,2:297 rooms=61 result=Defeat
+apprentice-mortal seed102   sim-result: seed=102 maps=v0.0.1 result=Defeat acts=3 rooms=61 fights=39 hp=0/400 problems=0 error=none stopped because the run finished
 immortal seed1     sim-fitness: policy=random seed=1 maps=v0.0.1 deepestActBoss=5 damageTaken=7423 healed=6955 actBossDamage=1:292,2:1593,3:3100,4:6649,5:7423 actBossHp=1:9999,2:8812,3:9999,4:6810,5:9531 rooms=110 result=Victory
 immortal seed1     sim-result: seed=1 maps=v0.0.1 result=Victory acts=5 rooms=110 fights=77 hp=9186/9999 problems=0 error=none stopped because the run finished
 immortal seed10    sim-fitness: policy=random seed=10 maps=v0.0.1 deepestActBoss=5 damageTaken=6099 healed=5856 actBossDamage=1:470,2:1013,3:2256,4:5400,5:6099 actBossHp=1:9703,2:10003,3:10006,4:6998,5:9756 rooms=110 result=Victory
@@ -59,31 +59,31 @@ witch-mortal seed102   sim-fitness: policy=random seed=102 maps=v0.0.1 deepestAc
 witch-mortal seed102   sim-result: seed=102 maps=v0.0.1 result=Defeat acts=2 rooms=43 fights=28 hp=0/400 problems=0 error=none stopped because the run finished
 #
 # ── how long it took when recorded (informational, never compared) ──
-#time apprentice-immortal seed1     88.5 s
-#time apprentice-immortal seed2     85.6 s
-#time apprentice-immortal seed3     103.3 s
-#time apprentice-immortal seed4     76.3 s
-#time apprentice-mortal seed101   26.8 s
-#time apprentice-mortal seed102   45.3 s
-#time immortal seed1     238.7 s
-#time immortal seed10    47.0 s
-#time immortal seed11    55.9 s
-#time immortal seed12    67.0 s
-#time immortal seed2     67.6 s
-#time immortal seed3     65.4 s
-#time immortal seed4     51.1 s
-#time immortal seed5     66.4 s
-#time immortal seed6     61.5 s
-#time immortal seed7     50.7 s
-#time immortal seed8     64.3 s
-#time immortal seed9     58.0 s
-#time mortal seed101   23.6 s
-#time mortal seed102   20.0 s
-#time mortal seed103   11.9 s
-#time witch-immortal seed1     62.6 s
-#time witch-immortal seed2     85.4 s
-#time witch-immortal seed3     75.9 s
-#time witch-immortal seed4     60.0 s
-#time witch-mortal seed101   28.7 s
-#time witch-mortal seed102   29.0 s
-# total run-seconds 1716.5 (wall clock depends on --jobs)
+#time apprentice-immortal seed1     90.3 s
+#time apprentice-immortal seed2     46.8 s
+#time apprentice-immortal seed3     96.2 s
+#time apprentice-immortal seed4     87.0 s
+#time apprentice-mortal seed101   54.6 s
+#time apprentice-mortal seed102   47.8 s
+#time immortal seed1     260.0 s
+#time immortal seed10    48.1 s
+#time immortal seed11    56.7 s
+#time immortal seed12    73.2 s
+#time immortal seed2     70.3 s
+#time immortal seed3     68.2 s
+#time immortal seed4     52.7 s
+#time immortal seed5     68.7 s
+#time immortal seed6     63.3 s
+#time immortal seed7     51.8 s
+#time immortal seed8     65.3 s
+#time immortal seed9     58.8 s
+#time mortal seed101   25.9 s
+#time mortal seed102   22.1 s
+#time mortal seed103   13.9 s
+#time witch-immortal seed1     70.2 s
+#time witch-immortal seed2     98.0 s
+#time witch-immortal seed3     85.9 s
+#time witch-immortal seed4     66.2 s
+#time witch-mortal seed101   30.3 s
+#time witch-mortal seed102   33.7 s
+# total run-seconds 1806.0 (wall clock depends on --jobs)
