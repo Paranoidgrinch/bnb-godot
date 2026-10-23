@@ -9,10 +9,9 @@ The Godot 4.7 (.NET) frontend of Bureaucrats & Broomsticks, a satirical fantasy 
 | bnb-godot (this repository) | frontend: screens, cards, art, music, settings, bug reports, run recording |
 | [bnb-runs](https://github.com/Paranoidgrinch/bnb-runs) | recorded playtest runs |
 
-The game has five acts on generated branching maps, three playable characters (Bureaucrat, Hedge Witch and
-Sorcerer's Apprentice),
-combat with telegraphed enemy intents, elites and gods as bosses, events, shops, relics, an archive of
-everything encountered, a tutorial, ten music tracks and save/continue. It is in closed alpha (version 0.2.0,
+The game has five acts on generated branching maps, four playable characters (Lieutenant, Bureaucrat, Hedge
+Witch and Sorcerer's Apprentice), combat with telegraphed enemy intents, elites and gods as bosses, events, shops,
+relics, an archive of everything encountered, a tutorial, ten music tracks and save/continue. It is in closed alpha (version 0.3.0,
 distributed to testers through itch.io).
 
 All game rules run in the RogueDeck engine, which is referenced as a sibling checkout via `ProjectReference`.
