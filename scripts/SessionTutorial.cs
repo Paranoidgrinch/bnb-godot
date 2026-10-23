@@ -62,8 +62,48 @@ public partial class SessionScreen
             if (session.Run.Relics.Count > 0)
                 moments.Add("combat.relics");
             moments.AddRange(WitchMomentsHere(combat));
+            moments.AddRange(ApprenticeMomentsHere(combat));
+            moments.AddRange(LieutenantMomentsHere(combat));
         }
         return moments;
+    }
+
+    // HIS SIDE (Tutorial.ApprenticeSteps): told only while the hero carries a wand — the wand and Focus at once, the
+    // cast once a card is in it, Exhaustion once a cast has added some, the elements once one is on the table.
+    private static IEnumerable<string> ApprenticeMomentsHere(RogueDeck.Scenario.Scripting.ICombatView combat)
+    {
+        if (!combat.Actions.Any(a => a.value == WandCast) || combat.State.GetWand(combat.HeroId) is not { } wand)
+            yield break;
+        yield return "ap.wand";
+        yield return "ap.focus";
+        if (wand.Occupied >= 1)
+            yield return "ap.cast";
+        if (wand.Exhaustion >= 1)
+            yield return "ap.exhaustion";
+        string[] elements = ["singe", "grit", "flow", "gust"];
+        if (combat.State.Combatants.Any(c => c.IsAlive && c.Statuses.Any(s => elements.Contains(s.DefinitionId.value))))
+            yield return "ap.elements";
+    }
+
+    // HERS (Tutorial.LieutenantSteps): told only while the hero carries her command — Authority at once, then each
+    // promise and Open Guard the first time one is on the table, and spending Strength once she has some to spend.
+    private const string LieutenantCommand = "lt_command";
+
+    private static IEnumerable<string> LieutenantMomentsHere(RogueDeck.Scenario.Scripting.ICombatView combat)
+    {
+        var hero = combat.State.GetCombatant(combat.HeroId);
+        if (!hero.Statuses.Any(s => s.DefinitionId.value == LieutenantCommand))
+            yield break;
+        yield return "lt.authority";
+        if (hero.Statuses.Any(s => s.DefinitionId.value.StartsWith("lt_o_", StringComparison.Ordinal)))
+            yield return "lt.order";
+        if (combat.State.Combatants.Any(c => c.Id != combat.HeroId
+                && c.Statuses.Any(s => s.DefinitionId.value.StartsWith("lt_c_", StringComparison.Ordinal))))
+            yield return "lt.challenge";
+        if (hero.Statuses.Any(s => s.DefinitionId.value == "lt_open_guard"))
+            yield return "lt.open_guard";
+        if (hero.Statuses.Any(s => s.DefinitionId.value == "strength" && s.Stacks > 0))
+            yield return "lt.strength";
     }
 
     // HER SIDE OF THE LESSON (Tutorial.WitchSteps): told only while the hero has a cauldron, each the first time the
@@ -222,6 +262,13 @@ public partial class SessionScreen
         "witch.recipes" => FindNamed(this, "RecipeBookButton") ?? _main,
         "witch.hexed" or "witch.misfortune" => _enemyRow,
         "witch.hearth" => FindNamed(this, "Incoming"),
+        "ap.wand" => FindNamed(this, "WandRow"),
+        "ap.focus" => FindNamed(this, "WandFocus"),
+        "ap.cast" => FindNamed(this, $"Action_{WandCast}"),
+        "ap.exhaustion" => FindNamed(this, "WandExhaustion"),
+        "ap.elements" => _enemyRow,
+        "lt.authority" or "lt.order" or "lt.open_guard" or "lt.strength" => FindNamed(this, "StatusChips"),
+        "lt.challenge" => _enemyRow,
         "reward" or "event" or "shop" or "rest" => _main,
         _ => null,
     };
@@ -287,7 +334,7 @@ public partial class SessionScreen
                     driver.SupplyOptionChoice([.. Enumerable.Range(0, Math.Min(driver.PendingOptionChoiceCount, options.Count))]);
                 else if (driver.PendingCardChoice is { } cards)
                     driver.SupplyCardChoice([.. cards.Take(driver.PendingCardChoiceCount).Select(c => c.Id)]);
-                else if (driver.Current!.IsHeroTurn && WitchMove(driver))
+                else if (driver.Current!.IsHeroTurn && (WitchMove(driver) || WandMove(driver)))
                 {
                 }
                 else if (driver.Current!.IsHeroTurn)
@@ -314,11 +361,20 @@ public partial class SessionScreen
             Rebuild();
         }
         var extra = GameHost.Instance.Blueprint.Presentation.Game?.Extra ?? new Dictionary<string, string>();
-        // Her moments are only owed when she is the one walking.
-        var witch = Session is { } walked && IsWitch(walked);
+        // A character's own moments are only owed when that character is the one walking.
+        var walker = Session?.Run.CharacterId;
+        string? own = walker switch
+        {
+            "hedge_witch" => "witch.",
+            "sorcerers_apprentice" => "ap.",
+            "lieutenant" => "lt.",
+            _ => null,
+        };
+        string[] prefixes = ["witch.", "ap.", "lt."];
         var all = extra.Keys.Where(k => k.StartsWith("tutorial:", StringComparison.Ordinal))
             .Select(k => k["tutorial:".Length..])
-            .Where(m => witch || !m.StartsWith("witch.", StringComparison.Ordinal)).ToList();
+            .Where(m => !prefixes.Any(p => m.StartsWith(p, StringComparison.Ordinal)) || (own is not null && m.StartsWith(own, StringComparison.Ordinal)))
+            .ToList();
         var missing = all.Except(shown).ToList();
         var done = Session is { IsComplete: true } end;
         GD.Print($"smoke-tutorial: result={Session?.Run.Result} shown {shown.Count}/{all.Count}: {string.Join(" ", shown)}"
@@ -351,6 +407,32 @@ public partial class SessionScreen
         {
             _cookedThisTurn = true;
             driver.UseAction(add, target);
+            return true;
+        }
+        return false;
+    }
+
+    // The probe's apprentice: inscribe while the wand is nearly empty, cast once a turn when it can — so the wand,
+    // the cast and its Exhaustion come up the way a player meets them. False: play a card as usual.
+    private int _castRound = -1;
+
+    private bool WandMove(ICombatSeat driver)
+    {
+        var combat = driver.Current!;
+        var inscribe = combat.Actions.FirstOrDefault(a => a.value == WandInscribe);
+        var cast = combat.Actions.FirstOrDefault(a => a.value == WandCast);
+        if (cast.value is null || combat.State.GetWand(combat.HeroId) is not { } wand)
+            return false;
+        var target = FirstLivingEnemy(combat);
+        if (_castRound != combat.State.CurrentRound && wand.Occupied >= 1 && combat.CanUse(cast, target))
+        {
+            _castRound = combat.State.CurrentRound;
+            driver.UseAction(cast, target);
+            return true;
+        }
+        if (wand.Occupied < 2 && combat.Hand.Count > 1 && combat.CanUse(inscribe, target))
+        {
+            driver.UseAction(inscribe, target);
             return true;
         }
         return false;
