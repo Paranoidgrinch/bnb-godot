@@ -14,7 +14,6 @@ public partial class Boot : Control
     // Every main-menu button is this wide, so the column reads as one block.
     private const float MenuButtonWidth = 260;
 
-    private string? _selectedCharacter;
     private static bool _resumeVerdict;
     public static bool ResumeVerdict => _resumeVerdict;
 
@@ -282,6 +281,15 @@ public partial class Boot : Control
         {
             NewRunPanel.Open(this, (_, _) => { });
             _ = CaptureThenQuit("user://smoke-newrun.png");
+        }
+        // The character screen "New run ▸" opens, and — with `--ask` — the tutorial question it puts the first time a
+        // character is taken. Pictures: what this screen has to get right is that a locked card says how it opens.
+        if (userArgs.Contains("--smoke-characters") && !DisplayServer.GetName().Contains("headless"))
+        {
+            CharacterSelectPanel.Open(this, host, _ => { }, _ => { });
+            if (userArgs.Contains("--ask"))
+                FindChild("BeginRun", recursive: true, owned: false)?.CallDeferred(Button.MethodName.EmitSignal, BaseButton.SignalName.Pressed);
+            _ = CaptureThenQuit(userArgs.Contains("--ask") ? "user://smoke-characters-ask.png" : "user://smoke-characters.png");
         }
         // Seeds: typed, hashed and daily ones are stable, the same seed lays out the same act, and the daily
         // button fills the field in the open dialog. The run is started and dropped here and never saved.
@@ -948,29 +956,31 @@ public partial class Boot : Control
         root.Position += new Vector2(-480, -140); // below the scene's Title/Stats labels
         AddChild(root);
 
-        // ── character roster (unlock-gated) ──────────────────────────────────────
-        var available = host.AvailableCharacters.Select(c => c.Id).ToHashSet();
-        _selectedCharacter ??= host.AvailableCharacters.FirstOrDefault()?.Id;
-
-        // THE CHARACTER BESIDE THE MENU, NOT ABOVE IT: a column of eight buttons under the character card ran off
-        // the bottom of a 720-px window. Side by side, both fit in the height the title leaves.
+        // THE ROSTER IS NOT ON THE TITLE ANY MORE (user, 2026-10-23): "New run" opens the character screen
+        // (CharacterSelectPanel), where every character stands and the locked ones say how they are earned.
         var body = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         body.AddThemeConstantOverride("separation", 32);
         root.AddChild(body);
 
-        if (host.Blueprint.Characters.Count > 0)
+        // A character earned since the menu last spoke: said once, here — above the title, so the menu below keeps
+        // its place on a 720-px screen.
+        GetNodeOrNull("UnlockNews")?.QueueFree();
+        var fresh = CharacterUnlocks.Unannounced(host);
+        if (fresh.Count > 0)
         {
-            var chooser = new VBoxContainer { SizeFlagsVertical = SizeFlags.ShrinkBegin };
-            chooser.AddThemeConstantOverride("separation", 12);
-            chooser.AddChild(new Label { Text = "Choose your character", HorizontalAlignment = HorizontalAlignment.Center });
-            // ONE UNDER THE OTHER (user, 2026-10-09): side by side, a second character pushed the menu column off
-            // to the right; stacked, the roster keeps one card's width however many heroes there are.
-            var roster = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-            roster.AddThemeConstantOverride("separation", 12);
-            foreach (var character in host.Blueprint.Characters)
-                roster.AddChild(CharacterCard(host, character, available.Contains(character.Id)));
-            chooser.AddChild(roster);
-            body.AddChild(chooser);
+            var news = new Label
+            {
+                Name = "UnlockNews",
+                Text = string.Join("\n", fresh.Select(c => $"New character unlocked: {c.Start.HeroName ?? c.Id} can now be chosen.")),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                MouseFilter = MouseFilterEnum.Ignore,
+            };
+            news.SetAnchorsPreset(LayoutPreset.TopWide);
+            news.OffsetTop = 48;
+            news.AddThemeFontSizeOverride("font_size", 18);
+            news.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
+            AddChild(news);
+            CharacterUnlocks.Announced(host, fresh);
         }
 
         // ── actions ──────────────────────────────────────────────────────────────
@@ -982,39 +992,22 @@ public partial class Boot : Control
         actions.SizeFlagsVertical = SizeFlags.ShrinkBegin;
         actions.CustomMinimumSize = new Vector2(MenuButtonWidth, 0);
 
-        var start = new Button { Text = "New run ▸", CustomMinimumSize = new Vector2(160, 44) };
-        start.Disabled = host.Blueprint.Characters.Count > 0 && _selectedCharacter is null;
-        // The one question a new run asks: which map generator lays it out. Both ship and they make different
-        // games, so the answer cannot be a build-time constant — and it is asked HERE rather than in Settings
-        // because it belongs to the run being started, not to the machine (see NewRunPanel).
-        start.Pressed += () => OpenNewRun(host);
+        var start = new Button { Text = "New run ▸", Name = "NewRunButton", CustomMinimumSize = new Vector2(160, 44) };
+        start.Pressed += () => ChooseCharacter(host);
         actions.AddChild(start);
 
-        // THE TUTORIAL: six rooms of the city with a coach beside them. First on the row for a player who has
-        // never played; a veteran simply walks past it.
-        if (host.HasTutorial)
-        {
-            var tutorial = new Button { Text = "Tutorial", CustomMinimumSize = new Vector2(140, 44) };
-            tutorial.TooltipText = "A short guided run: everything in the game, shown once and explained.";
-            tutorial.TooltipText += " Taught as the character chosen beside it.";
-            tutorial.Pressed += () =>
-            {
-                host.StartTutorial(_selectedCharacter);
-                if (host.Play?.Error is null)
-                    GoToSession();
-            };
-            actions.AddChild(tutorial);
-        }
+        // THE TUTORIALS are offered on the character screen — the first time a character is taken, and from its
+        // Tutorial button after that — rather than as a menu item of their own.
 
         // PLAY TOGETHER (multiplayer): host a table or join one; the run begins for everyone at the host's word.
         var together = new Button { Text = "Play together", Name = "PlayTogetherButton", CustomMinimumSize = new Vector2(160, 44) };
         together.TooltipText = "Up to four players, one run, a hero each.";
-        together.Pressed += () => LobbyPanel.Open(this, GoToSession, _selectedCharacter);
+        together.Pressed += () => LobbyPanel.Open(this, GoToSession, host.AvailableCharacters.FirstOrDefault()?.Id);
         actions.AddChild(together);
 
         if (host.HasSave)
         {
-            var resume = new Button { Text = "Continue run", CustomMinimumSize = new Vector2(160, 44) };
+            var resume = new Button { Text = "Continue run", Name = "ContinueButton", CustomMinimumSize = new Vector2(160, 44) };
             resume.Pressed += () =>
             {
                 if (host.ResumeRun())
@@ -1053,7 +1046,7 @@ public partial class Boot : Control
         history.Pressed += () => HistoryPanel.Open(this, seed =>
         {
             GetNodeOrNull(HistoryPanel.OverlayName)?.QueueFree();
-            OpenNewRun(host, seed);
+            ChooseCharacter(host, seed);
         });
         actions.AddChild(history);
 
@@ -1111,72 +1104,6 @@ public partial class Boot : Control
         root.AddChild(aside);
     }
 
-    private Control CharacterCard(GameHost host, RunCharacter character, bool unlocked)
-    {
-        var presentation = host.Blueprint.Presentation.Characters.GetValueOrDefault(character.Id);
-        var selected = _selectedCharacter == character.Id;
-
-        // 330, not the 220 this was: the picture takes 72 of the width and the flavour line needs the rest, or
-        // "Armed with forms, stamps, and a fireproof sense of procedure" comes out six lines tall and pushes the
-        // roster off the bottom of the screen.
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(330, 140) };
-        panel.AddThemeStyleboxOverride("panel", unlocked
-            ? MoonvineTheme.WoodPanel(rim: selected)
-            : MoonvineTheme.Panel(MoonvineTheme.BgPanelStrong, new Color(MoonvineTheme.TextMuted, 0.2f)));
-
-        // WHO YOU ARE ABOUT TO BE, as a body and not only as a name. The roster is the first choice the game
-        // asks of anybody, and it was the last one still made entirely out of words.
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 10);
-        if (CardVisuals.CharacterArt(character.Id) is { } portrait)
-        {
-            var picture = new TextureRect
-            {
-                Texture = portrait,
-                CustomMinimumSize = new Vector2(72, 110),
-                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-                TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-            };
-            if (!unlocked)
-                picture.Modulate = new Color(1, 1, 1, 0.35f);
-            row.AddChild(picture);
-        }
-
-        var column = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        column.AddThemeConstantOverride("separation", 6);
-        var name = new Label { Text = character.Start.HeroName ?? character.Id };
-        name.AddThemeFontSizeOverride("font_size", 18);
-        name.AddThemeColorOverride("font_color", unlocked ? MoonvineTheme.Text : MoonvineTheme.TextMuted);
-        column.AddChild(name);
-        column.AddChild(MutedLabel($"{character.Start.MaxHealth} HP"));
-        var flavor = new Label
-        {
-            Text = unlocked
-                ? presentation?.FlavorText ?? ""
-                : $"🔒 Locked{(character.UnlockFlag is { } flag ? $" — {flag}" : "")}",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        flavor.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
-        column.AddChild(flavor);
-        row.AddChild(column);
-        panel.AddChild(row);
-
-        if (unlocked)
-        {
-            var button = new Button { Flat = true };
-            button.SetAnchorsPreset(LayoutPreset.FullRect);
-            button.Pressed += () =>
-            {
-                _selectedCharacter = character.Id;
-                Rebuild();
-            };
-            panel.AddChild(button);
-        }
-        return panel;
-    }
-
     private static Label MutedLabel(string text)
     {
         var label = new Label { Text = text };
@@ -1201,11 +1128,21 @@ public partial class Boot : Control
 
     private ArchivePanel? OpenArchive() => ArchivePanel.Open(this);
 
-    // "New run ▸", and "Play this seed again" from the history, which is the same dialog with the seed filled in.
-    private void OpenNewRun(GameHost host, int? seed = null) =>
+    // "New run ▸", and "Play this seed again" from the history: first who, then the run (with the seed filled in).
+    private void ChooseCharacter(GameHost host, int? seed = null) =>
+        CharacterSelectPanel.Open(this, host,
+            character => OpenNewRun(host, character, seed),
+            character =>
+            {
+                host.StartTutorial(character);
+                if (host.Play?.Error is null)
+                    GoToSession();
+            });
+
+    private void OpenNewRun(GameHost host, string character, int? seed = null) =>
         NewRunPanel.Open(this, (generator, chosen) =>
         {
-            host.StartNewRun(seed: chosen ?? RunSeeds.Random(), _selectedCharacter, mapGenerator: generator);
+            host.StartNewRun(seed: chosen ?? RunSeeds.Random(), character, mapGenerator: generator);
             GoToSession();
         }, seed);
 

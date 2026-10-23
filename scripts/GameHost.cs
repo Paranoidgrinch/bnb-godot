@@ -32,6 +32,8 @@ public partial class GameHost : Godot.Node
     public IReadOnlyList<RunCharacter> AvailableCharacters =>
         MetaProgression.AvailableCharacters(Blueprint, Meta);
 
+    public void SaveMeta(MetaState meta) => _metaStore.Save(meta);
+
     public override void _Ready()
     {
         Instance = this;
@@ -113,8 +115,16 @@ public partial class GameHost : Godot.Node
         EmitChanged();
     }
 
+    // A run started with a probe's body (the marathon, the golden set) earns nothing for the player's profile:
+    // `--count-unlocks` lets a probe check the unlocks on purpose.
+    public bool IsProbe { get; private set; }
+
     public void StartNewRun(int seed, string? characterId = null, int? health = null, string? mapGenerator = null)
     {
+        var args = OS.GetCmdlineUserArgs();
+        IsProbe = (health is not null || args.Any(a => a.StartsWith("--sim", System.StringComparison.Ordinal)
+                || a.StartsWith("--smoke", System.StringComparison.Ordinal)))
+            && !args.Contains("--count-unlocks");
         IsTutorial = false;
         IsMultiplayer = false;
         Play?.Dispose();
@@ -234,6 +244,7 @@ public partial class GameHost : Godot.Node
         {
             RunHistory.Observe(Play, RunLog.Current);
             RunLog.Observe(this);
+            CharacterUnlocks.Observe(this);
         }
         // A table's run is the host's to send when it ends (RunLog.BeginTable).
         if (IsMultiplayer)

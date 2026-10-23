@@ -28,3 +28,22 @@ and the game supplies what is said.
 ## Moments (the coach's script, in the order a player meets them)
 map · combat.hand · combat.energy · combat.intent · combat.target · combat.block · combat.endturn · combat.statuses ·
 combat.relics · reward · event · combat.multiple · shop · rest · elite.rules · compendium · complete
+
+## Ein Tutorial pro Charakter, freischaltbare Charaktere (2026-10-23)
+
+Auftrag: Hauptmenü ohne Charakterwahl („New run“, „Continue run“ und die übrigen Punkte); „New run“ öffnet die
+Charakterwahl mit allen Charakteren. Anfangs ist nur die Lieutenant spielbar; der erste besiegte Akt-I-Boss schaltet
+den Sorcerer's Apprentice frei, der Akt-II-Boss als er die Hedge Witch, der Akt-III-Boss als sie den Bureaucrat. Beim
+ersten Spiel eines Charakters fragt das Spiel nach einem 5-Minuten-Tutorial.
+
+- **Tutorials** (bnb-content `Tutorial.cs`): drei Räume — leichter Kampf, Kampf gegen zwei, Rast — für jeden Charakter,
+  mit dessen eigenen Coach-Texten (`witch.*`, `ap.*`, `lt.*`). Event, Shop und Elite sind aus dem Tutorial
+  herausgenommen (sie erklären sich auf der Karte). `--smoke-tutorial --character=<id>` läuft für alle vier durch.
+- **Sperren**: `RunCharacter.UnlockFlag` (Engine-Gate) und die Kette als Spieldokument-Text
+  `unlock:<id>` = `<wer>:<Bosse>` (bnb-content `CharacterUnlocks.cs`). `scripts/CharacterUnlocks.cs` zählt die Bosse
+  des laufenden Laufs (`RunTally`) und setzt das Flag sofort — und nach dem Laufende noch einmal, weil die Engine dann
+  das zu Laufbeginn geladene Profil zurückschreibt. Probe- und Simulationsläufe schalten nichts frei
+  (`--count-unlocks` erlaubt es zum Testen).
+- **Bildschirme**: `CharacterSelectPanel` (gesperrte Karten grau mit Hinweis, „Tutorial“-Knopf, „Start run ▸“), die
+  Tutorial-Frage beim ersten Spiel (`bnb.played.<id>`), ein einmaliger Hinweis auf dem Titel bei neuer Freischaltung
+  (`bnb.unlock_seen.<id>`). Probes: `--smoke-characters`, `--smoke-characters --ask`.
