@@ -72,6 +72,9 @@ WITCH_MORTAL_SEEDS=(101 102)
 # …and THE SORCERER'S APPRENTICE'S, the same way: `apprentice-` in front of every line of his.
 APPRENTICE_IMMORTAL_SEEDS=(1 2 3 4)
 APPRENTICE_MORTAL_SEEDS=(101 102)
+# …and THE LIEUTENANT'S: `lieutenant-` in front of every line of hers.
+LIEUTENANT_IMMORTAL_SEEDS=(1 2 3 4)
+LIEUTENANT_MORTAL_SEEDS=(101 102)
 
 desktop="$HOME/Desktop"; [[ -d "$HOME/Schreibtisch" ]] && desktop="$HOME/Schreibtisch"
 out="$desktop/bnb-golden/$(date +%Y%m%d-%H%M%S)"
@@ -115,7 +118,8 @@ if [[ $console == yes ]]; then
 fi
 echo "golden set: ${#IMMORTAL_SEEDS[@]} immortal + ${#MORTAL_SEEDS[@]} mortal runs (Bureaucrat), \
 ${#WITCH_IMMORTAL_SEEDS[@]} + ${#WITCH_MORTAL_SEEDS[@]} (Hedge Witch), \
-${#APPRENTICE_IMMORTAL_SEEDS[@]} + ${#APPRENTICE_MORTAL_SEEDS[@]} (Sorcerer's Apprentice), $jobs at a time, $drawn, $which_build"
+${#APPRENTICE_IMMORTAL_SEEDS[@]} + ${#APPRENTICE_MORTAL_SEEDS[@]} (Sorcerer's Apprentice), \
+${#LIEUTENANT_IMMORTAL_SEEDS[@]} + ${#LIEUTENANT_MORTAL_SEEDS[@]} (Lieutenant), $jobs at a time, $drawn, $which_build"
 echo "  logs -> $out"
 
 # The seeds that draw: the first $ui of the set as it is played below (immortal first, then mortal).
@@ -127,8 +131,9 @@ play_one() {
   local health; [[ $body == *immortal ]] && health="--sim-immortal" || health="--sim-health 400"
   local character=bureaucrat; [[ $body == witch-* ]] && character=hedge_witch
   [[ $body == apprentice-* ]] && character=sorcerers_apprentice
+  [[ $body == lieutenant-* ]] && character=lieutenant
   local ui=""
-  [[ $body != witch-* && $body != apprentice-* && $GOLDEN_DRAWN == *" $seed "* ]] && ui="--sim-ui"
+  [[ $body != witch-* && $body != apprentice-* && $body != lieutenant-* && $GOLDEN_DRAWN == *" $seed "* ]] && ui="--sim-ui"
   local started; started=$(date +%s.%N)
   # shellcheck disable=SC2086
   # Who plays is NAMED, never rolled: a rolled character would change the runs whenever the roster grows.
@@ -185,6 +190,8 @@ else
   for seed in "${WITCH_MORTAL_SEEDS[@]}";   do echo "$seed witch-mortal";   done
   for seed in "${APPRENTICE_IMMORTAL_SEEDS[@]}"; do echo "$seed apprentice-immortal"; done
   for seed in "${APPRENTICE_MORTAL_SEEDS[@]}";   do echo "$seed apprentice-mortal";   done
+  for seed in "${LIEUTENANT_IMMORTAL_SEEDS[@]}"; do echo "$seed lieutenant-immortal"; done
+  for seed in "${LIEUTENANT_MORTAL_SEEDS[@]}";   do echo "$seed lieutenant-mortal";   done
 } | xargs -P "$jobs" -L1 bash -c 'play_one "$@"' _ > "$out/played.raw"
 fi
 

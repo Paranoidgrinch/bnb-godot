@@ -23,7 +23,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 runs=50; immortal=10; seed_from=1; jobs=6; out=""
-characters="bureaucrat hedge_witch sorcerers_apprentice"
+characters="bureaucrat hedge_witch sorcerers_apprentice lieutenant"
 BOT=../RogueDeck-Core/src/RogueDeck.Bot.Cli
 while [[ $# -gt 0 ]]; do
   case "$1" in
