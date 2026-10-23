@@ -161,6 +161,17 @@ public partial class Boot : Control
             _ = SmokeRecipeBook();
             return;
         }
+        // The archive's card shelves, opened the way a player opens them (`--smoke-archive-cards`).
+        if (userArgs.Contains("--smoke-archive-cards") && !DisplayServer.GetName().Contains("headless"))
+        {
+            BuildTitle(host);
+            OpenArchive();
+            var cardsTab = FindChildren("*", nameof(Button), recursive: true, owned: false).OfType<Button>()
+                .FirstOrDefault(b => b.Text.StartsWith("Cards", StringComparison.Ordinal));
+            cardsTab?.CallDeferred(Button.MethodName.EmitSignal, BaseButton.SignalName.Pressed);
+            _ = CaptureThenQuit("user://smoke-archive-cards.png");
+            return;
+        }
         // The Recipe Book as the archive's last tab, opened the way a player opens it.
         if (userArgs.Contains("--smoke-archive-recipes") && !DisplayServer.GetName().Contains("headless"))
         {

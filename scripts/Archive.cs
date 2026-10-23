@@ -111,10 +111,13 @@ public static class Archive
     // them, the Bureaucrat's own apart from the general pool, every relic by the pool it is won from, every body
     // by the act it is first met in. The cards and relics carry their shelf in the game files
     // (`Extra["archiveSection"]`, bnb-content ArchiveSections); the order is the archive's own.
+    // The characters' shelves first, in the order they are earned (CharacterSelectPanel).
+    private static readonly string[] CharacterShelves =
+        ["Lieutenant", "Sorcerer's Apprentice", "Hedge Witch", "Bureaucrat"];
     private static readonly string[] CardShelves =
-        ["Bureaucrat", "Hedge Witch", "General pool", "Junk & curses", "Relic cards", "Fight cards"];
+        [.. CharacterShelves, "General pool", "Junk & curses", "Relic cards", "Fight cards"];
     private static readonly string[] RelicShelves =
-        ["Bureaucrat", "Hedge Witch", "Normal", "Shop", "Event", "Elite", "Mimic", "Boss"];
+        [.. CharacterShelves, "Normal", "Shop", "Event", "Elite", "Mimic", "Boss"];
     private static readonly List<string> ActShelves = [];
 
     public static IReadOnlyList<(string Shelf, IReadOnlyList<ArchiveEntry> Entries)> Sections(ArchiveKind kind)
@@ -278,8 +281,8 @@ public static class Archive
             if (look?.Rarity is { Length: > 0 } rarity && rarity != look.Frame)
                 facts.Add(("Rarity", Humanized(rarity)));
             var shelf = look?.Extra.GetValueOrDefault(SectionKey) ?? Humanized(look?.Frame ?? "other");
-            if (shelf == "Bureaucrat")
-                facts.Add(("Only for", "the Bureaucrat"));
+            if (CharacterShelves.Contains(shelf))
+                facts.Add(("Only for", shelf == "Bureaucrat" ? "the Bureaucrat" : $"the {shelf}"));
             Catalogue[ArchiveKind.Relics].Add(new ArchiveEntry(
                 ArchiveKind.Relics, relic.Id, relic.DisplayName, look?.Frame ?? look?.Rarity,
                 look?.FlavorText, null, facts, [], Section: shelf));
