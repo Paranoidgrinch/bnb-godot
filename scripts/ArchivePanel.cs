@@ -26,6 +26,8 @@ public partial class ArchivePanel : PanelContainer
     private ArchiveKind _kind = ArchiveKind.Enemies;
     private ArchiveEntry? _picked;
     private bool _confirmingReset;
+    // The Recipe Book is the archive's last tab while the game has a cauldron in it (the Hedge Witch).
+    private bool _recipes;
 
     private VBoxContainer _body = null!;
 
@@ -92,7 +94,11 @@ public partial class ArchivePanel : PanelContainer
 
         _body.AddChild(Header());
         _body.AddChild(Tabs());
-        _body.AddChild(Shelf());
+        if (_recipes)
+            _body.AddChild(new RecipeBookPanel(embedded: true)
+                { Name = "ArchiveRecipeBook", SizeFlagsVertical = SizeFlags.ExpandFill });
+        else
+            _body.AddChild(Shelf());
         _body.AddChild(Footer());
     }
 
@@ -144,7 +150,7 @@ public partial class ArchivePanel : PanelContainer
                     ? "Something is filed here that you have not met."
                     : $"{Archive.Title(kind)} — {seen} of {Archive.Entries(kind).Count} met.",
             };
-            var chosen = kind == _kind;
+            var chosen = kind == _kind && !_recipes;
             var style = MoonvineTheme.Panel(
                 chosen ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
                 chosen ? MoonvineTheme.Accent : MoonvineTheme.Hairline);
@@ -157,11 +163,34 @@ public partial class ArchivePanel : PanelContainer
             button.Pressed += () =>
             {
                 _kind = pick;
+                _recipes = false;
                 _picked = null;
                 _shelfScroll = 0;
                 Draw();
             };
             row.AddChild(button);
+        }
+        if (RecipeBook.HasCauldron(GameHost.Instance.Blueprint))
+        {
+            var book = new Button
+            {
+                Name = "RecipeBookTab",
+                Text = "Recipe Book",
+                CustomMinimumSize = new Vector2(0, 36),
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                TooltipText = "The Hedge Witch's recipes, and the secrets you have brewed.",
+            };
+            var style = MoonvineTheme.Panel(_recipes ? MoonvineTheme.BgControl : MoonvineTheme.BgPanel,
+                _recipes ? MoonvineTheme.Accent : MoonvineTheme.Hairline);
+            book.AddThemeStyleboxOverride("normal", style);
+            book.AddThemeStyleboxOverride("pressed", style);
+            book.AddThemeColorOverride("font_color", _recipes ? MoonvineTheme.AccentLight : MoonvineTheme.TextSoft);
+            book.Pressed += () =>
+            {
+                _recipes = true;
+                Draw();
+            };
+            row.AddChild(book);
         }
         return row;
     }

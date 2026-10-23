@@ -4,7 +4,7 @@ namespace BnbGodot;
 
 // THE RECIPE BOOK, AS A BOOK (plan G4): three sections, the canon's own — Everyday Brewing (the family recipes,
 // open from the start), Things That Worked Once (the Hidden Recipes found), Notes in the Margin (a clue for each
-// one still hidden, never its cards). Opened from the title screen beside the archive and from the cauldron.
+// one still hidden, never its cards). A tab of the archive (embedded) and opened from the cauldron.
 public partial class RecipeBookPanel : PanelContainer
 {
     public const string OverlayName = "RecipeBookOverlay";
@@ -16,16 +16,28 @@ public partial class RecipeBookPanel : PanelContainer
     private VBoxContainer _tabs = null!;
     private VBoxContainer _page = null!;
 
-    public RecipeBookPanel(Action? onClose = null) => _onClose = onClose;
+    // Embedded: a page of the archive — no frame, no title of its own, no Close (the archive has one).
+    private readonly bool _embedded;
+
+    public RecipeBookPanel(Action? onClose = null, bool embedded = false)
+    {
+        _onClose = onClose;
+        _embedded = embedded;
+    }
 
     public override void _Ready()
     {
-        CustomMinimumSize = new Vector2(1000, 620);
-        AddThemeStyleboxOverride("panel", MoonvineTheme.WoodPanel(rim: true));
+        if (_embedded)
+            AddThemeStyleboxOverride("panel", new StyleBoxEmpty());
+        else
+        {
+            CustomMinimumSize = new Vector2(1000, 620);
+            AddThemeStyleboxOverride("panel", MoonvineTheme.WoodPanel(rim: true));
+        }
 
         var margin = new MarginContainer();
         foreach (var side in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })
-            margin.AddThemeConstantOverride(side, 20);
+            margin.AddThemeConstantOverride(side, _embedded ? 0 : 20);
         AddChild(margin);
         var body = new VBoxContainer();
         body.AddThemeConstantOverride("separation", 10);
@@ -38,7 +50,8 @@ public partial class RecipeBookPanel : PanelContainer
         var close = new Button { Text = "Close" };
         close.Pressed += () => _onClose?.Invoke();
         head.AddChild(close);
-        body.AddChild(head);
+        if (!_embedded)
+            body.AddChild(head);
 
         _tabs = new VBoxContainer();
         var tabRow = new HBoxContainer();

@@ -31,9 +31,8 @@ public partial class Boot : Control
             return;
 
         var blueprint = host.Blueprint;
-        GetNode<Label>("Stats").Text =
-            $"{blueprint.Cards.Count} cards · {blueprint.Encounters.Count} encounters · "
-            + $"{blueprint.Relics.Count} relics · {blueprint.Map.Nodes.Count} map nodes";
+        // The game's size is for the log, not the title (user, 2026-10-23).
+        GetNode<Label>("Stats").Visible = false;
         GD.Print($"loaded: {host.GameTitle} ({blueprint.Cards.Count} cards, {blueprint.Map.Nodes.Count} map nodes)");
 
         var userArgs = OS.GetCmdlineUserArgs();
@@ -160,6 +159,15 @@ public partial class Boot : Control
         {
             BuildTitle(host);
             _ = SmokeRecipeBook();
+            return;
+        }
+        // The Recipe Book as the archive's last tab, opened the way a player opens it.
+        if (userArgs.Contains("--smoke-archive-recipes") && !DisplayServer.GetName().Contains("headless"))
+        {
+            BuildTitle(host);
+            OpenArchive();
+            FindChild("RecipeBookTab", recursive: true, owned: false)?.CallDeferred(Button.MethodName.EmitSignal, BaseButton.SignalName.Pressed);
+            _ = CaptureThenQuit("user://smoke-archive-recipes.png");
             return;
         }
         if (userArgs.Contains("--smoke-archive"))
@@ -1023,15 +1031,7 @@ public partial class Boot : Control
         archive.Pressed += () => OpenArchive();
         actions.AddChild(archive);
 
-        // THE RECIPE BOOK, when the game has a cauldron in it (the Hedge Witch): what she can brew, and which of its
-        // secrets have been found.
-        if (RecipeBook.HasCauldron(host.Blueprint))
-        {
-            var recipes = new Button { Text = "Recipe Book", Name = "RecipeBookButton", CustomMinimumSize = new Vector2(140, 44) };
-            recipes.TooltipText = "The Hedge Witch's recipes, and the secrets you have brewed.";
-            recipes.Pressed += () => RecipeBookPanel.Open(this);
-            actions.AddChild(recipes);
-        }
+        // THE RECIPE BOOK is a tab of the archive (user, 2026-10-23), not a menu item of its own.
 
         // THE COMPENDIUM beside it: the rules of the game, which a new player needs before the first fight.
         var compendium = new Button { Text = "Compendium", CustomMinimumSize = new Vector2(140, 44) };
