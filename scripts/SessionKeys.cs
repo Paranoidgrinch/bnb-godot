@@ -21,6 +21,12 @@ public partial class SessionScreen
 
     public override void _Input(InputEvent @event)
     {
+        // The wand's drag-and-drop goes first: a release over the staff must not also be a click on the card.
+        if (WandGesture(@event))
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right } && (_armedCard is not null || _armedCast))
         {
             _armedCast = false;

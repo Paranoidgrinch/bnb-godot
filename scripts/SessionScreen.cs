@@ -3933,11 +3933,7 @@ public partial class SessionScreen : Control
     private const int HandBand = 262;      // a hand card plus the fan's lean
     private const int ControlBand = 44;    // End turn, consumables
     private const int DeckBand = 112;      // the pile's corner: 8 in + an 92-wide leaning stack + air
-    private int BottomBand => HintBand + HandBand + ControlBand + 12 + _wandBand;
-
-    // The wand's own row over the buttons, when the hero carries one (SessionWand).
-    private const int WandBand = 40;
-    private int _wandBand;
+    private int BottomBand => HintBand + HandBand + ControlBand + 12;
 
     // The three shapes a region can have. All plain Controls on purpose — a container would report its
     // children's combined minimum upward and the region would stop being fixed.
@@ -4043,11 +4039,15 @@ public partial class SessionScreen : Control
             enemies.Select(e => (Name(e, combat), column)).Append((Name(hero, combat), HeroColumn))
                 .Concat(party.Select(a => (Name(a, combat), AllyColumn))));
         // The arena is what is left of the canvas between the bands above it and the hand below.
-        _wandBand = combat.Actions.Any(IsWandAction) ? WandBand : 0;
         var arenaHeight = PaneHeight - arenaTop - BottomBand - PaneInset;
         var bodyHeight = BodyHeightFor(arenaHeight, nameBand);
 
-        var heroBox = CombatantBox(combat, hero, isHero: true, HeroColumn, nameBand, bodyHeight, arenaHeight);
+        // A hero carrying a staff or a pot gives its figure's height to them: the tool is what she plays with, and the
+        // arena has no more height to give since the hand grew (playtest 3).
+        var tools = (combat.State.GetWand(combat.HeroId) is not null ? StaffHeight + 4 : 0)
+            + (combat.Actions.Any(a => a.value == BrewAction) ? PotHeight + 22 : 0);
+        var heroBox = CombatantBox(combat, hero, isHero: true, HeroColumn, nameBand,
+            Math.Max(40, bodyHeight - tools), arenaHeight);
         // ⚠ THE COLUMNS HANG FROM A COMMON TOP, they are not each centred in the row. Centred, a body carrying
         // three status chips sits higher than one carrying none, and what the arena runs out of room for is a
         // different part of every column. Hung, the row reads as a row and the overflow is in one place.
@@ -4288,10 +4288,6 @@ public partial class SessionScreen : Control
         // The hero's own actions and, for a hero with a cauldron, the pot itself (SessionCauldron).
         BuildHeroActions(controls, combat);
         controls.MoveChild(endTurn, -1); // End turn stays the last, rightmost button whatever else is offered
-        // The Apprentice's wand has a row of its own over the buttons: five actions and six slots would push End turn
-        // off the screen (SessionWand).
-        if (combat.Actions.Any(IsWandAction))
-            bottomBox.AddChild(WandRow(combat));
         bottomBox.AddChild(controls);
     }
 
@@ -4457,6 +4453,8 @@ public partial class SessionScreen : Control
             inner.AddChild(face);
             LiftOnHover(face, face.Position, face.RotationDegrees);
             PreviewOnHover(face, cardId);
+            if (combat.State.GetWand(combat.HeroId) is not null || combat.Actions.Any(a => a.value == CauldronAction))
+                LetWandTake(face, cardId);
             _handFaces.Add(face);
             _handFaceDefinitions[face] = card.DefinitionId.value;
             if (!_shownHandIds.Contains(cardId.value))
@@ -4718,7 +4716,17 @@ public partial class SessionScreen : Control
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             energy.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
-            box.AddChild(energy);
+            // The wand's two meters stand beside the Energy: they are hers as much as it is (SessionWand).
+            if (WandMeters(combat) is { } meters)
+            {
+                var pools = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+                pools.AddThemeConstantOverride("separation", 10);
+                pools.AddChild(energy);
+                pools.AddChild(meters);
+                box.AddChild(pools);
+            }
+            else
+                box.AddChild(energy);
             spent += 24 + 4;
 
             // WHAT IS COMING IN, summed, against what is standing in the way. Every enemy's telegraph says its
@@ -4780,6 +4788,24 @@ public partial class SessionScreen : Control
                 box.AddChild(atWhom);
                 spent += 24 + 4;
             }
+        }
+
+        // The staff, over her effects (SessionWand).
+        if (isHero && WandStaff(combat, width - 20) is { } staff)
+        {
+            var holder = new CenterContainer();
+            holder.AddChild(staff);
+            box.AddChild(holder);
+            spent += StaffHeight + 4;
+        }
+
+        // …and the pot, over hers (SessionCauldron).
+        if (isHero && CauldronPot(combat, width - 20) is { } cauldron)
+        {
+            var holder = new CenterContainer();
+            holder.AddChild(cauldron);
+            box.AddChild(holder);
+            spent += PotHeight + 18 + 4;
         }
 
         if (StatusChips(combat, combatant) is { } chips)

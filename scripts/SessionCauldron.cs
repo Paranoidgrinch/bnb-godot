@@ -4,13 +4,15 @@ using RogueDeck.Scenario.Scripting;
 
 namespace BnbGodot;
 
-// THE HERO'S OWN ACTIONS on the fight screen (Hedge Witch plan G2): her cauldron — three slots, what is in them,
-// whether she is Sheltering, Brewing or Ready, and what the pot is about to make — beside a button for each
-// action ("Into the pot", "Brew") with what it costs right now. A hero without actions (the Bureaucrat) gets none
-// of this; the row is exactly what it was.
+// THE HEDGE WITCH'S CAULDRON on the fight screen (Hedge Witch plan G2; playtest 3, B9). It is part of her, not a row
+// of buttons: a pot over her effects, with what is in it, whether she is Sheltering, Brewing or Ready, and what it is
+// about to make. Everything is done to the pot with the pointer:
 //
-// "Into the pot" asks WHICH card through the fight's own card-choice prompt, the same one any card that says
-// "choose a card" raises — so there is no second way of picking a card to learn.
+//   drag a card from the hand onto the pot   Into the Pot (the first each turn free, then 1 Energy)
+//   click the pot                            Brew (1 Energy, three in the pot)
+//
+// The gesture answers the card prompt "Into the Pot" raises with the card that was dragged (SessionWand's gesture,
+// shared), so there is no second way of putting a card in. A hero without a cauldron gets none of this.
 public partial class SessionScreen
 {
     private const string CauldronAction = "cauldron_add";
@@ -24,13 +26,12 @@ public partial class SessionScreen
 
         if (combat.Actions.Any(a => a.value == BrewAction))
         {
-            controls.AddChild(CauldronView(combat));
             var book = new Button { Text = "Recipes", Name = "RecipeBookButton", TooltipText = "The Recipe Book." };
             book.Pressed += () => RecipeBookPanel.Open(this);
             controls.AddChild(book);
         }
 
-        foreach (var action in combat.Actions.Where(a => !IsWandAction(a)))
+        foreach (var action in combat.Actions.Where(a => !IsWandAction(a) && a.value is not (CauldronAction or BrewAction)))
         {
             var target = FirstLivingEnemy(combat);
             var cost = combat.ActionCost(action, target).Sum(c => c.Amount);
@@ -91,64 +92,145 @@ public partial class SessionScreen
         combat.State.Combatants
             .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
 
-    // The pot: three slots, its state, and what it would brew.
-    private static Control CauldronView(ICombatView combat)
+    // The pot as last drawn, for the drop test.
+    private Control? _potView;
+    private const int PotHeight = 64;
+
+    // The pot: an iron bowl with its three ingredients in it, steam for each, a glow when it is Ready, and under it
+    // what it is about to make.
+    private Control? CauldronPot(ICombatView combat, int width)
     {
+        _potView = null;
+        if (!combat.Actions.Any(a => a.value == BrewAction))
+            return null;
         var pot = combat.State.GetCardZones(combat.HeroId).SetAside;
-        var box = new PanelContainer { Name = "Cauldron", TooltipText = "The cauldron." };
-        box.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.BgPanelStrong, MoonvineTheme.Hairline, radius: 6));
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 6);
-        box.AddChild(row);
-
-        // §18, without pictures yet: the lid and the steam say the state — lid down while she shelters, a thread of
-        // steam per ingredient, a rattling lid when it is Ready — and each ingredient wears its family's colour.
-        var state = pot.Count == 0 ? "Sheltering" : pot.Count >= 3 ? "Ready" : "Brewing";
-        var lid = pot.Count == 0 ? "lid down" : pot.Count >= 3 ? "lid rattling" : "lid open";
-        var stateLabel = new Label
-        {
-            Text = $"Cauldron · {state}",
-            VerticalAlignment = VerticalAlignment.Center,
-            TooltipText = pot.Count == 0 ? "Empty: she shelters behind it." : $"{pot.Count} in the pot ({lid}).",
-        };
-        stateLabel.AddThemeColorOverride("font_color", pot.Count >= 3 ? MoonvineTheme.AccentLight : MoonvineTheme.TextSoft);
-        row.AddChild(stateLabel);
-
-        var steam = new Label { Text = pot.Count == 0 ? "◡" : new string('≀', Math.Min(pot.Count, 3)), Name = "Steam",
-            VerticalAlignment = VerticalAlignment.Center, TooltipText = lid };
-        steam.AddThemeColorOverride("font_color", pot.Count == 0 ? MoonvineTheme.TextMuted : MoonvineTheme.TextSoft);
-        if (pot.Count > 0)
-            steam.Ready += () => Steam(steam, pot.Count);
-        row.AddChild(steam);
-
         var cards = GameHost.Instance.Blueprint.Cards.ToDictionary(c => c.Id, StringComparer.Ordinal);
+        var brew = new CardDefinitionId(BrewAction);
+        var brewable = combat.CanUse(brew, FirstLivingEnemy(combat));
+
+        var column = new VBoxContainer { Name = "Cauldron", MouseFilter = MouseFilterEnum.Stop };
+        column.AddThemeConstantOverride("separation", 0);
+        column.MouseDefaultCursorShape = brewable ? CursorShape.PointingHand : CursorShape.Arrow;
+
+        var vessel = new Control { CustomMinimumSize = new Vector2(width, PotHeight), MouseFilter = MouseFilterEnum.Pass };
+        var ready = pot.Count >= 3;
+        vessel.Draw += () =>
+        {
+            var w = vessel.Size.X;
+            var top = 18f;
+            // the bowl: a half-ellipse of dark iron under a lighter rim
+            var bowl = new List<Vector2>();
+            for (var i = 0; i <= 24; i++)
+            {
+                var t = Mathf.Pi * i / 24f;
+                bowl.Add(new Vector2(w / 2 + Mathf.Cos(t) * (w / 2 - 6), top + Mathf.Sin(t) * (PotHeight - top - 4)));
+            }
+            vessel.DrawColoredPolygon([.. bowl], new Color("26262c"));
+            vessel.DrawPolyline([.. bowl], ready ? MoonvineTheme.AccentLight : new Color("4a4a55"), 2f, antialiased: true);
+            vessel.DrawRect(new Rect2(4, top - 4, w - 8, 7), ready ? MoonvineTheme.AccentLight : new Color("5a5a66"));
+            // little feet
+            vessel.DrawRect(new Rect2(w * 0.28f, PotHeight - 6, 6, 6), new Color("3a3a44"));
+            vessel.DrawRect(new Rect2(w * 0.72f - 6, PotHeight - 6, 6, 6), new Color("3a3a44"));
+            // a thread of steam per ingredient
+            for (var thread = 0; thread < Math.Min(pot.Count, 3); thread++)
+            {
+                var x = w * (0.32f + 0.18f * thread);
+                var steam = new Vector2[6];
+                for (var k = 0; k < 6; k++)
+                    steam[k] = new Vector2(x + (k % 2 == 0 ? -3 : 3), top - 6 - k * 2.4f);
+                vessel.DrawPolyline(steam, new Color(MoonvineTheme.TextSoft, 0.55f), 1.5f, antialiased: true);
+            }
+        };
+        // The three ingredients, in their families' colours, sit in the bowl.
+        var inside = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center, MouseFilter = MouseFilterEnum.Pass };
+        inside.AddThemeConstantOverride("separation", 3);
+        inside.SetAnchorsPreset(LayoutPreset.FullRect);
+        inside.OffsetTop = 26;
+        inside.OffsetBottom = -10;
+        inside.OffsetLeft = 18;
+        inside.OffsetRight = -18;
         for (var slot = 0; slot < Math.Max(3, pot.Count); slot++)
         {
             var data = slot < pot.Count ? cards.GetValueOrDefault(pot[slot].DefinitionId.value) : null;
-            var text = slot < pot.Count ? data?.NameKey ?? pot[slot].DefinitionId.value : "·";
             var family = data?.Tags.Select(t => t.value).FirstOrDefault(FamilyTags.Contains);
             var chip = new Label
             {
-                Text = slot >= 3 ? $"[{text} · reserve]" : $"[{text}]",
+                Text = slot < pot.Count ? data?.NameKey ?? pot[slot].DefinitionId.value : "·",
+                HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                TooltipText = slot < pot.Count ? FamilyName(family) : "an empty slot",
+                CustomMinimumSize = new Vector2((width - 40) / 3f - 3, 20),
+                TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+                ClipText = true,
+                MouseFilter = MouseFilterEnum.Pass,
+                TooltipText = slot < pot.Count ? $"{data?.NameKey}: {FamilyName(family)}" + (slot >= 3 ? " (reserve)" : "") : "An empty place.",
             };
-            chip.AddThemeFontSizeOverride("font_size", 12);
+            chip.AddThemeFontSizeOverride("font_size", 10);
             chip.AddThemeColorOverride("font_color", slot < pot.Count ? FamilyColor(family) : MoonvineTheme.TextMuted);
-            row.AddChild(chip);
+            inside.AddChild(chip);
         }
-        if (pot.Count >= 3)
-            box.Ready += () => Rattle(stateLabel);
+        vessel.AddChild(inside);
+        column.AddChild(vessel);
 
-        if (pot.Count >= 3 && Preview(pot, cards) is { } preview)
+        // Under the pot: its state, and what it is about to make.
+        var preview = ready ? Preview(pot, cards) : null;
+        var state = new Label
         {
-            var said = new Label { Text = $"→ {preview.Name}", VerticalAlignment = VerticalAlignment.Center };
-            said.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
-            said.TooltipText = preview.Effect;
-            box.TooltipText = $"{preview.Name}: {preview.Effect}";
-            row.AddChild(said);
+            Text = pot.Count == 0 ? "Sheltering" : ready ? $"Ready: {preview?.Name ?? "brew"}" : $"Brewing {pot.Count}/3",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+            ClipText = true,
+            CustomMinimumSize = new Vector2(width, 0),
+            MouseFilter = MouseFilterEnum.Pass,
+        };
+        state.AddThemeFontSizeOverride("font_size", 11);
+        state.AddThemeColorOverride("font_color", ready ? MoonvineTheme.AccentLight : MoonvineTheme.TextSoft);
+        column.AddChild(state);
+
+        var add = new CardDefinitionId(CauldronAction);
+        column.TooltipText = string.Join("\n\n", new[]
+        {
+            preview is { } brewed ? $"{brewed.Name}: {brewed.Effect}" : null,
+            pot.Count == 0 ? "Empty: she shelters behind the lid." : null,
+            "Drag a card from your hand onto the pot to put it in (the first each turn is free, then 1 Energy).",
+            brewable ? "Click the pot to brew (1 Energy)." : WhyNot(combat, brew, combat.ActionCost(brew, FirstLivingEnemy(combat)).Sum(c => c.Amount)),
+            combat.CanUse(add, null) ? null : WhyNot(combat, add, combat.ActionCost(add, null).Sum(c => c.Amount)),
+        }.Where(t => !string.IsNullOrWhiteSpace(t)));
+
+        column.GuiInput += input =>
+        {
+            if (input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } press)
+            {
+                _wandPress = (null, null, press.GlobalPosition);
+                _pressOnPot = true;
+                column.AcceptEvent();
+            }
+        };
+        if (brewable)
+            column.Ready += () => Pulse(vessel);
+        _potView = column;
+        return column;
+    }
+
+    private bool _pressOnPot;
+
+    // Put a card in, or brew, answering the card prompt with the card that was dragged.
+    private void PotDo(string action, CardInstanceId? card)
+    {
+        if (Play?.Seat is not { } driver || driver.Current is not { } now)
+            return;
+        var id = new CardDefinitionId(action);
+        var target = FirstLivingEnemy(now);
+        if (!now.CanUse(id, target))
+        {
+            Toast(WhyNot(now, id, now.ActionCost(id, target).Sum(c => c.Amount)) ?? "The cauldron cannot do that now.");
+            return;
         }
-        return box;
+        _armedCard = null;
+        driver.UseAction(id, target);
+        if (card is { } chosen && driver.PendingCardChoice is { } offered && offered.Any(o => o.Id == chosen))
+            driver.SupplyCardChoice([chosen]);
+        SurfaceNewProblems();
+        GameHost.Instance.AutoSave();
     }
 
     // Each family's colour, as the rest of the screen already speaks it: damage, a hex, defence, the hearth, luck.
@@ -236,9 +318,9 @@ public partial class SessionScreen
         return lines.Count == 0 ? "" : " " + string.Join(" ", lines);
     }
 
-    // THE CAULDRON, WALKED (`--smoke-cauldron --character=hedge_witch`): into the first fight, three cards into the
-    // pot through the same prompt a player answers, a picture of the Ready pot with its preview, then the Brew —
-    // and what it did, in numbers.
+    // THE CAULDRON, WALKED (`--smoke-cauldron --character=hedge_witch`): into the first fight, cards dragged from the
+    // hand onto the pot with real mouse events — two, a turn ended, the third with no Energy left (it is free) — a
+    // picture of the Ready pot, then a click on it, and what the brew did, in numbers.
     private async System.Threading.Tasks.Task SmokeCauldron()
     {
         var session = Session;
@@ -251,25 +333,15 @@ public partial class SessionScreen
             else
                 break;
         }
-        if (Play?.Seat is not { Current: { } } driver)
+        if (Play?.Seat is not { Current: { } } driver || !driver.Current!.Actions.Any(a => a.value == CauldronAction))
         {
-            GD.Print("smoke-cauldron: no fight reached");
+            GD.Print("smoke-cauldron: no fight with a cauldron reached");
             GetTree().Quit();
             return;
         }
-
-        var add = driver.Current!.Actions.FirstOrDefault(a => a.value == CauldronAction);
-        if (add.value is null)
-        {
-            GD.Print("smoke-cauldron: this hero has no cauldron");
-            GetTree().Quit();
-            return;
-        }
-        // FIRST THROUGH THE BUTTON, the way a player does it (player report 2026-10-04: a second card into the pot
-        // sometimes failed, and so did the free one with no Energy left). Pressing the real "Into the pot" button
-        // runs everything behind it — the recorder, the save — which calling the driver directly skips.
-        await PressIntoThePot("turn 1, first");
-        await PressIntoThePot("turn 1, second");
+        await Frames(4);
+        await DragIntoThePot("turn 1, first (free)");
+        await DragIntoThePot("turn 1, second (1 Energy)");
         driver.EndTurn();
         await Frames(4);
         // Spend the turn's Energy on cards first: the free ingredient must still go in at 0.
@@ -285,35 +357,33 @@ public partial class SessionScreen
                     || driver.Current?.HeroEnergy == spent)
                     break;
             }
-        await PressIntoThePot("turn 2, no Energy left");
-
-        var energy = driver.Current!.HeroEnergy;
-        for (var i = 0; i < 3 && driver.Current!.CanUse(add); i++)
-        {
-            driver.UseAction(add, null);
-            if (driver.PendingCardChoice is { Count: > 0 } offered)
-                driver.SupplyCardChoice([offered[0].Id]);
-        }
         Rebuild();
-        for (var i = 0; i < 4; i++)
-            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await Frames(4);
+        await DragIntoThePot("turn 2, no Energy left");
+
+        Rebuild();
+        await Frames(4);
         var combat = driver.Current!;
         var pot = combat.State.GetCardZones(combat.HeroId).SetAside;
-        var preview = FindChild("Cauldron", recursive: true, owned: false) is Control view ? view.TooltipText : "(no cauldron shown)";
-        GD.Print($"smoke-cauldron: pot={pot.Count} [{string.Join(", ", pot.Select(c => c.DefinitionId.value))}] "
-            + $"energy {energy}→{combat.HeroEnergy} · {preview}");
-        GetViewport().GetTexture().GetImage().SavePng("user://smoke-cauldron.png");
-        GD.Print("smoke: screenshot user://smoke-cauldron.png");
+        GD.Print($"smoke-cauldron: pot={pot.Count} [{string.Join(", ", pot.Select(c => c.DefinitionId.value))}] · "
+            + (_potView?.TooltipText.Split("\n\n")[0] ?? "(no pot shown)"));
+        if (!DisplayServer.GetName().Contains("headless"))
+        {
+            GetViewport().GetTexture().GetImage().SavePng("user://smoke-cauldron.png");
+            GD.Print("smoke: screenshot user://smoke-cauldron.png");
+        }
 
         var enemy = FirstLivingEnemy(combat);
         var before = enemy is { } e ? combat.State.GetCombatant(e).Health.Current : 0;
-        var brew = combat.Actions.First(a => a.value == BrewAction);
-        var brewable = combat.CanUse(brew, enemy);
-        driver.UseAction(brew, enemy);
-        var after = driver.Current!;
-        GD.Print($"smoke-cauldron: brew allowed={brewable} · pot now {after.State.GetCardZones(after.HeroId).SetAside.Count}"
-            + $" · enemy HP {before}→{(enemy is { } id ? after.State.GetCombatant(id).Health.Current : 0)}"
-            + $" · hero block {after.HeroGuard} · error={Session?.Error ?? Play?.Error ?? "none"}");
+        var brewable = combat.CanUse(new CardDefinitionId(BrewAction), enemy);
+        if (_potView is { } view && IsInstanceValid(view))
+            await Click(view.GetGlobalRect().GetCenter());
+        if (driver.Current is not { } after)
+            GD.Print($"smoke-cauldron [brew by click]: allowed={brewable} · the brew ended the fight");
+        else
+            GD.Print($"smoke-cauldron [brew by click]: allowed={brewable} · pot now {after.State.GetCardZones(after.HeroId).SetAside.Count}"
+                + $" · enemy HP {before}→{(enemy is { } id ? after.State.GetCombatant(id).Health.Current : 0)}"
+                + $" · hero block {after.HeroGuard} · error={Session?.Error ?? Play?.Error ?? "none"}");
         GetTree().Quit();
     }
 
@@ -323,46 +393,24 @@ public partial class SessionScreen
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
     }
 
-    // One press of the real "Into the pot" button, then a click on the first card the prompt offers — and what the
-    // pot, the Energy and the button said before and after.
-    private async System.Threading.Tasks.Task PressIntoThePot(string when)
+    // One card dragged from the hand onto the pot, and what the pot and the Energy said before and after.
+    private async System.Threading.Tasks.Task DragIntoThePot(string when)
     {
-        await Frames(2);
         var driver = Play!.Seat!;
         var before = driver.Current!;
         var potBefore = before.State.GetCardZones(before.HeroId).SetAside.Count;
         var energyBefore = before.HeroEnergy;
-        if (FindChild($"Action_{CauldronAction}", recursive: true, owned: false) is not Button button)
+        var face = _handFaces.FirstOrDefault(f => IsInstanceValid(f));
+        if (face is null || _potView is not { } pot || !IsInstanceValid(pot))
         {
-            GD.Print($"smoke-cauldron [{when}]: no 'Into the pot' button on screen");
+            GD.Print($"smoke-cauldron [{when}]: nothing to drag (hand {_handFaces.Count}, pot {(_potView is null ? "missing" : "drawn")})");
             return;
         }
-        var label = $"{button.Text}{(button.Disabled ? " DISABLED" : "")}";
-        if (button.Disabled)
-        {
-            GD.Print($"smoke-cauldron [{when}]: button {label} · pot {potBefore} · energy {energyBefore}");
-            return;
-        }
-        button.EmitSignal(BaseButton.SignalName.Pressed);
-        await Frames(2);
-        var offered = driver.PendingCardChoice;
-        // Click the card on SCREEN, not the handler: a face dimmed as unaffordable has a disabled click, and the
-        // handler alone never saw that (the 0-Energy pot bug, 2026-10-04).
-        var clickable = "none";
-        if (offered is { Count: > 0 })
-        {
-            clickable = FindChild($"Choice_{offered[0].Id.value}", recursive: true, owned: false) is { } face
-                && face.FindChildren("*", nameof(Button), recursive: true, owned: false)
-                    .OfType<Button>().FirstOrDefault() is { } overlay
-                ? overlay.Disabled ? "DISABLED" : "yes"
-                : "not found";
-            if (clickable == "yes")
-                OnCardChoiceClicked(Play, offered, offered[0].Id);
-            await Frames(2);
-        }
+        await Drag(face.GetGlobalRect().GetCenter() + new Vector2(0, 30), pot.GetGlobalRect().GetCenter());
         var after = driver.Current!;
-        GD.Print($"smoke-cauldron [{when}]: button {label} · prompt offered {offered?.Count ?? 0} (card clickable: {clickable}) · pot {potBefore}→"
-            + $"{after.State.GetCardZones(after.HeroId).SetAside.Count} · energy {energyBefore}→{after.HeroEnergy}"
-            + $" · error={Session?.Error ?? Play?.Error ?? "none"}");
+        GD.Print($"smoke-cauldron [{when}]: pot {potBefore}→{after.State.GetCardZones(after.HeroId).SetAside.Count}"
+            + $" · energy {energyBefore}→{after.HeroEnergy} · error={Session?.Error ?? Play?.Error ?? "none"}");
+        Rebuild();
+        await Frames(4);
     }
 }
