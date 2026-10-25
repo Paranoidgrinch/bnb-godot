@@ -218,7 +218,7 @@ public partial class SessionScreen
         // And the dialog the keys are chosen in, photographed from the Esc menu.
         _UnhandledInput(new InputEventAction { Action = "ui_cancel", Pressed = true });
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-        var controls = FindButton(GetNodeOrNull("SettingsOverlay"), "🎮  Controls");
+        var controls = FindButton(GetNodeOrNull("SettingsOverlay"), "Controls");
         controls?.EmitSignal(BaseButton.SignalName.Pressed);
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         report.Add($"controls-menu={controls is not null}");

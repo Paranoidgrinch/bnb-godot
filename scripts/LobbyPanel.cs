@@ -145,7 +145,7 @@ public partial class LobbyPanel : PanelContainer
             var line = new Label
             {
                 Text = $"{index + 1}. {seat.Name}{(index == net.LocalSeat ? " (you)" : "")} — {character}"
-                    + $"{(seat.Ready ? "  ✔ ready" : "")}{(seat.Connected ? "" : "  (away)")}",
+                    + $"{(seat.Ready ? "  ready" : "")}{(seat.Connected ? "" : "  (away)")}",
             };
             line.AddThemeColorOverride("font_color", seat.Ready ? MoonvineTheme.Text : MoonvineTheme.TextSoft);
             _column.AddChild(line);
@@ -198,7 +198,7 @@ public partial class LobbyPanel : PanelContainer
         {
             _seed = new LineEdit { PlaceholderText = "seed (random)", CustomMinimumSize = new Vector2(140, 0), Name = "TableSeed" };
             actions.AddChild(_seed);
-            var start = new Button { Text = "Start the run ▸", CustomMinimumSize = new Vector2(160, 40), Disabled = !net.CanStart };
+            var start = new Button { Text = "Start the run", CustomMinimumSize = new Vector2(160, 40), Disabled = !net.CanStart };
             start.TooltipText = net.CanStart ? "Everyone is ready." : "Every seat must pick a hero and be ready.";
             start.Pressed += () => net.StartRun(RunSeeds.Parse(_seed.Text) ?? (int)(Time.GetTicksUsec() % int.MaxValue));
             actions.AddChild(start);

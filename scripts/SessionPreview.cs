@@ -191,13 +191,13 @@ public partial class SessionScreen
         if (when is not null)
             parts.Add(when);
         if (dies)
-            parts.Add("☠");
+            parts.Add("lethal");
         if (lost > 0)
             parts.Add($"−{lost}");
         if (healed > 0)
             parts.Add($"+{healed}");
         if (block != 0)
-            parts.Add($"🛡{(block > 0 ? "+" : "−")}{Math.Abs(block)}");
+            parts.Add($"Block {(block > 0 ? "+" : "−")}{Math.Abs(block)}");
         parts.AddRange(statuses);
         var label = new Label
         {

@@ -197,27 +197,27 @@ public partial class SessionScreen
         var discarded = zones.GetCardsInZone(CardZone.DiscardPile).Count;
         var exhausted = zones.GetCardsInZone(CardZone.ExhaustPile).Count;
 
-        const int lift = 4;
-        const int caption = 26;
+        const int lift = 3;
+        const int caption = 22;
         const int lean = 4 * lift;
-        var footprint = new Vector2(CardVisuals.CardW + lean, CardVisuals.CardH + lean + caption);
+        var footprint = new Vector2(PileW + lean, PileH + lean + caption);
 
         if (_discardHolder is null || !IsInstanceValid(_discardHolder))
         {
             var holder = new Control { Name = DiscardPileName, CustomMinimumSize = footprint, Size = footprint };
             holder.SetAnchorsPreset(LayoutPreset.BottomRight);
-            holder.Position = new Vector2(-24 - footprint.X, -footprint.Y - 16);
+            holder.Position = new Vector2(-PileCorner - footprint.X, -footprint.Y - PileCorner);
             _combatRoot.AddChild(holder);
             _discardHolder = holder;
 
             _discardStills.Clear();
             for (var i = 0; i < 3; i++)
             {
-                var still = CardVisuals.Back(animated: false);
+                var still = CardVisuals.Back(animated: false, PileScale);
                 holder.AddChild(still);
                 _discardStills.Add(still);
             }
-            var top = CardVisuals.Back(animated: true);
+            var top = CardVisuals.Back(animated: true, PileScale);
             holder.AddChild(top);
             _discardTop = top;
 

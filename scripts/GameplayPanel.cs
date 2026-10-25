@@ -38,7 +38,7 @@ public partial class GameplayPanel : PanelContainer
                 + "enemies' turn would get through.",
             GameplaySettings.DamageCalculator, on => GameplaySettings.DamageCalculator = on));
         column.AddChild(Switch("Key names over the cards in hand",
-            "The small number over each card: the key that picks it (Settings ▸ Controls).",
+            "The small number over each card: the key that picks it (Settings, Controls).",
             GameplaySettings.KeyHints, on => GameplaySettings.KeyHints = on));
 
         var back = new Button { Text = "Back", CustomMinimumSize = new Vector2(120, 40),

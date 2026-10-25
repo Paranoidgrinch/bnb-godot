@@ -164,7 +164,10 @@ public partial class SessionScreen : Control
         _logPanel.AddThemeStyleboxOverride("panel", MoonvineTheme.Panel(MoonvineTheme.BgRaised, MoonvineTheme.Accent));
         _logPanel.AnchorLeft = 1f; _logPanel.AnchorRight = 1f; _logPanel.AnchorTop = 0f; _logPanel.AnchorBottom = 1f;
         _logPanel.OffsetLeft = -420; _logPanel.OffsetRight = -12; _logPanel.OffsetTop = 12; _logPanel.OffsetBottom = -12;
-        _log = new RichTextLabel { FitContent = false, ScrollFollowing = true, BbcodeEnabled = false };
+        _log = new RichTextLabel { FitContent = false, ScrollFollowing = true, BbcodeEnabled = true };
+        _log.AddThemeFontSizeOverride("normal_font_size", 14);
+        _log.AddThemeFontSizeOverride("bold_font_size", 14);
+        _log.AddThemeFontSizeOverride("italics_font_size", 14);
         _logPanel.AddChild(_log);
         AddChild(_logPanel);
 
@@ -260,6 +263,8 @@ public partial class SessionScreen : Control
             _ = SmokeHover();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-summaries"))
             SmokeSummaries();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-log"))
+            _ = SmokeLog();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-tutorial"))
             _ = SmokeTutorial();
     }
@@ -2900,7 +2905,7 @@ public partial class SessionScreen : Control
             Title("…");
 
         RenderHud(session);
-        _log.Text = string.Join("\n", session.Run.Log.TakeLast(60).Select(entry => entry.Message));
+        _log.Text = LogText(session);
         AnnounceAct(session);
         SetMusic(session);
         // WHAT THIS RUN HAS SHOWN THE PLAYER, written down where it outlives the run. Asked on every redraw
@@ -3883,7 +3888,7 @@ public partial class SessionScreen : Control
                      MapNodeTags.Rest, MapNodeTags.Treasure, MapNodeTags.Shop, MapNodeTags.Boss,
                  })
         {
-            var label = new Label { Text = $"{MapView.Icon(role)} {MapView.Label(role)}" };
+            var label = new Label { Text = MapView.Label(role) };
             label.AddThemeFontSizeOverride("font_size", 11);
             label.AddThemeColorOverride("font_color", MapView.RoleColor(role));
             row.AddChild(label);
@@ -3915,9 +3920,19 @@ public partial class SessionScreen : Control
     // longest decree, and it has had a scroll of its own and a hover since the day it was built.
     private const int DivineBand = 80;
     private const int HintBand = 22;       // "click an enemy to play it"
-    private const int HandBand = 214;      // a card plus the fan's lean
+    // THE HAND IS THE BIGGEST THING ON THE TABLE (playtest 3, B1–B3): its cards are drawn a quarter larger than
+    // a card anywhere else, and the two piles shrink to a token in the very corners to give it the room.
+    private const float HandScale = 1.25f;
+    private static float HandW => Mathf.Round(CardVisuals.CardW * HandScale);
+    private static float HandH => Mathf.Round(CardVisuals.CardH * HandScale);
+    private const float PileScale = 0.6f;
+    private static float PileW => Mathf.Round(CardVisuals.CardW * PileScale);
+    private static float PileH => Mathf.Round(CardVisuals.CardH * PileScale);
+    private const int PileCorner = 8;      // how far a pile sits from its corner
+
+    private const int HandBand = 262;      // a hand card plus the fan's lean
     private const int ControlBand = 44;    // End turn, consumables
-    private const int DeckBand = 190;      // the pile's corner: 24 in + a 150-wide leaning stack + air
+    private const int DeckBand = 112;      // the pile's corner: 8 in + an 92-wide leaning stack + air
     private int BottomBand => HintBand + HandBand + ControlBand + 12 + _wandBand;
 
     // The wand's own row over the buttons, when the hero carries one (SessionWand).
@@ -4062,15 +4077,6 @@ public partial class SessionScreen : Control
         enemyRow.AddThemeConstantOverride("v_separation", CrowdGap);
         foreach (var enemy in enemies)
             enemyRow.AddChild(CombatantBox(combat, enemy, isHero: false, column, nameBand, bodyHeight, arenaHeight));
-        // THE FIGHT'S OWN RULES, IN THE MIDDLE OF THE ROOM. An elite's or a boss's mechanic used to be one more
-        // chip under its body, beside Doubt ×2 — and the playtest said so: "die spezialmechaniken der bosse und
-        // elites … gehen sehr leicht verloren". With room between the hero and the enemies, they stand there as
-        // plates of their own; a plate flares when its rule fires or its count moves.
-        if (_ruled.Count > 0 && FightRules(combat, enemies) is { } rules)
-        {
-            enemyRow.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
-            arena.AddChild(rules);
-        }
         arena.AddChild(enemyRow);
         _enemyRow = enemyRow;
 
@@ -4308,8 +4314,8 @@ public partial class SessionScreen : Control
     {
         var drawCount = combat.State.GetCardZones(combat.HeroId).GetCardsInZone(CardZone.DrawPile).Count;
 
-        const int lift = 4;      // how far up and to the right each card in the stack sits on the one below
-        const int caption = 26;  // the count's own band, under the ink
+        const int lift = 3;      // how far up and to the right each card in the stack sits on the one below
+        const int caption = 22;  // the count's own band, under the ink
         const int lean = 4 * lift; // the FULL stack's slant, held fixed so a thinning pile does not move house
 
         // ⚠ A PILE'S FOOTPRINT IS ITS INK, NOT ONE CARD. The stack leans up and to the right, so it stands
@@ -4319,13 +4325,13 @@ public partial class SessionScreen : Control
         // straight out of the bottom of the holder and onto the pane's own hairline. It had been printing
         // 2 px off the edge of the window since the pile was built; D2 made it gold, and a gold thing sitting
         // on the border is not something you can keep not seeing.
-        var footprint = new Vector2(CardVisuals.CardW + lean, CardVisuals.CardH + lean + caption);
+        var footprint = new Vector2(PileW + lean, PileH + lean + caption);
 
         if (_deckHolder is null || !IsInstanceValid(_deckHolder))
         {
             var holder = new Control { CustomMinimumSize = footprint, Size = footprint };
             holder.SetAnchorsPreset(LayoutPreset.BottomLeft);
-            holder.Position = new Vector2(24, -footprint.Y - 16);
+            holder.Position = new Vector2(PileCorner, -footprint.Y - PileCorner);
             _combatRoot.AddChild(holder);
             _deckHolder = holder;
 
@@ -4333,11 +4339,11 @@ public partial class SessionScreen : Control
             _deckStills.Clear();
             for (var i = 0; i < 3; i++)
             {
-                var still = CardVisuals.Back(animated: false);
+                var still = CardVisuals.Back(animated: false, PileScale);
                 holder.AddChild(still);
                 _deckStills.Add(still);
             }
-            var top = CardVisuals.Back(animated: true);
+            var top = CardVisuals.Back(animated: true, PileScale);
             holder.AddChild(top);
             _deckTopNode = top;
 
@@ -4392,25 +4398,25 @@ public partial class SessionScreen : Control
         // and the row leans into a shallow fan — which is what makes an overlap read as a hand of cards rather
         // than as a layout that ran out of room, and what keeps a big hand of big cards from walking off both
         // edges. The room it has is its REGION: the bottom band minus the draw pile's corner.
-        const int gap = 12;
-        const int fanned = 5; // beyond this many, the row starts closing up
-        // THE HAND IS CENTRED ON THE SCREEN, not on what is left beside the pile. With the sidebar gone the pane
-        // is the whole width, and a row centred on "the pane minus the pile's corner" sat visibly right of the
-        // middle (playtest 2026-09-26). The room it may use is symmetric — the pile's corner kept clear on BOTH
-        // sides — so a full fan is centred too, and only a row too wide for that is pushed off the pile.
+        // ⚠ THE FAN OVERLAPS FROM THE FOURTH CARD ON (playtest 3, B2): a card shows three quarters of itself, which
+        // is the name, the cost and most of its text — enough to find it, and the pointer lifts the one you
+        // read. The row spreads wider before it closes up further, and leans more, so a big hand of big cards
+        // still reads as a hand.
+        const int gap = 10;
+        const int fanned = 3; // beyond this many, the row starts closing up
         var regionWidth = PaneWidth - PaneInset * 2;
         var pileClear = DeckBand - PaneInset;
-        var available = Math.Max(CardVisuals.CardW, regionWidth - pileClear * 2);
-        var step = (float)(CardVisuals.CardW + gap);
+        var available = Math.Max(HandW, regionWidth - pileClear * 2);
+        var step = HandW + gap;
         if (cards.Count > fanned)
-            step = Math.Min(step, Math.Max(36f, (available - CardVisuals.CardW) / (cards.Count - 1)));
-        var totalWidth = (Math.Max(cards.Count, 1) - 1) * step + CardVisuals.CardW;
+            step = Math.Min(HandW * 0.78f, Math.Max(40f, (available - HandW) / (cards.Count - 1)));
+        var totalWidth = (Math.Max(cards.Count, 1) - 1) * step + HandW;
 
         // The tilt is a fixed SPREAD shared out, not a fixed angle per card, so a hand of twelve leans no
         // further than a hand of four — it just leans in smaller increments.
         var middle = (cards.Count - 1) / 2f;
-        var tilt = cards.Count > 1 ? Math.Min(2.2f, 9f / (cards.Count - 1)) : 0f;
-        const float arc = 3f; // how much lower each step from the middle of the fan sits
+        var tilt = cards.Count > 1 ? Math.Min(3f, 16f / (cards.Count - 1)) : 0f;
+        const float arc = 4f; // how much lower each step from the middle of the fan sits
 
         // The row is placed in its region by hand — anchored to the region's bottom-left and pushed right by
         // the pile's corner plus half the room left over. A plain Control governed by anchors, so nothing the
@@ -4421,7 +4427,7 @@ public partial class SessionScreen : Control
         var inner = new Control
         {
             AnchorTop = 1f, AnchorBottom = 1f, AnchorLeft = 0f, AnchorRight = 0f,
-            OffsetTop = -(CardVisuals.CardH + 8 + arc * middle + 12),
+            OffsetTop = -(HandH + 8 + arc * middle + 12),
             OffsetBottom = 0f,
             OffsetLeft = Math.Max(pileClear, (regionWidth - totalWidth) / 2f),
         };
@@ -4437,13 +4443,13 @@ public partial class SessionScreen : Control
             var card = cards[i];
             var cardId = card.Id;
             var armed = _armedCard is { } a && a.value == cardId.value;
-            var face = CardBlockButton(combat, hero, card, armed, () => OnCardClicked(cardId));
+            var face = CardBlockButton(combat, hero, card, armed, () => OnCardClicked(cardId), scale: HandScale);
             var fromMiddle = i - middle;
             face.Position = new Vector2(i * step, Math.Abs(fromMiddle) * arc);
-            face.Size = new Vector2(CardVisuals.CardW, CardVisuals.CardH);
+            face.Size = new Vector2(HandW, HandH);
             // Pivot at the card's centre — the same point AnimateDraws flips a freshly-drawn card around, so
             // the fan and the deal do not fight over where the card turns.
-            face.PivotOffset = new Vector2(CardVisuals.CardW / 2f, CardVisuals.CardH / 2f);
+            face.PivotOffset = new Vector2(HandW / 2f, HandH / 2f);
             face.RotationDegrees = fromMiddle * tilt;
             // The key over the card sits BESIDE it in the row, not on it: a face clips what it holds.
             if (i < Controls.CardKeys && GameplaySettings.KeyHints)
@@ -4496,8 +4502,8 @@ public partial class SessionScreen : Control
     // thing the pointer actually lands on. A card with no overlay (nothing to click) listens for itself.
     private void LiftOnHover(Control face, Vector2 home, float homeRotation)
     {
-        const float grown = 1.5f;
-        var rise = CardVisuals.CardH * (grown - 1f) / 2f;
+        const float grown = 1.3f;
+        var rise = face.Size.Y * (grown - 1f) / 2f;
 
         var listener = face.GetChildren().OfType<Button>().LastOrDefault() as Control ?? face;
 
@@ -4538,7 +4544,7 @@ public partial class SessionScreen : Control
             var target = card.Position;
             var startLocal = parent.GetGlobalTransform().AffineInverse() * deckGlobal;
             var mid = startLocal.Lerp(target, 0.5f);
-            card.PivotOffset = new Vector2(CardVisuals.CardW / 2f, CardVisuals.CardH / 2f);
+            card.PivotOffset = card.Size / 2f;
             card.Position = startLocal;
 
             // A still back covers the face until the flip's midpoint.
@@ -4842,7 +4848,7 @@ public partial class SessionScreen : Control
         if (ForeseenNow(combat) is not { } foresight)
             return null;
         var loss = Math.Max(0, hero.Health.Current - foresight.HeroHealthAfter);
-        var text = foresight.HeroDies ? $"Incoming {foresight.Amount} · ☠ lethal"
+        var text = foresight.HeroDies ? $"Incoming {foresight.Amount} · lethal"
             : loss > 0 && loss < foresight.Amount ? $"Incoming {foresight.Amount} → −{loss} ❤"
             : loss > 0 ? $"Incoming −{loss} ❤"
             : foresight.Amount > 0 ? $"Incoming {foresight.Amount} · all blocked"
@@ -4888,7 +4894,7 @@ public partial class SessionScreen : Control
         holder.AddChild(fill);
         var label = new Label
         {
-            Text = $"{current}/{max}" + (block > 0 ? $"   🛡{block}" : ""),
+            Text = $"{current}/{max}" + (block > 0 ? $"   Block {block}" : ""),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -4921,7 +4927,7 @@ public partial class SessionScreen : Control
     // true of this card right now — what it is called, what it costs, whether it can be paid for, what has
     // been done to this copy — and hands that over.
     private Control CardBlockButton(ICombatView combat, CombatantState hero, CardInstance card, bool highlighted, Action onClick,
-        bool chosenNotPlayed = false)
+        bool chosenNotPlayed = false, float scale = 1f)
     {
         var definition = card.DefinitionId.value;
         // TWO SEPARATE REASONS A CARD CANNOT BE PLAYED, and the card face has to show both. The purse is one
@@ -4961,7 +4967,7 @@ public partial class SessionScreen : Control
                 Dimmed: !affordable,
                 Armed: highlighted,
                 Marks: marks),
-            onClick);
+            onClick, scale);
     }
 
     private void OnCardChoiceClicked(RunPlayback play, IReadOnlyList<CardInstance> candidates, CardInstanceId id)
@@ -5392,6 +5398,15 @@ public partial class SessionScreen : Control
             GD.Print("  ⚠ ONE COLUMN — the shelf was handed its minimum width, not the panel's");
 
         ReportTooltips("shelf");
+        // `--inventory`: the same relics in the inventory's relic tab, where they are rows with their rules.
+        if (OS.GetCmdlineUserArgs().Contains("--inventory"))
+        {
+            OpenInventory(InventoryTab.Relics);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await CaptureThenQuit("smoke-inventory.png");
+            return;
+        }
         await CaptureThenQuit("smoke-shelf.png");
     }
 
@@ -6053,7 +6068,7 @@ public partial class SessionScreen : Control
         return plate;
     }
 
-    // One effect of a telegraph as a chip: "11 dmg" → ⚔ 11, "8 block" → 🛡 8, "heal 5" → ✚ 5, "Doubt +1" → Doubt +1.
+    // One effect of a telegraph as a chip: "11 dmg" → ⚔ 11, "8 block" → Block 8, "heal 5" → ✚ 5, "Doubt +1" → Doubt +1.
     // A scaling rider ("+2 per Doubt (max +6)") stays in words after the number, smaller. Anything else is shown
     // as written — the chip never invents a meaning the document did not give it.
     private static Control EffectChip(string effect, Color? forecast, bool promise)
@@ -6062,7 +6077,7 @@ public partial class SessionScreen : Control
         if (m.Success)
         {
             var attack = m.Groups[2].Value == "dmg";
-            var text = $"{(attack ? "⚔" : "🛡")} {m.Groups[1].Value}";
+            var text = $"{(attack ? "⚔" : "Block")} {m.Groups[1].Value}";
             var rider = m.Groups[3].Value.Trim();
             return IntentChip(rider.Length > 0 ? $"{text}  {rider}" : text,
                 forecast ?? (attack ? MoonvineTheme.Harm : MoonvineTheme.Steel), promise,
@@ -6138,6 +6153,11 @@ public partial class SessionScreen : Control
     // Strength and Paperwork are the vocabulary of every fight; "The Keys" is this one's.
     private static HashSet<string>? _commonStatuses;
 
+    // A character's standing tag or the engine's bookkeeping (the content's `log_only` tag): the fight's log tells
+    // what it did, and no body carries a chip for it (playtest 3, B4/B5).
+    private static bool IsLogOnly(string status) =>
+        GameHost.Instance.Blueprint.Presentation.Statuses.GetValueOrDefault(status)?.Tags.Contains("log_only") == true;
+
     private static bool IsMechanic(StatusInstance status, StatusDefinition? definition)
     {
         if (_commonStatuses is null)
@@ -6168,29 +6188,22 @@ public partial class SessionScreen : Control
     private readonly List<(CombatantState Owner, StatusInstance Status, StatusDefinition Definition)> _ruled = [];
     private static HashSet<string>? _everyFightStatuses;
 
+    // WHICH STATUSES ARE THIS FIGHT'S RULES: an elite's or a boss's own mechanics. They used to stand as a wall of
+    // text in the middle of the room, with whatever the hero was carrying beside them — which pushed a two-body
+    // elite into a column and read as a rulebook (playtest 3, B6). Now each is a badge on the body it belongs to,
+    // its name and count on the badge and its rule on hover; a hero's own effects are never a fight's rule.
     private void DecideRules(ICombatView combat, CombatantState hero, IReadOnlyList<CombatantState> enemies)
     {
         _ruled.Clear();
-        if (enemies.Count > 2 || !enemies.Any(e => e.IsAlive && IsEliteOrBoss(e)))
-            return;
-        // A status the hero starts EVERY fight with is the character, not this fight (the Bureaucrat's own
-        // passive) — it stays a chip.
-        _everyFightStatuses ??= GameHost.Instance.Blueprint.Encounters.Count == 0 ? [] :
-            GameHost.Instance.Blueprint.Encounters
-                .SelectMany(e => e.HeroStartingStatuses.Select(h => h.Status.value).Distinct())
-                .GroupBy(id => id)
-                .Where(g => g.Count() == GameHost.Instance.Blueprint.Encounters.Count)
-                .Select(g => g.Key)
-                .ToHashSet(StringComparer.Ordinal);
         var worn = Session?.Run.Relics.Select(r => r.Id.Value).ToHashSet(StringComparer.Ordinal) ?? [];
         var registry = combat.State.DefinitionRegistry;
-        foreach (var owner in enemies.Where(e => e.IsAlive && IsEliteOrBoss(e)).Append(hero))
+        foreach (var owner in enemies.Where(e => e.IsAlive && IsEliteOrBoss(e)))
             foreach (var status in owner.Statuses)
             {
                 StatusDefinition? definition = null;
                 registry?.TryGetStatus(status.DefinitionId, out definition);
                 if (!IsMechanic(status, definition) || OfAWornRelic(status.DefinitionId.value, worn)
-                    || (owner == hero && _everyFightStatuses.Contains(status.DefinitionId.value)))
+                    || IsLogOnly(status.DefinitionId.value))
                     continue;
                 _ruled.Add((owner, status, definition!));
             }
@@ -6199,74 +6212,48 @@ public partial class SessionScreen : Control
     private bool OnAPlate(CombatantState owner, StatusInstance status) =>
         _ruled.Any(r => r.Owner.Id == owner.Id && r.Status.DefinitionId == status.DefinitionId);
 
-    private Control? FightRules(ICombatView combat, IReadOnlyList<CombatantState> enemies)
+    private Control RuleBadge(ICombatView combat, CombatantState owner, StatusInstance status, StatusDefinition definition)
     {
-        var plates = _ruled.Take(5).Select(r => RulePlate(combat, r.Owner, r.Status, r.Definition,
-            onHero: r.Owner.Id == combat.HeroId)).ToList();
-        if (plates.Count == 0)
-            return null;
-
-        var column = new VBoxContainer
+        var plate = new PanelContainer
         {
+            MouseFilter = MouseFilterEnum.Pass,
+            TooltipText = Glossary.Explain(definition.DescriptionKey),
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            SizeFlagsVertical = SizeFlags.ShrinkBegin,
-            Alignment = BoxContainer.AlignmentMode.Begin,
         };
-        column.AddThemeConstantOverride("separation", 6);
-        var head = new Label { Text = "THIS FIGHT'S RULES", HorizontalAlignment = HorizontalAlignment.Center };
-        head.AddThemeFontSizeOverride("font_size", 12);
-        head.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
-        column.AddChild(head);
-        foreach (var plate in plates)
-            column.AddChild(plate);
-        var margin = new MarginContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, Name = "FightRules" };
-        margin.AddThemeConstantOverride("margin_left", 24);
-        margin.AddThemeConstantOverride("margin_right", 24);
-        margin.AddChild(column);
-        return margin;
-    }
-
-    private Control RulePlate(
-        ICombatView combat, CombatantState owner, StatusInstance status, StatusDefinition definition, bool onHero)
-    {
-        var plate = new PanelContainer { MouseFilter = MouseFilterEnum.Pass, TooltipText = definition.DescriptionKey };
-        var box = MoonvineTheme.Panel(MoonvineTheme.BgRaised, MoonvineTheme.Arcane, radius: 6);
+        var box = MoonvineTheme.Panel(MoonvineTheme.BgRaised, MoonvineTheme.Arcane, radius: 5);
+        box.BorderWidthTop = box.BorderWidthBottom = box.BorderWidthRight = 1;
         box.BorderWidthLeft = 4;
-        box.ContentMarginLeft = 12;
-        box.ContentMarginRight = box.ContentMarginTop = box.ContentMarginBottom = 8;
+        box.ContentMarginLeft = 8;
+        box.ContentMarginRight = 6;
+        box.ContentMarginTop = box.ContentMarginBottom = 2;
         plate.AddThemeStyleboxOverride("panel", box);
 
-        var column = new VBoxContainer { MouseFilter = MouseFilterEnum.Pass };
-        column.AddThemeConstantOverride("separation", 2);
         var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Pass };
+        row.AddThemeConstantOverride("separation", 6);
+        var tag = new Label { Text = "RULE", MouseFilter = MouseFilterEnum.Pass, VerticalAlignment = VerticalAlignment.Center };
+        tag.AddThemeFontSizeOverride("font_size", 9);
+        tag.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
+        row.AddChild(tag);
         var (name, magnitude) = StatusParts(status, definition);
         var title = new Label
         {
-            Text = onHero ? $"On you: {name}" : name,
+            Text = name,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             MouseFilter = MouseFilterEnum.Pass,
+            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
         };
-        title.AddThemeFontSizeOverride("font_size", 16);
+        title.AddThemeFontSizeOverride("font_size", 13);
         title.AddThemeColorOverride("font_color", MoonvineTheme.Arcane);
         row.AddChild(title);
         if (magnitude.Length > 0)
         {
             var count = new Label { Text = magnitude, MouseFilter = MouseFilterEnum.Pass };
-            count.AddThemeFontSizeOverride("font_size", 20);
+            count.AddThemeFontSizeOverride("font_size", 16);
             count.AddThemeColorOverride("font_color", MoonvineTheme.Text);
             row.AddChild(count);
         }
-        column.AddChild(row);
-        var rule = new Label
-        {
-            Text = definition.DescriptionKey,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            MouseFilter = MouseFilterEnum.Pass,
-        };
-        rule.AddThemeFontSizeOverride("font_size", 13);
-        rule.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
-        column.AddChild(rule);
-        plate.AddChild(column);
+        plate.AddChild(row);
 
         // It flares when its count moved (the chip memory) or one of its triggers paid out.
         var key = $"rule/{owner.Id.value}/{status.DefinitionId.value}";
@@ -6289,16 +6276,34 @@ public partial class SessionScreen : Control
         // per relic; the relic is now a picture over the hero (the grid), so its status says nothing new.
         var worn = Session?.Run.Relics.Select(r => r.Id.Value).ToHashSet(StringComparer.Ordinal) ?? [];
         var shown = combatant.Statuses
-            .Where(s => s.Visibility == StatusVisibility.Visible && !IsPhase(s) && !OfAWornRelic(s.DefinitionId.value, worn))
-            // A mechanic that has its own plate in the middle of the room is not repeated under the body.
+            .Where(s => s.Visibility == StatusVisibility.Visible && !IsPhase(s) && !OfAWornRelic(s.DefinitionId.value, worn)
+                && !IsLogOnly(s.DefinitionId.value))
+            // A rule of the fight has its own badge above the chips.
             .Where(s => !OnAPlate(combatant, s))
             .ToList();
-        if (shown.Count == 0)
+        var rules = _ruled.Where(r => r.Owner.Id == combatant.Id).ToList();
+        if (shown.Count == 0 && rules.Count == 0)
             return null;
 
         var flow = new HFlowContainer { Alignment = FlowContainer.AlignmentMode.Center, Name = "StatusChips" };
         flow.AddThemeConstantOverride("h_separation", 4);
         flow.AddThemeConstantOverride("v_separation", 4);
+        Control result = flow;
+        if (rules.Count > 0)
+        {
+            var stack = new VBoxContainer { MouseFilter = MouseFilterEnum.Pass };
+            stack.AddThemeConstantOverride("separation", 3);
+            foreach (var (owner, status, definition) in rules)
+            {
+                var badge = RuleBadge(combat, owner, status, definition);
+                if (stack.GetChildCount() == 0)
+                    badge.Name = "FightRules";   // the tutorial points here
+                stack.AddChild(badge);
+            }
+            if (shown.Count > 0)
+                stack.AddChild(flow);
+            result = stack;
+        }
 
         foreach (var status in shown)
         {
@@ -6363,7 +6368,7 @@ public partial class SessionScreen : Control
                 Flare(chip);
             _chipsNow[key] = now;
         }
-        return flow;
+        return result;
     }
 
     // A RELIC THAT ACTS IS SEEN ACTING (playtest 2026-09-26: "wenn ein relic triggert, sollte der rahmen kurz

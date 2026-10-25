@@ -236,7 +236,7 @@ public partial class HistoryPanel : PanelContainer
             {
                 var again = new Button
                 {
-                    Text = $"Play seed {run.Seed} again ▸",
+                    Text = $"Play seed {run.Seed} again",
                     SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
                     TooltipText = "A new run on the same seed: the same maps, rewards and shops.",
                 };
@@ -254,8 +254,8 @@ public partial class HistoryPanel : PanelContainer
         var rooms = run.Rooms > 0 ? $" · {run.Rooms} rooms" : "";
         return run.Result switch
         {
-            "Victory" => $"★ Victory{rooms}",
-            "Defeat" => $"✝ Fell in Act {run.Act}{rooms}" + (run.EndedAt is { } foe ? $" to {foe}" : ""),
+            "Victory" => $"Victory{rooms}",
+            "Defeat" => $"Fell in Act {run.Act}{rooms}" + (run.EndedAt is { } foe ? $" to {foe}" : ""),
             _ => $"Given up{rooms}",
         };
     }

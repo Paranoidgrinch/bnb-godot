@@ -10,7 +10,7 @@ namespace BnbGodot;
 // A fight is redrawn whole on every change, so a blow used to be a number on a bar that was simply different
 // the next time the player looked. Now every step the fight took since the last drawing — a card, the end of
 // the turn, each enemy's action — is read back from its trace and shown ON the body it touched: a number that
-// rises off it (red for a wound, steel "🛡" for what block caught, green for a mend, "+N 🛡" for block gained,
+// rises off it (red for a wound, steel "blocked N" for what block caught, green for a mend, "+N Block" for block gained,
 // the status's colour for a buff or debuff put on it), a red flash and a shudder for a wound, a pulse of the
 // bar for block.
 //
@@ -79,6 +79,7 @@ public partial class SessionScreen
             shown.AddRange(steps.Skip(_stepsSeen));
         _stepsFight = key;
         _stepsSeen = steps.Count;
+        WriteFightLog(combat, shown, fresh);
         if (_fastForward || shown.Count == 0)
             return;
 
@@ -108,14 +109,14 @@ public partial class SessionScreen
                         if (hit.BlockedAmount > 0)
                         {
                             Shield(who, at);
-                            Pop(who, $"🛡 {hit.BlockedAmount}", MoonvineTheme.Steel, 24, beat * Beat, row);
+                            Pop(who, $"blocked {hit.BlockedAmount}", MoonvineTheme.Steel, 24, beat * Beat, row);
                         }
                         break;
                     case HealResolvedTraceEvent mend when mend.HealedAmount > 0:
                         Pop(mend.TargetCombatantId.value, $"+{mend.HealedAmount}", Heal, 30, beat * Beat, row);
                         break;
                     case BlockGainResolvedTraceEvent guard when guard.BlockAfter > guard.BlockBefore:
-                        Pop(guard.TargetCombatantId.value, $"+{guard.BlockAfter - guard.BlockBefore} 🛡",
+                        Pop(guard.TargetCombatantId.value, $"+{guard.BlockAfter - guard.BlockBefore} Block",
                             MoonvineTheme.Steel, 26, beat * Beat, row);
                         Shield(guard.TargetCombatantId.value, beat * Beat);
                         Sound(Sfx.Kind.Block, beat * Beat);

@@ -592,12 +592,12 @@ public static class CardVisuals
         return art;
     }
 
-    public static Control Back(bool animated)
+    public static Control Back(bool animated, float scale = 1f)
     {
         var root = new Control
         {
-            CustomMinimumSize = new Vector2(CardW, CardH),
-            Size = new Vector2(CardW, CardH),
+            CustomMinimumSize = new Vector2(Mathf.Round(CardW * scale), Mathf.Round(CardH * scale)),
+            Size = new Vector2(Mathf.Round(CardW * scale), Mathf.Round(CardH * scale)),
             ClipContents = true,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };

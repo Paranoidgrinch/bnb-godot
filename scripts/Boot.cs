@@ -242,7 +242,7 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-cauldron" or "--smoke-wand" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-effects" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover" or "--smoke-mapkey" or "--smoke-piles" or "--smoke-keys" or "--smoke-preview" or "--smoke-intents" or "--smoke-peek" or "--smoke-report" or "--smoke-summaries" or "--smoke-tip-flip"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-cauldron" or "--smoke-wand" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-effects" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover" or "--smoke-mapkey" or "--smoke-piles" or "--smoke-keys" or "--smoke-preview" or "--smoke-intents" or "--smoke-peek" or "--smoke-report" or "--smoke-summaries" or "--smoke-tip-flip" or "--smoke-log"))
         {
             host.StartNewRun(seed: 7,
                 // Who walks it: `--character=<id>` (the roster's first otherwise) — a probe of the Hedge
@@ -1011,7 +1011,7 @@ public partial class Boot : Control
         actions.SizeFlagsVertical = SizeFlags.ShrinkBegin;
         actions.CustomMinimumSize = new Vector2(MenuButtonWidth, 0);
 
-        var start = new Button { Text = "New run ▸", Name = "NewRunButton", CustomMinimumSize = new Vector2(160, 44) };
+        var start = new Button { Text = "New run", Name = "NewRunButton", CustomMinimumSize = new Vector2(160, 44) };
         start.Pressed += () => ChooseCharacter(host);
         actions.AddChild(start);
 
@@ -1089,7 +1089,7 @@ public partial class Boot : Control
         var aside = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         var bug = new Button
         {
-            Text = "🐞  Report a bug",
+            Text = "Report a bug",
             Flat = true,
             CustomMinimumSize = new Vector2(0, 32),
             TooltipText = "Send what went wrong, with your save and a picture of the screen.",

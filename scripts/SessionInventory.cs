@@ -153,6 +153,8 @@ public partial class SessionScreen
     {
         var row = new HBoxContainer { SizeFlagsHorizontal = SizeFlags.ShrinkCenter, CustomMinimumSize = new Vector2(640, 0) };
         row.AddThemeConstantOverride("separation", 14);
+        // A row is as tall as its text, and a tile left on Fill grew with it into a tall stretched picture.
+        tile.SizeFlagsVertical = SizeFlags.ShrinkBegin;
         row.AddChild(tile);
         var words = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         var title = new Label { Text = name };

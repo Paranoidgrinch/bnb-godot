@@ -65,7 +65,7 @@ public partial class NewRunPanel : PanelContainer
         cancel.Pressed += () => _onCancel();
         actions.AddChild(cancel);
 
-        var begin = new Button { Text = "Begin ▸", CustomMinimumSize = new Vector2(160, 40) };
+        var begin = new Button { Text = "Begin", CustomMinimumSize = new Vector2(160, 40) };
         begin.Pressed += () =>
         {
             RunPreferences.SetMapGenerator(_choice);

@@ -107,7 +107,7 @@ public partial class SettingsPanel : PanelContainer
         // into a run does not have to leave it.
         var volume = new Button
         {
-            Text = "🔊  Volume settings",
+            Text = "Volume settings",
             CustomMinimumSize = new Vector2(0, 40),
             TooltipText = "Master, music and sound effects.",
         };
@@ -118,7 +118,7 @@ public partial class SettingsPanel : PanelContainer
         // Esc then closes one thing, and "Back" is the only way between the two.
         var controls = new Button
         {
-            Text = "🎮  Controls",
+            Text = "Controls",
             CustomMinimumSize = new Vector2(0, 40),
             TooltipText = "Every shortcut, and the key each one is on.",
         };
@@ -127,7 +127,7 @@ public partial class SettingsPanel : PanelContainer
         // THE HELPS, switchable, on a page of their own beside the keys — the same shape and the same way back.
         var gameplay = new Button
         {
-            Text = "🎲  Gameplay",
+            Text = "Gameplay",
             CustomMinimumSize = new Vector2(0, 40),
             TooltipText = "The end-turn question, the damage calculator and the key names over your cards.",
         };
@@ -148,7 +148,7 @@ public partial class SettingsPanel : PanelContainer
         {
             var bug = new Button
             {
-                Text = "🐞  Report a bug",
+                Text = "Report a bug",
                 CustomMinimumSize = new Vector2(0, 40),
                 TooltipText = "Send what went wrong, with your save and a picture of the screen.",
             };
@@ -168,7 +168,7 @@ public partial class SettingsPanel : PanelContainer
         {
             var read = new Button
             {
-                Text = "📜  Compendium",
+                Text = "Compendium",
                 CustomMinimumSize = new Vector2(0, 40),
                 TooltipText = "Every effect and status in the game, in plain words with an example.",
             };
@@ -181,7 +181,7 @@ public partial class SettingsPanel : PanelContainer
         {
             var open = new Button
             {
-                Text = "📖  Archive",
+                Text = "Archive",
                 CustomMinimumSize = new Vector2(0, 40),
                 TooltipText = "Everything you have met, kept between runs.",
             };

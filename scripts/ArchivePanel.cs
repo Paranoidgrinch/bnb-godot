@@ -565,7 +565,7 @@ public partial class ArchivePanel : PanelContainer
     private static string Where(ArchiveKind kind) => kind switch
     {
         ArchiveKind.Enemies => "Ordinary rooms hold them.",
-        ArchiveKind.Elites => "The rooms marked ☣.",
+        ArchiveKind.Elites => "The elite rooms of the map.",
         ArchiveKind.Cards => "Won, bought, or forced on you.",
         ArchiveKind.Relics => "Won, bought, or found behind a door.",
         ArchiveKind.Bosses => "At the foot of an act.",

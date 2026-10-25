@@ -56,14 +56,14 @@ public partial class CharacterSelectPanel : PanelContainer
 
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         buttons.AddThemeConstantOverride("separation", 12);
-        var back = new Button { Text = "◂ Back", CustomMinimumSize = new Vector2(140, 40) };
+        var back = new Button { Text = "Back", CustomMinimumSize = new Vector2(140, 40) };
         back.Pressed += _onClose;
         buttons.AddChild(back);
         _tutorial = new Button { Name = "CharacterTutorial", Text = "Tutorial", CustomMinimumSize = new Vector2(140, 40),
             TooltipText = "The five-minute lesson for this character." };
         _tutorial.Pressed += () => { if (_selected is { } id) Teach(id); };
         buttons.AddChild(_tutorial);
-        _begin = new Button { Name = "BeginRun", Text = "Start run ▸", CustomMinimumSize = new Vector2(180, 40) };
+        _begin = new Button { Name = "BeginRun", Text = "Start run", CustomMinimumSize = new Vector2(180, 40) };
         _begin.Pressed += () => { if (_selected is { } id) Begin(id); };
         buttons.AddChild(_begin);
         column.AddChild(buttons);

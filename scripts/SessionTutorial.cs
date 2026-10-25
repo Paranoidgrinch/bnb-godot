@@ -210,7 +210,7 @@ public partial class SessionScreen
             _coachSilenced = true;
             DropCoach();
         };
-        var next = new Button { Text = "Next ▸", CustomMinimumSize = new Vector2(110, 36) };
+        var next = new Button { Text = "Next", CustomMinimumSize = new Vector2(110, 36) };
         next.Pressed += () =>
         {
             _coachSeen.Add(moment);

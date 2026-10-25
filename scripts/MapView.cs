@@ -87,7 +87,7 @@ public partial class MapView : Control
             var name = named && role == MapNodeTags.Boss ? who : null;
             var button = new Button
             {
-                Text = name is null ? $"{Icon(role)}\n{Label(role)}" : $"{Icon(role)}  {name}",
+                Text = name ?? Label(role),
                 Position = pos,
                 Size = new Vector2(name is null ? NodeW : NamedNodeW, NodeH),
                 Disabled = !isReachable || _onPick is null,
@@ -200,20 +200,6 @@ public partial class MapView : Control
     // three walkers and two reports all say this word, and a mimic that answered "mimic" in one of them would
     // spoil the one room in the game whose point is the surprise.
     public static string Role(RunNode node) => RogueDeck.Bot.MapRole.Of(node);
-
-    public static string Icon(string role) => role switch
-    {
-        MapNodeTags.Combat => "⚔",
-        MapNodeTags.MultiCombat => "⚔⚔",
-        MapNodeTags.Elite => "☣",
-        MapNodeTags.Boss => "☠",
-        MapNodeTags.Shop => "🛒",
-        MapNodeTags.Rest => "🛏",
-        MapNodeTags.Treasure => "📦",
-        MapNodeTags.Workbench => "🔨",
-        MapNodeTags.Event => "❓",
-        _ => "•",
-    };
 
     public static string Label(string role) => role switch
     {
