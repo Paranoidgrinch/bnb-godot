@@ -115,3 +115,27 @@ Getroffen vom Spieler am 2026-10-25:
    Ergebnis an.
 4. **Kessel (B9):** ein Kesselbild mit 3 Plätzen am Helden über den Effekten. Eine Karte hineinziehen bedeutet
    „Into the pot“, ein Klick auf den Kessel bedeutet „Brew“, der Zustand wird als Leuchten gezeigt.
+
+## Stand (2026-10-26)
+
+Erledigt und getestet, nicht gepusht:
+
+| Punkt | Ergebnis | Tor |
+|---|---|---|
+| A1 Flank | Engine fragt korrekt (Test mit 2 Gegnern + Authority grün). Offen: in welcher Lage die Frage ausblieb | `PlaytestThreeTests.Flank_…` |
+| A2 Inventar | Relikt-Kacheln bleiben quadratisch | `--smoke-shelf --inventory` |
+| A3 Log | Kampf-Log aus dem Trace, Ursache je Folge per Effekt-Kette (Core: `EffectEnqueuedTraceEvent.TriggerId`) | `--smoke-log` |
+| B1–B3 | Handkarten ×1,25, Fächer ab Karte 4, Stapel 60 % in den Ecken | `--smoke-hover`, Screenshots |
+| B4/B5 | `log_only`-Tag für Charakter-Tags und Engine-Marker; kein Chip mehr | `Every_log_only_status_exists_and_is_tagged` |
+| B6 | Regel-Badges am Gegner, keine Textwand, Elites nebeneinander | `--smoke-elite`, `--smoke-crowd` |
+| B7 | `RuleTexts.cs`: 142 Regeln, Median 15 Wörter, max. 25 | `The_rulebook_is_short_and_shipped` |
+| B8/B9 | Stab und Kessel am Helden, Ziehen/Klicken | `--smoke-wand`, `--smoke-cauldron` (echte Mausereignisse) |
+| C1 | Emojis aus Menüs, Karte und Block-Anzeigen | Screenshots |
+| D1 | Ambush Footing 20: erste Runde max. 20 Schaden inkl. Block, alle Eröffnungszüge bleiben (Core: `StatusStacksMagnitude`) | `No_fight_against_several_enemies_…` |
+| D2 | Lantern, Volume of Consequences umsortiert, Imp-Zug mit 4 Schaden | `No_enemy_cycles_two_turns_…` |
+| E1 | Elite: 5 Karten, alle verbessert | `Every_elite_offers_five_improved_cards` |
+| E2 | Schatzraum mit eigener Überschrift; nebenbei: Event-Texte verloren alle Satzpunkte (behoben) | `--smoke-treasure` |
+| E3 | 3 Gratis-Relikte in Akt IV mit Preis; die übrigen hatten schon einen | `No_event_gives_a_relic_for_nothing` |
+| F1 | 690 Kurztexte in `source-data/cards/card_texts.json`, Median je Teil 12 (vorher 18) | `Card_texts_are_short` |
+
+Offen: F2 (General-Pool), Golden-Set neu aufnehmen.
