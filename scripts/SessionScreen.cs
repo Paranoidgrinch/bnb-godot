@@ -225,6 +225,8 @@ public partial class SessionScreen : Control
             _ = SmokeRoom(MapNodeTags.Shop, "smoke-shop.png");
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-event"))
             _ = SmokeRoom(MapNodeTags.Event, "smoke-event.png");
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-treasure"))
+            _ = SmokeRoom(MapNodeTags.Treasure, "smoke-treasure.png");
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-rest"))
             _ = SmokeRoom(MapNodeTags.Rest, "smoke-rest.png");
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-upgrade"))
@@ -3025,7 +3027,15 @@ public partial class SessionScreen : Control
         }
 
         var prose = Say(situation.TextKey ?? situation.Id);
-        Title(prose);
+        // A TREASURE ROOM IS NOT AN EVENT. It is built as one (a chest with an Open and a Leave), and it looked like
+        // one: the player read "events often just give a relic, with no risk" (playtest 3, E2). It says what it is.
+        if (InTreasureRoom(session))
+        {
+            Title("Treasure", MoonvineTheme.Signal);
+            Muted(prose);
+        }
+        else
+            Title(prose);
         Explained(prose);
 
         // AN EVENT THAT HANDS SOMETHING OVER SHOWS IT. A door that offers a card or a relic was asking the
@@ -3290,6 +3300,11 @@ public partial class SessionScreen : Control
     // The engine's own situation/choice keys are ids, not sentences ("event.shop.leave"). Give the handful the
     // player can meet a voice; anything else falls back to a readable form of the key itself, so a content gap
     // shows up as words rather than as a dotted id.
+    private static bool InTreasureRoom(InteractiveRunSession session) =>
+        session.Run.CurrentNodeId is { } id
+        && session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == id.Value) is { } node
+        && MapView.Role(node) == MapNodeTags.Treasure;
+
     private static string Say(string key) => key switch
     {
         "event.shop" => "The shop",
@@ -3311,7 +3326,9 @@ public partial class SessionScreen : Control
         "reward-relic" => "The relic you won",
         "reward-consumable" => "What you carry away",
         "spoils" => "The spoils",
-        _ => key.Contains('.') || key.Contains('-') || key.Contains('_') ? Humanized(key) : key,
+        // ⚠ ONLY A KEY IS HUMANIZED, and a key has no spaces. Prose has full stops and hyphens too, and every
+        // event text lost its full stops to this ("wax  Nobody has claimed it", playtest 3).
+        _ => !key.Contains(' ') && (key.Contains('.') || key.Contains('-') || key.Contains('_')) ? Humanized(key) : key,
     };
 
     // The character shelf is named for whoever is shopping: it said "Bureaucrat cards" over the Hedge Witch's own
