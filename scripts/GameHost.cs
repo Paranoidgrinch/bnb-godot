@@ -115,6 +115,28 @@ public partial class GameHost : Godot.Node
         EmitChanged();
     }
 
+    // ONE FIGHT, FOR A PICTURE (`--smoke-encounter=<id>`): the named encounter as the only room of a lesson-shaped
+    // map, on a body that survives it. The room is realised from the act that fields the encounter, so it carries
+    // the act's own rules; a probe and never a run — nothing is recorded or saved.
+    public void StartSingleFight(string encounterId)
+    {
+        var act = Blueprint.Acts?.FirstOrDefault(a => a.MapGeneration?.Encounters?.ByRole.Values
+            .Any(pool => pool.Any(e => e.Encounter.Value == encounterId)) == true);
+        var spec = act?.MapGeneration ?? Blueprint.MapGeneration
+            ?? throw new System.InvalidOperationException("no act fields " + encounterId);
+        var kind = spec.Encounters!.ByRole.First(pair => pair.Value.Any(e => e.Encounter.Value == encounterId)).Key;
+        var content = MapNodeRealizer.Realize(spec, kind, new EncounterId(encounterId));
+        var map = new RunMap([new RogueDeck.Run.Node(new NodeId("probe"), content.Type, content.Payload, content.Tags)]);
+        var start = Blueprint.Start with { MaxHealth = 400, StartingHealth = 400 };
+        IsProbe = true;
+        IsTutorial = false;
+        IsMultiplayer = false;
+        Play?.Dispose();
+        Play = new RunPlayback(OnPlayChanged, _metaStore);
+        Play.Start((Blueprint with { Tutorial = new RunTutorial(map, start) }).ForTutorial(), seed: 7, interactive: true);
+        EmitChanged();
+    }
+
     // A run started with a probe's body (the marathon, the golden set) earns nothing for the player's profile:
     // `--count-unlocks` lets a probe check the unlocks on purpose.
     public bool IsProbe { get; private set; }

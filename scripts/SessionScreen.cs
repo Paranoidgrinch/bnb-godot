@@ -269,6 +269,31 @@ public partial class SessionScreen : Control
             _ = SmokeLog();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-tutorial"))
             _ = SmokeTutorial();
+        else if (OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--smoke-encounter=", StringComparison.Ordinal)) is { } fight)
+            _ = SmokeEncounter(fight["--smoke-encounter=".Length..]);
+    }
+
+    // `--smoke-encounter=<id>`: the fight as it opens, then again after one turn of the first playable card
+    // aimed at the first enemy — so a rule that answers what the player does is on the picture too.
+    private async System.Threading.Tasks.Task SmokeEncounter(string id)
+    {
+        await ToSignal(GetTree().CreateTimer(2.0), SceneTreeTimer.SignalName.Timeout);
+        if (Play?.Seat is not { Current: not null } driver || DisplayServer.GetName().Contains("headless"))
+        {
+            GD.Print($"!! PROBLEM smoke-encounter {id}: no fight on screen");
+            GetTree().Quit(1);
+            return;
+        }
+        GetViewport().GetTexture().GetImage().SavePng($"user://smoke-encounter-{id}-1.png");
+        var combat = driver.Current!;
+        var hero = combat.State.GetCombatant(combat.HeroId);
+        var enemy = combat.State.Combatants.FirstOrDefault(c => c.IsAlive && c.Id != combat.HeroId);
+        foreach (var card in combat.Hand.Take(2).ToList())
+            if (CanPay(hero, card.DefinitionId.value) && driver.Current is not null)
+                driver.PlayCard(card.Id, enemy?.Id);
+        if (driver.Current is not null)
+            driver.EndTurn();
+        await CaptureThenQuit($"smoke-encounter-{id}-2.png", Play?.Error is null ? 0 : 1);
     }
 
     // EVERY EVENT BRANCH, SAID IN PLAIN WORDS: the line EffectSummary reads off each choice of each event in the
@@ -4952,6 +4977,10 @@ public partial class SessionScreen : Control
     private static readonly Dictionary<string, (string Label, string Explanation)> CardMarks =
         new(StringComparer.Ordinal)
         {
+            // The Seizure Procession's wax seal: play the card this turn, or the Lock Cart takes it.
+            ["inventoried"] = ("WAX SEAL",
+                "The Seizure Procession has sealed this card. Play it this turn, or the Lock Cart locks it away "
+                + "for the fight."),
             ["eanna_claim"] = ("PROPERTY OF EANNA",
                 "Inanna has entered this copy in the Eanna Ledger. Its first play each turn costs 1 Energy "
                 + "less, and every use of it writes 1 Temple Due. Dedicating it settles 4."),

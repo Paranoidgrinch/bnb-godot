@@ -235,6 +235,13 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
+        // One named fight, photographed (SessionScreen.SmokeEncounter).
+        if (userArgs.FirstOrDefault(a => a.StartsWith("--smoke-encounter=", StringComparison.Ordinal)) is { } fight)
+        {
+            host.StartSingleFight(fight["--smoke-encounter=".Length..]);
+            CallDeferred(nameof(GoToSession));
+            return;
+        }
         // The tutorial, walked by its probe the way a player starts it.
         if (userArgs.Contains("--smoke-tutorial"))
         {
