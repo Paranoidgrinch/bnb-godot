@@ -4990,6 +4990,10 @@ public partial class SessionScreen : Control
             ["eanna_claim"] = ("PROPERTY OF EANNA",
                 "Inanna has entered this copy in the Eanna Ledger. Its first play each turn costs 1 Energy "
                 + "less, and every use of it writes 1 Temple Due. Dedicating it settles 4."),
+            // The Mummified Overseer's linen: free to play, but it buries you a little.
+            ["linen_wrapped"] = ("WRAPPED",
+                "The Overseer wrapped this card in linen. It costs 0, but playing it gives you 1 Entombed. "
+                + "It stays wrapped until it is played."),
             // Nanna-Sin's two stamps. The whole decision his fight asks — which action should return when the
             // count comes again — is made on the cards, so both of them have to be legible ON the card.
             ["moon_counted"] = ("COUNTED",
@@ -5016,7 +5020,10 @@ public partial class SessionScreen : Control
         // A card offered by a PROMPT ("which card goes into the pot?", "discard a card") is not being played, so
         // neither reason applies — and a dimmed face also loses its click. Player report 2026-10-04: at 0 Energy
         // the free first ingredient could not be chosen, because every card in hand was dimmed as unaffordable.
-        var affordable = chosenNotPlayed || (CanPay(hero, definition) && combat.CanPlay(card.Id));
+        // A price written on THIS copy (the Overseer's linen, Inanna's claim) is not in the definition the
+        // purse is checked against; the engine's own play check already prices the copy, so it is trusted.
+        var delta = card.GetMarkCounter(RogueDeck.Core.Combat.StandardCombatIds.CardCostDeltaCounter);
+        var affordable = chosenNotPlayed || ((delta < 0 || CanPay(hero, definition)) && combat.CanPlay(card.Id));
         var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definition);
         var rules = RulesFor(definition, presentation);
 
@@ -5038,7 +5045,9 @@ public partial class SessionScreen : Control
             new CardVisuals.CardFace(
                 Id: definition,
                 Title: CardName(definition),
-                Cost: CostBadge(definition),
+                Cost: delta < 0
+                    ? string.Join("\u00b7", FullCosts(definition).DefaultIfEmpty(null).Select(c => System.Math.Max(0, (c?.Amount ?? 0) + delta).ToString()))
+                    : CostBadge(definition),
                 Rules: rules,
                 Rarity: presentation?.Rarity,
                 Tooltip: tooltip,
@@ -5807,7 +5816,23 @@ public partial class SessionScreen : Control
             ? HeroAtTheTable(combatant)
             : combatant.Id == combat.HeroId
             ? Play?.HeroName ?? "You"
-            : Play!.EnemyNames.TryGetValue(combatant.Id.value, out var name) ? name : combatant.Id.value;
+            : Play!.EnemyNames.TryGetValue(combatant.Id.value, out var name) ? name
+            // A body summoned mid-fight is in no roster: it is named after what it is (a False Door, a
+            // Stone-Hauler), never after its engine id.
+            : SummonedName(combatant);
+
+    private static string SummonedName(CombatantState combatant)
+    {
+        var key = combatant.DisplayNameKey;
+        if (!string.IsNullOrWhiteSpace(key) && !key.StartsWith("combatant.", StringComparison.Ordinal))
+            return key;
+        var id = combatant.DefinitionId.value;
+        if (string.IsNullOrWhiteSpace(id))
+            return combatant.Id.value;
+        var words = id.Split('_', StringSplitOptions.RemoveEmptyEntries)
+            .Select((w, i) => i > 0 && w is "of" or "the" or "a" ? w : char.ToUpperInvariant(w[0]) + w[1..]);
+        return string.Join(' ', words);
+    }
 
     // A hero of a party fight, as the table knows them: the player's name and the character they play.
     private string HeroAtTheTable(CombatantState hero)
