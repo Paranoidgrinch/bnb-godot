@@ -61,6 +61,9 @@ public partial class SessionScreen
                 moments.Add("combat.statuses");
             if (session.Run.Relics.Count > 0)
                 moments.Add("combat.relics");
+            // Act III's shared law has no chip of its own (it would sit on every body); it is told once here.
+            if (combat.State.Combatants.Any(c => c.Statuses.Any(s => s.DefinitionId.value == "green_docket_body")))
+                moments.Add("act3.docket");
             moments.AddRange(WitchMomentsHere(combat));
             moments.AddRange(ApprenticeMomentsHere(combat));
             moments.AddRange(LieutenantMomentsHere(combat));
