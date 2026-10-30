@@ -64,6 +64,9 @@ public partial class SessionScreen
             // Act III's shared law has no chip of its own (it would sit on every body); it is told once here.
             if (combat.State.Combatants.Any(c => c.Statuses.Any(s => s.DefinitionId.value == "green_docket_body")))
                 moments.Add("act3.docket");
+            // …and so is Act IV's: the three words of the Licensing Labyrinth.
+            if (combat.State.Combatants.Any(c => c.Statuses.Any(s => s.DefinitionId.value == "labyrinth_body")))
+                moments.Add("act4.labyrinth");
             moments.AddRange(WitchMomentsHere(combat));
             moments.AddRange(ApprenticeMomentsHere(combat));
             moments.AddRange(LieutenantMomentsHere(combat));
