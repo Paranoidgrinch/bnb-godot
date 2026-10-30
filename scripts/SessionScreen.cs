@@ -4981,6 +4981,12 @@ public partial class SessionScreen : Control
             ["inventoried"] = ("WAX SEAL",
                 "The Seizure Procession has sealed this card. Play it this turn, or the Lock Cart locks it away "
                 + "for the fight."),
+            // The Drawer of Infinite Returns wants this card: play it and it is fed to the drawer.
+            ["drawer_demand"] = ("DEMANDED",
+                "The Drawer demands this card. Play it and it goes into the drawer, which opens to double damage. "
+                + "Keep it and you owe the Drawer 1 Overdue."),
+            ["behind_the_desk"] = ("BEHIND THE DESK",
+                "The Checkout Codex is holding this card. Your first card played hands it back."),
             ["eanna_claim"] = ("PROPERTY OF EANNA",
                 "Inanna has entered this copy in the Eanna Ledger. Its first play each turn costs 1 Energy "
                 + "less, and every use of it writes 1 Temple Due. Dedicating it settles 4."),
