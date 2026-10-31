@@ -78,6 +78,7 @@ public partial class GameHost : Godot.Node
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
         IsTutorial = true;
+        IsTrial = false;
         IsMultiplayer = false;
         Play.Start(Blueprint.ForTutorial(characterId), seed: 1, interactive: true);
         EmitChanged();
@@ -91,6 +92,7 @@ public partial class GameHost : Godot.Node
 
     public void StartPartyRun(int seed, IReadOnlyList<string> party, MetaStateData meta)
     {
+        IsTrial = false;
         IsTutorial = false;
         IsMultiplayer = true;
         Play?.Dispose();
@@ -105,6 +107,7 @@ public partial class GameHost : Godot.Node
     // the same profile, so they stand together exactly where the table stopped.
     public void ResumePartyRun(string saveJson, MetaStateData meta)
     {
+        IsTrial = false;
         IsTutorial = false;
         IsMultiplayer = true;
         Play?.Dispose();
@@ -129,12 +132,86 @@ public partial class GameHost : Godot.Node
         var map = new RunMap([new RogueDeck.Run.Node(new NodeId("probe"), content.Type, content.Payload, content.Tags)]);
         var start = Blueprint.Start with { MaxHealth = 400, StartingHealth = 400 };
         IsProbe = true;
+        IsTrial = false;
         IsTutorial = false;
         IsMultiplayer = false;
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
         Play.Start((Blueprint with { Tutorial = new RunTutorial(map, start) }).ForTutorial(), seed: 7, interactive: true);
         EmitChanged();
+    }
+
+    // ── THE ENCOUNTER TRIAL (bnb-content EncounterTrial, user 2026-10-31) ────────────────────────────────────
+    // Every fight of an act in stage order, the Lieutenant at full health before each, the bosses last — a fixed
+    // walk the game document carries as Presentation.Game.Extra["trial:<act>"]. It is an instrument, not a run:
+    // it saves to a slot of its own (the player's run stays where it is), plays on a copy of the profile (a
+    // trial won clears nothing), is never recorded, and writes its own notebook instead (TrialLog).
+    public bool IsTrial { get; private set; }
+    public int TrialAct { get; private set; } = 1;
+
+    private static string TrialSavePath(int act) => TrialLog.SavePath(act);
+
+    public bool HasTrial(int act) => Blueprint?.Presentation.Game?.Extra.ContainsKey($"trial:{act}") == true;
+
+    public bool HasTrialSave(int act) => Godot.FileAccess.FileExists(TrialSavePath(act));
+
+    public bool HasTrialRetry(int act) => Godot.FileAccess.FileExists(TrialLog.PrefightPath(act));
+
+    // The walk in place of the acts, the Lieutenant alone (RunBlueprint.ForTutorial does the same for a lesson).
+    private RunBlueprint TrialBlueprint(int act)
+    {
+        var trial = System.Text.Json.JsonSerializer.Deserialize<RunTutorial>(
+            Blueprint.Presentation.Game!.Extra[$"trial:{act}"], RunJson.CreateOptions())!;
+        return (Blueprint with
+        {
+            Map = trial.Map,
+            Acts = null,
+            MapGeneration = null,
+            StrategicMapGeneration = null,
+            Tutorial = null,
+        }).AsLoneFighter(trial.Start!, TrialCharacter);
+    }
+
+    public const string TrialCharacter = "lieutenant";
+
+    private RunPlayback TrialPlayback()
+    {
+        var profile = new MemoryMetaStore();
+        profile.Save(Meta);
+        return new RunPlayback(OnPlayChanged, profile);
+    }
+
+    public void StartTrial(int act = 1)
+    {
+        IsTutorial = false;
+        IsMultiplayer = false;
+        IsProbe = false;
+        IsTrial = true;
+        TrialAct = act;
+        Play?.Dispose();
+        Play = TrialPlayback();
+        Play.Start(TrialBlueprint(act), RunSeeds.Random(), interactive: true, TrialCharacter);
+        Godot.DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TrialLog.PrefightPath(act)));
+        EmitChanged();
+    }
+
+    // Take the trial up again: from its own save, or — `retry` — from the first turn of the fight it was lost in.
+    public bool ResumeTrial(int act = 1, bool retry = false)
+    {
+        var path = retry ? TrialLog.PrefightPath(act) : TrialSavePath(act);
+        if (!Godot.FileAccess.FileExists(path))
+            return false;
+        var save = RunSaveJson.FromJson(Godot.FileAccess.GetFileAsString(path));
+        IsTutorial = false;
+        IsMultiplayer = false;
+        IsProbe = false;
+        IsTrial = true;
+        TrialAct = act;
+        Play?.Dispose();
+        Play = TrialPlayback();
+        Play.Resume(TrialBlueprint(act), save, interactive: true);
+        EmitChanged();
+        return Play.Error is null;
     }
 
     // A run started with a probe's body (the marathon, the golden set) earns nothing for the player's profile:
@@ -147,6 +224,7 @@ public partial class GameHost : Godot.Node
         IsProbe = (health is not null || args.Any(a => a.StartsWith("--sim", System.StringComparison.Ordinal)
                 || a.StartsWith("--smoke", System.StringComparison.Ordinal)))
             && !args.Contains("--count-unlocks");
+        IsTrial = false;
         IsTutorial = false;
         IsMultiplayer = false;
         Play?.Dispose();
@@ -209,6 +287,16 @@ public partial class GameHost : Godot.Node
     {
         if (IsTutorial || IsMultiplayer)
             return null; // a lesson is not a run, nor is the table's: the player's real save stays where it is
+        if (IsTrial)
+        {
+            // The trial's own slot; a trial that has ended keeps nothing to continue.
+            if (Play?.Session?.Run is { Result: not RunResult.Ongoing })
+                return null;
+            if (Play?.SaveJson() is { } trial)
+                using (var file = Godot.FileAccess.Open(TrialSavePath(TrialAct), Godot.FileAccess.ModeFlags.Write))
+                    file?.StoreString(trial);
+            return null;
+        }
         var json = Play?.SaveJson();
         if (json is null)
             return Play?.Error ?? "No run to save.";
@@ -223,6 +311,7 @@ public partial class GameHost : Godot.Node
         if (!HasSave)
             return false;
         var save = RunSaveJson.FromJson(Godot.FileAccess.GetFileAsString(SavePath));
+        IsTrial = false;
         IsTutorial = false;
         IsMultiplayer = false;
         Play?.Dispose();
@@ -255,6 +344,8 @@ public partial class GameHost : Godot.Node
     private void OnPlayChanged()
     {
         RunTally.Observe(Play);
+        if (IsTrial)
+            TrialLog.Observe(this);
         CallDeferred(nameof(EmitChanged));
     }
 
@@ -262,7 +353,7 @@ public partial class GameHost : Godot.Node
     {
         // The history first: RunLog.Observe lets go of the recording the history takes its room count from.
         // A tutorial is neither history nor a recording.
-        if (!IsTutorial && !IsMultiplayer)
+        if (!IsTrial && !IsTutorial && !IsMultiplayer)
         {
             RunHistory.Observe(Play, RunLog.Current);
             RunLog.Observe(this);

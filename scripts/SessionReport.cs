@@ -18,6 +18,11 @@ public partial class SessionScreen
             RenderTutorialEnd(session);
             return;
         }
+        if (GameHost.Instance.IsTrial)
+        {
+            RenderTrialEnd(session);
+            return;
+        }
         var run = session.Run;
         var victory = run.Result == RunResult.Victory;
         var tally = RunTally.Counts;
@@ -314,6 +319,37 @@ public partial class SessionScreen
             GetTree().ChangeSceneToFile("res://scenes/Boot.tscn");
         };
         row.AddChild(again);
+        row.AddChild(title);
+        _main.AddChild(row);
+    }
+
+    // The end of an encounter trial: a lost fight may be fought again from its first turn; a finished trial says
+    // where its notebook is.
+    private void RenderTrialEnd(InteractiveRunSession session)
+    {
+        var host = GameHost.Instance;
+        var won = session.Run.Result == RunResult.Victory;
+        Title(won ? "Encounter trial complete" : "The trial stopped at a lost fight");
+        Muted((won
+            ? "Every fight of the act is behind you. "
+            : "Fight it again from its first turn, or stop here — the trial keeps its place either way. ")
+            + $"Every fight so far is written down in {TrialLog.LogFile}");
+        var row = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        row.AddThemeConstantOverride("separation", 12);
+        if (!won && host.HasTrialRetry(host.TrialAct))
+        {
+            var retry = new Button { Text = "Retry this fight", Name = "RetryTrialFight", CustomMinimumSize = new Vector2(220, 44) };
+            retry.Pressed += () => host.ResumeTrial(host.TrialAct, retry: true);
+            row.AddChild(retry);
+        }
+        else
+            Godot.DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TrialLog.SavePath(host.TrialAct)));
+        var title = new Button { Text = "Back to the title", CustomMinimumSize = new Vector2(220, 44) };
+        title.Pressed += () =>
+        {
+            host.AbandonRunInMemory();
+            GetTree().ChangeSceneToFile("res://scenes/Boot.tscn");
+        };
         row.AddChild(title);
         _main.AddChild(row);
     }
