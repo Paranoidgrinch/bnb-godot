@@ -5,7 +5,7 @@ namespace BnbGodot;
 
 public partial class SessionScreen
 {
-    // `--smoke-trial`: walk the encounter trial the way the tutorial probe walks a lesson — the simplest answer the
+    // `--smoke-trial [--trial-act=N]`: walk the encounter trial the way the tutorial probe walks a lesson — the simplest answer the
     // screen offers, first card that can be paid — and when a fight is lost, press "Retry this fight". It passes
     // once the first stage, its package and a fight past it are written down, with the trial saved in its own slot
     // and the player's run save untouched.
@@ -14,7 +14,8 @@ public partial class SessionScreen
         var host = GameHost.Instance;
         var saveStamp = Godot.FileAccess.GetModifiedTime("user://run-save.json");
         Godot.DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TrialLog.LogPath));
-        var stageOne = host.Play?.Session?.Run.Map.Nodes.TakeWhile(n => n.Payload is EncounterRef).Count() ?? 0;
+        var stageOne = host.Play?.Session?.Run.Map.Nodes.SkipWhile(n => n.Payload is EventRef)
+            .TakeWhile(n => n.Payload is EncounterRef).Count() ?? 0;
         var retried = 0;
         int Logged() => Godot.FileAccess.FileExists(TrialLog.LogPath)
             ? Godot.FileAccess.GetFileAsString(TrialLog.LogPath).Split('\n', StringSplitOptions.RemoveEmptyEntries).Length
@@ -72,10 +73,10 @@ public partial class SessionScreen
                 session.Pick(session.PendingChoices[0].Id);
             Rebuild();
         }
-        var ok = Won() > stageOne && host.HasTrialSave(1)
+        var ok = Won() > stageOne && host.HasTrialSave(host.TrialAct)
             && Godot.FileAccess.GetModifiedTime("user://run-save.json") == saveStamp;
         GD.Print($"smoke-trial: logged {Logged()} fights ({Won()} won, stage one is {stageOne}), retried {retried}, "
-            + $"trial saved={host.HasTrialSave(1)}, the player's save "
+            + $"act {host.TrialAct}, trial saved={host.HasTrialSave(host.TrialAct)}, the player's save "
             + $"{(Godot.FileAccess.GetModifiedTime("user://run-save.json") == saveStamp ? "untouched" : "WRITTEN")} "
             + $"· deck {Session?.Run.Deck.Count} · {(ok ? "PASS" : "FAIL")}");
         GetTree().Quit(ok ? 0 : 1);

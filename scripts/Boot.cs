@@ -245,7 +245,7 @@ public partial class Boot : Control
         // The encounter trial, walked by its probe (SessionTrial.SmokeTrial).
         if (userArgs.Contains("--smoke-trial"))
         {
-            host.StartTrial(1);
+            host.StartTrial(int.TryParse(userArgs.FirstOrDefault(a => a.StartsWith("--trial-act=", StringComparison.Ordinal))?["--trial-act=".Length..], out var trialAct) ? trialAct : 1);
             CallDeferred(nameof(GoToSession));
             return;
         }
@@ -1049,26 +1049,28 @@ public partial class Boot : Control
             actions.AddChild(resume);
         }
 
-        // THE ENCOUNTER TRIAL (GameHost.StartTrial): every fight of Act I in turn, the Lieutenant mended after each —
-        // a balance instrument played by hand, on a save slot of its own.
-        if (host.HasTrial(1))
+        // THE ENCOUNTER TRIALS (GameHost.StartTrial): every fight of an act in turn, the Lieutenant mended after each —
+        // a balance instrument played by hand, one save slot per act. A later act opens on the deck an average run
+        // would bring to its door.
+        foreach (var act in new[] { 1, 2, 3, 4 }.Where(host.HasTrial))
         {
-            var trial = new Button { Text = "Encounter trial (Act I)", Name = "TrialButton", CustomMinimumSize = new Vector2(160, 44) };
-            trial.TooltipText = "Every Act I fight in stage order as the Lieutenant, healed after each, rewards between the stages. "
+            var numeral = act switch { 1 => "I", 2 => "II", 3 => "III", _ => "IV" };
+            var trial = new Button { Text = $"Encounter trial (Act {numeral})", Name = $"TrialButton{act}", CustomMinimumSize = new Vector2(160, 44) };
+            trial.TooltipText = $"Every Act {numeral} fight in stage order as the Lieutenant, healed after each, rewards between the stages. "
                 + "Every fight is written down for the balance.";
             trial.Pressed += () =>
             {
-                host.StartTrial(1);
+                host.StartTrial(act);
                 if (host.Play?.Error is null)
                     GoToSession();
             };
             actions.AddChild(trial);
-            if (host.HasTrialSave(1))
+            if (host.HasTrialSave(act))
             {
-                var resumeTrial = new Button { Text = "Continue trial", Name = "ContinueTrialButton", CustomMinimumSize = new Vector2(160, 44) };
+                var resumeTrial = new Button { Text = $"Continue trial (Act {numeral})", Name = $"ContinueTrialButton{act}", CustomMinimumSize = new Vector2(160, 44) };
                 resumeTrial.Pressed += () =>
                 {
-                    if (host.ResumeTrial(1))
+                    if (host.ResumeTrial(act))
                         GoToSession();
                 };
                 actions.AddChild(resumeTrial);
