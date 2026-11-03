@@ -4976,6 +4976,11 @@ public partial class SessionScreen : Control
     // A hand/choice card as a black block: name, cost, and its ability text. `onClick` arms/plays it.
     // The marks a card may wear on its face. Content places marks freely and most of them are plumbing; these
     // are the ones a fight asks the player to act on.
+    // The marks of one copy, as the words a pile view writes under its face.
+    private static string? MarkCaption(CardInstance card) =>
+        card.Marks.Where(mark => CardMarks.ContainsKey(mark.value)).Select(mark => CardMarks[mark.value].Label)
+            .Distinct().ToList() is { Count: > 0 } labels ? string.Join(" · ", labels) : null;
+
     private static readonly Dictionary<string, (string Label, string Explanation)> CardMarks =
         new(StringComparer.Ordinal)
         {
@@ -4998,6 +5003,37 @@ public partial class SessionScreen : Control
                 "The Catalogue entered this card cheaper: it costs 1 less and Exhausts when played."),
             ["named_dearer"] = ("NAMED: DEARER",
                 "The Catalogue entered this card dearer: it costs 1 more and stays in your hand until you play it."),
+            // The archive's other marks (user, 2026-11-03: "mach erst die Markierungen sichtbar").
+            ["misfiled"] = ("MISFILED",
+                "Filed in the wrong place. When you draw it, it goes straight to your discard pile and you draw another card."),
+            ["misfiled_sideways"] = ("SHELVED SIDEWAYS",
+                "When you draw it, it goes back under your draw pile and you draw another card."),
+            ["wrong_edition"] = ("WRONG EDITION",
+                "It works as usual, but once played it becomes Misfiled."),
+            ["referenced_certificate"] = ("CITED",
+                "The Blank Death Certificate cited this card. Play it this turn, or you owe it 1 Overdue."),
+            ["referenced_entry"] = ("CITED",
+                "The Second-Person Entry cited this card. Play it this turn, or you owe it 1 Overdue."),
+            ["referenced_alphabet"] = ("CITED",
+                "The Fanged Alphabet cited this card. Play it this turn, or you owe it 1 Overdue."),
+            ["referenced_citation"] = ("CITED",
+                "The Orphan Citation cited this card. Play it, or a card of the same cost and type, this turn — or you owe it 1 Overdue."),
+            ["remembered_volume"] = ("REMEMBERED",
+                "The Mnemonic Chain remembers this card. When it comes back into your hand it is cited and costs 1 more."),
+            ["referenced_chain"] = ("CITED BY THE CHAIN",
+                "It costs 1 more. Play it and the Chain takes 8 damage; leave it unplayed and you owe the Chain 1 Overdue."),
+            ["in_the_drawer"] = ("IN THE DRAWER",
+                "Fed to the Drawer. It comes back to your hand when the Drawer dies."),
+            ["sealed_by_the_warden"] = ("SEALED",
+                "The Warden holds this card. Deal the Warden 20 damage in one turn and every sealed card comes back to your hand."),
+            ["registered_elsewhere"] = ("REGISTERED ELSEWHERE",
+                "It cannot be played until you have played another card this turn. Left unplayed, it becomes Misfiled."),
+            ["borrowers_keeping"] = ("LENT OUT",
+                "Lent away at the start of this fight. It comes back to your hand in round 2."),
+            ["reservation"] = ("RESERVED",
+                "Held in a reservation at the start of this fight. It comes back to your hand in round 3."),
+            ["reserve_ingredient"] = ("IN RESERVE",
+                "In the False-Bottom Pot, but not part of the recipe."),
             ["behind_the_desk"] = ("BEHIND THE DESK",
                 "The Checkout Codex is holding this card. Your first card played hands it back."),
             ["eanna_claim"] = ("PROPERTY OF EANNA",

@@ -99,9 +99,9 @@ public partial class SessionScreen
         var sections = new List<PileSection>();
         if (revealed.Count > 0)
             sections.Add(new PileSection("On top, in the order you will draw them",
-                revealed.Select(card => (card.DefinitionId.value, 0, (string?)null)).ToList()));
+                revealed.Select(card => (card.DefinitionId.value, 0, MarkCaption(card))).ToList()));
         var rest = pile.Where(card => !seen.Contains(card.Id.value))
-            .Select(card => (card.DefinitionId.value, 0, (string?)null))
+            .Select(card => (card.DefinitionId.value, 0, MarkCaption(card)))
             .OrderBy(card => CardName(card.value), StringComparer.Ordinal)
             .ToList();
         sections.Add(new PileSection(
@@ -111,7 +111,7 @@ public partial class SessionScreen
 
     private static List<PileSection> ZoneSections(ICombatView combat, CardZone zone, string note) =>
         [new PileSection(note, combat.State.GetCardZones(combat.HeroId).GetCardsInZone(zone)
-            .Select(card => (card.DefinitionId.value, 0, (string?)null)).ToList())];
+            .Select(card => (card.DefinitionId.value, 0, MarkCaption(card))).ToList())];
 
     private CanvasLayer CardOverlay(string title, IReadOnlyList<PileSection> sections)
     {
