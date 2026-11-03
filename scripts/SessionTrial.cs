@@ -48,9 +48,14 @@ public partial class SessionScreen
                 {
                     var combat = driver.Current;
                     var hero = combat.State.GetCombatant(combat.HeroId);
-                    var card = combat.Hand.FirstOrDefault(c => CanPay(hero, c.DefinitionId.value));
-                    var target = combat.State.Combatants.FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive
-                        && c.TeamId == RogueDeck.Core.Combat.StandardCombatIds.EnemyTeam)?.Id;
+                    // Payable as printed AND playable as this copy stands: a copy priced up by a rule (the Chain's
+                    // remembered volume) is refused, and a refused card left first in hand would be tried forever.
+                    var card = combat.Hand.FirstOrDefault(c => CanPay(hero, c.DefinitionId.value) && combat.CanPlay(c.Id));
+                    // The weakest enemy standing: a walk that always struck the first body would feed a Cairn every
+                    // stone it throws back (Act III, 2026-11-03).
+                    var target = combat.State.Combatants.Where(c => c.Id != combat.HeroId && c.IsAlive
+                        && c.TeamId == RogueDeck.Core.Combat.StandardCombatIds.EnemyTeam)
+                        .OrderBy(c => c.Health.Current).FirstOrDefault()?.Id;
                     if (card is not null)
                         driver.PlayCard(card.Id, target);
                     else
