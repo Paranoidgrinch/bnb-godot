@@ -53,7 +53,11 @@ public partial class SessionScreen
             // gone, and "where did that card go" is asked of the discard pile first.
             Pile.Discard => ("Discard pile", [
                 .. ZoneSections(combat!, CardZone.DiscardPile, "most recent last"),
-                .. ZoneSections(combat!, CardZone.ExhaustPile, "Exhausted — gone for the rest of this fight")]),
+                .. ZoneSections(combat!, CardZone.ExhaustPile, "Exhausted — gone for the rest of this fight"),
+                // Cards an enemy holds (the Warden of Sealed Volumes), shown only while it holds any.
+                .. (combat!.State.GetCardZones(combat.HeroId).GetCardsInZone(CardZone.BanishedPile).Count > 0
+                    ? ZoneSections(combat, CardZone.BanishedPile, "Sealed — held by an enemy until you free them")
+                    : [])]),
             _ => ("Exhausted", ZoneSections(combat!, CardZone.ExhaustPile, "gone for the rest of this fight")),
         };
         var layer = CardOverlay(title, sections);
@@ -196,6 +200,7 @@ public partial class SessionScreen
         var zones = combat.State.GetCardZones(combat.HeroId);
         var discarded = zones.GetCardsInZone(CardZone.DiscardPile).Count;
         var exhausted = zones.GetCardsInZone(CardZone.ExhaustPile).Count;
+        var sealedAway = zones.GetCardsInZone(CardZone.BanishedPile).Count;
 
         const int lift = 3;
         const int caption = 22;
@@ -258,7 +263,8 @@ public partial class SessionScreen
             _discardTop.Position = new Vector2(lean - backing * lift, lean - backing * lift);
         }
         if (_discardCount is not null && IsInstanceValid(_discardCount))
-            _discardCount.Text = exhausted > 0 ? $"Discard {discarded} · Exhausted {exhausted}" : $"Discard {discarded}";
+            _discardCount.Text = $"Discard {discarded}" + (exhausted > 0 ? $" · Exhausted {exhausted}" : "")
+                + (sealedAway > 0 ? $" · Sealed {sealedAway}" : "");
     }
 
     // The draw pile's own picture is the button for it: a flat, see-through Button over the whole stack.

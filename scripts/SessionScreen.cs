@@ -4987,6 +4987,17 @@ public partial class SessionScreen : Control
             ["drawer_demand"] = ("DEMANDED",
                 "The Drawer demands this card. Play it and it goes into the drawer, which opens to double damage. "
                 + "Keep it and you owe the Drawer 1 Overdue."),
+            // Act II's one card mark (user, 2026-11-03: the act's marks were not visible): the next play does half.
+            ["redacted"] = ("REDACTED",
+                "Blacked out by the archive. Its next play does only half, then the mark is gone."),
+            // The Black-Ink Oracle's question: its cost is hidden until you have guessed it.
+            ["queried_by_the_oracle"] = ("COST BLACKED OUT",
+                "The Oracle has hidden what this card costs. Guess it: right, you draw a card; wrong, you take 5 damage."),
+            // The Catalogue of Unwise Names: an entry holds until the card is played.
+            ["named_cheaper"] = ("NAMED: CHEAPER",
+                "The Catalogue entered this card cheaper: it costs 1 less and Exhausts when played."),
+            ["named_dearer"] = ("NAMED: DEARER",
+                "The Catalogue entered this card dearer: it costs 1 more and stays in your hand until you play it."),
             ["behind_the_desk"] = ("BEHIND THE DESK",
                 "The Checkout Codex is holding this card. Your first card played hands it back."),
             ["eanna_claim"] = ("PROPERTY OF EANNA",
@@ -5040,14 +5051,18 @@ public partial class SessionScreen : Control
 
         // The hover carries the PRICE as well as the explanation: the ring on the frame has room for a number
         // and nothing else, so what the number is denominated in is said here.
-        var tooltip = string.Join("\n", new[] { CostLabel(definition), Glossary.Explain(rules) }
+        var hidden = card.HasMark(new TagId("queried_by_the_oracle"));
+        var tooltip = string.Join("\n", new[] { hidden ? null : CostLabel(definition), Glossary.Explain(rules) }
             .Where(part => !string.IsNullOrWhiteSpace(part)));
 
         return CardVisuals.Face(
             new CardVisuals.CardFace(
                 Id: definition,
                 Title: CardName(definition),
-                Cost: delta < 0
+                // A cost the Oracle has blacked out is the question itself; a price written on this copy is the
+                // price the card is played at.
+                Cost: hidden ? "?"
+                    : delta != 0
                     ? string.Join("\u00b7", FullCosts(definition).DefaultIfEmpty(null).Select(c => System.Math.Max(0, (c?.Amount ?? 0) + delta).ToString()))
                     : CostBadge(definition),
                 Rules: rules,
