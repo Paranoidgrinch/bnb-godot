@@ -5039,10 +5039,13 @@ public partial class SessionScreen : Control
             ["eanna_claim"] = ("PROPERTY OF EANNA",
                 "Inanna has entered this copy in the Eanna Ledger. Its first play each turn costs 1 Energy "
                 + "less, and every use of it writes 1 Temple Due. Dedicating it settles 4."),
-            // The Mummified Overseer's linen: free to play, but it buries you a little.
+            // The Embalmer's linen: free to play, but it buries you a little.
             ["linen_wrapped"] = ("WRAPPED",
-                "The Overseer wrapped this card in linen. It costs 0, but playing it gives you 1 Entombed. "
+                "The Embalmer wrapped this card in linen. It costs 0, but playing it gives you 1 Entombed. "
                 + "It stays wrapped until it is played."),
+            // The Granary Thief's sack: the card is gone until the thief dies.
+            ["in_the_sack"] = ("IN THE SACK",
+                "The Granary Thief stole this card. Kill the thief and it comes back to your hand."),
             // Nanna-Sin's two stamps. The whole decision his fight asks — which action should return when the
             // count comes again — is made on the cards, so both of them have to be legible ON the card.
             ["moon_counted"] = ("COUNTED",
@@ -5072,7 +5075,10 @@ public partial class SessionScreen : Control
         // A price written on THIS copy (the Overseer's linen, Inanna's claim) is not in the definition the
         // purse is checked against; the engine's own play check already prices the copy, so it is trusted.
         var delta = card.GetMarkCounter(RogueDeck.Core.Combat.StandardCombatIds.CardCostDeltaCounter);
-        var affordable = chosenNotPlayed || ((delta < 0 || CanPay(hero, definition)) && combat.CanPlay(card.Id));
+        // Burdened (Act IV) puts 1 Energy on every card: a copy the surcharge prices past what is left is not playable.
+        var burdenedPastReach = hero.Statuses.Any(st => st.DefinitionId.value == BurdenedStatus)
+            && EnergyCost(definition) + delta + 1 > (hero.Resources.TryGetValue(StandardCombatIds.EnergyResource, out var energy) ? energy.Current : 0);
+        var affordable = chosenNotPlayed || ((delta < 0 || CanPay(hero, definition)) && combat.CanPlay(card.Id) && !burdenedPastReach);
         var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definition);
         var rules = RulesFor(definition, presentation);
 

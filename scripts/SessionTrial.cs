@@ -24,7 +24,9 @@ public partial class SessionScreen
             ? Godot.FileAccess.GetFileAsString(TrialLog.LogPath).Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Count(l => l.Contains("\"won\":true", StringComparison.Ordinal))
             : 0;
-        for (var step = 0; step < 6000 && Won() <= stageOne; step++)
+        // Past stage one, a fight logged is the proof: won or lost. The walk is the simplest player there is, and
+        // Act IV's first fights past it (Sobek's Tithe, 2026-11-05) outlast it; the walk is plumbing, not balance.
+        for (var step = 0; step < 6000 && !(Won() >= stageOne && Logged() > stageOne); step++)
         {
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             if (Session is not { } session || Play is not { } play)
@@ -50,13 +52,21 @@ public partial class SessionScreen
                     var hero = combat.State.GetCombatant(combat.HeroId);
                     // Payable as printed AND playable as this copy stands: a copy priced up by a rule (the Chain's
                     // remembered volume) is refused, and a refused card left first in hand would be tried forever.
-                    var card = combat.Hand.FirstOrDefault(c => CanPay(hero, c.DefinitionId.value) && combat.CanPlay(c.Id));
+                    // …and payable with Burdened's surcharge on top (Act IV): a card priced past the Energy left would be
+                    // refused, and tried forever.
+                    var burdened = hero.Statuses.Any(st => st.DefinitionId.value == BurdenedStatus);
+                    var energy = hero.Resources.TryGetValue(RogueDeck.Core.Combat.StandardCombatIds.EnergyResource, out var pool) ? pool.Current : 0;
+                    var card = combat.Hand.FirstOrDefault(c => CanPay(hero, c.DefinitionId.value) && combat.CanPlay(c.Id)
+                        && (!burdened || EffectiveCost(hero, c.DefinitionId.value) <= energy));
                     // The weakest enemy standing: a walk that always struck the first body would feed a Cairn every
                     // stone it throws back (Act III, 2026-11-03).
+                    // A Downed body (Act IV) takes no damage until it rises, so it is not worth a card.
                     var target = combat.State.Combatants.Where(c => c.Id != combat.HeroId && c.IsAlive
-                        && c.TeamId == RogueDeck.Core.Combat.StandardCombatIds.EnemyTeam)
+                        && c.TeamId == RogueDeck.Core.Combat.StandardCombatIds.EnemyTeam
+                        && !c.Statuses.Any(s => s.DefinitionId.value == "risen_downed"))
                         .OrderBy(c => c.Health.Current).FirstOrDefault()?.Id;
-                    if (card is not null)
+                    // Nothing standing that can be hurt (every body Downed): end the turn and let them rise.
+                    if (card is not null && target is not null)
                         driver.PlayCard(card.Id, target);
                     else
                     {
@@ -78,7 +88,7 @@ public partial class SessionScreen
                 session.Pick(session.PendingChoices[0].Id);
             Rebuild();
         }
-        var ok = Won() > stageOne && host.HasTrialSave(host.TrialAct)
+        var ok = Won() >= stageOne && Logged() > stageOne && host.HasTrialSave(host.TrialAct)
             && Godot.FileAccess.GetModifiedTime("user://run-save.json") == saveStamp;
         GD.Print($"smoke-trial: logged {Logged()} fights ({Won()} won, stage one is {stageOne}), retried {retried}, "
             + $"act {host.TrialAct}, trial saved={host.HasTrialSave(host.TrialAct)}, the player's save "
