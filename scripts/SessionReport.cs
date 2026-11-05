@@ -328,6 +328,11 @@ public partial class SessionScreen
     private void RenderTrialEnd(InteractiveRunSession session)
     {
         var host = GameHost.Instance;
+        if (host.IsTrialEncounter)
+        {
+            RenderTrialEncounterEnd(session);
+            return;
+        }
         var won = session.Run.Result == RunResult.Victory;
         Title(won ? "Encounter trial complete" : "The trial stopped at a lost fight");
         Muted((won
@@ -344,13 +349,40 @@ public partial class SessionScreen
         }
         else
             Godot.DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TrialLog.SavePath(host.TrialAct)));
+        row.AddChild(BackToTitle(host));
+        _main.AddChild(row);
+    }
+
+    // The end of a single-encounter trial: its one fight is over, won or lost, and may be fought again from its
+    // first turn on the same deck. Nothing is left to continue, so its slot is cleared; the retry stays.
+    private void RenderTrialEncounterEnd(InteractiveRunSession session)
+    {
+        var host = GameHost.Instance;
+        var won = session.Run.Result == RunResult.Victory;
+        var name = host.TrialSingles(host.TrialAct).FirstOrDefault(s => s.Encounter == host.TrialEncounter)?.Name ?? host.TrialEncounter;
+        Title(won ? $"{name}: won" : $"{name}: lost");
+        Muted($"Fight it again from its first turn, or stop here. Every single-encounter fight is written down in {TrialLog.EncounterLogFile}");
+        Godot.DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TrialLog.SavePath(host.TrialAct, single: true)));
+        var row = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        row.AddThemeConstantOverride("separation", 12);
+        if (host.HasTrialRetry(host.TrialAct, single: true))
+        {
+            var retry = new Button { Text = "Retry this fight", Name = "RetryTrialFight", CustomMinimumSize = new Vector2(220, 44) };
+            retry.Pressed += () => host.ResumeTrial(host.TrialAct, retry: true, host.TrialEncounter);
+            row.AddChild(retry);
+        }
+        row.AddChild(BackToTitle(host));
+        _main.AddChild(row);
+    }
+
+    private Button BackToTitle(GameHost host)
+    {
         var title = new Button { Text = "Back to the title", CustomMinimumSize = new Vector2(220, 44) };
         title.Pressed += () =>
         {
             host.AbandonRunInMemory();
             GetTree().ChangeSceneToFile("res://scenes/Boot.tscn");
         };
-        row.AddChild(title);
-        _main.AddChild(row);
+        return title;
     }
 }

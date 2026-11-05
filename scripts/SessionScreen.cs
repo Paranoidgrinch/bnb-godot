@@ -269,6 +269,8 @@ public partial class SessionScreen : Control
             _ = SmokeLog();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-tutorial"))
             _ = SmokeTutorial();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-trial-encounter"))
+            _ = SmokeTrialEncounter();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-trial"))
             _ = SmokeTrial();
         else if (OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--smoke-encounter=", StringComparison.Ordinal)) is { } fight)

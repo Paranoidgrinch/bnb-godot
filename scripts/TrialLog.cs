@@ -15,7 +15,12 @@ namespace BnbGodot;
 //
 // ⚠ Read from the fight's END, keyed by where it happened, like RunTally — and, like RunTally, on the engine's own
 // change callback, not on the deferred redraw: a fight won and walked on from in one answer has left the run's
-// history (and its log) by the time a redraw looks. A key holds the result too, so a fight lost and then retried
+// history (and its log) by the time a redraw looks.
+//
+// A SINGLE-ENCOUNTER TRIAL (GameHost.TrialEncounter) keeps a notebook of its own, user://trial-encounter-log.jsonl:
+// the same lines, plus "mode": "encounter" and the stage of the fight; and a save and retry of its own per act
+// (trial-encounter-save-<act>.json, trial-encounter-prefight-<act>.json, with the encounter its save holds in
+// trial-encounter-<act>.txt), so it never touches a full trial in progress. A key holds the result too, so a fight lost and then retried
 // and won is written down twice: both happened.
 public static class TrialLog
 {
@@ -24,9 +29,15 @@ public static class TrialLog
 
     public static string LogPath => $"user://trial-log{Slot}.jsonl";
 
-    public static string PrefightPath(int act) => $"user://trial-prefight-{act}{Slot}.json";
+    public static string EncounterLogPath => $"user://trial-encounter-log{Slot}.jsonl";
 
-    public static string SavePath(int act) => $"user://trial-save-{act}{Slot}.json";
+    public static string PrefightPath(int act, bool single = false) =>
+        single ? $"user://trial-encounter-prefight-{act}{Slot}.json" : $"user://trial-prefight-{act}{Slot}.json";
+
+    public static string SavePath(int act, bool single = false) =>
+        single ? $"user://trial-encounter-save-{act}{Slot}.json" : $"user://trial-save-{act}{Slot}.json";
+
+    public static string EncounterOfSavePath(int act) => $"user://trial-encounter-{act}{Slot}.txt";
 
     private static object? _play;
     private static readonly HashSet<string> Written = new(StringComparer.Ordinal);
@@ -35,6 +46,13 @@ public static class TrialLog
     private static int _rounds;
 
     public static string LogFile => ProjectSettings.GlobalizePath(LogPath);
+
+    public static string EncounterLogFile => ProjectSettings.GlobalizePath(EncounterLogPath);
+
+    // The notebook the trial in play writes to.
+    public static string LogPathOf(GameHost host) => host.IsTrialEncounter ? EncounterLogPath : LogPath;
+
+    public static string LogFileOf(GameHost host) => ProjectSettings.GlobalizePath(LogPathOf(host));
 
     public static void Observe(GameHost host)
     {
@@ -58,7 +76,7 @@ public static class TrialLog
             {
                 _openedAt = where;
                 if (live.State.CurrentRound <= 1 && play.SaveJson() is { } json)
-                    using (var file = Godot.FileAccess.Open(PrefightPath(host.TrialAct), Godot.FileAccess.ModeFlags.Write))
+                    using (var file = Godot.FileAccess.Open(PrefightPath(host.TrialAct, host.IsTrialEncounter), Godot.FileAccess.ModeFlags.Write))
                         file?.StoreString(json);
             }
         }
@@ -88,13 +106,20 @@ public static class TrialLog
                 relics = run.Relics.Select(r => r.Id.Value).ToList(),
                 played = fought.CardsPlayed,
             };
-            using var file = Godot.FileAccess.FileExists(LogPath)
-                ? Godot.FileAccess.Open(LogPath, Godot.FileAccess.ModeFlags.ReadWrite)
-                : Godot.FileAccess.Open(LogPath, Godot.FileAccess.ModeFlags.Write);
+            var record = JsonSerializer.SerializeToNode(line)!.AsObject();
+            if (host.IsTrialEncounter)
+            {
+                record["mode"] = "encounter";
+                record["stage"] = host.TrialSingles(host.TrialAct).FirstOrDefault(s => s.Encounter == host.TrialEncounter)?.Stage;
+            }
+            var path = LogPathOf(host);
+            using var file = Godot.FileAccess.FileExists(path)
+                ? Godot.FileAccess.Open(path, Godot.FileAccess.ModeFlags.ReadWrite)
+                : Godot.FileAccess.Open(path, Godot.FileAccess.ModeFlags.Write);
             if (file is null)
                 continue;
             file.SeekEnd();
-            file.StoreLine(JsonSerializer.Serialize(line));
+            file.StoreLine(record.ToJsonString());
             _openedAt = null;
             _rounds = 0;
         }

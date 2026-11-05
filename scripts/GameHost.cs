@@ -149,19 +149,54 @@ public partial class GameHost : Godot.Node
     public bool IsTrial { get; private set; }
     public int TrialAct { get; private set; } = 1;
 
-    private static string TrialSavePath(int act) => TrialLog.SavePath(act);
+    // ONE FIGHT OF A TRIAL ON ITS OWN (user, 2026-11-05): the encounter a single-encounter trial walks to, or null
+    // for the full act. Its walk is Extra["trial.encounters:<act>"] — the packages the full trial hands out before
+    // that fight's stage, then the fight — and it keeps a save slot, a retry and a notebook of its own
+    // (TrialLog), so it never touches a full trial in progress.
+    public string? TrialEncounter { get; private set; }
+
+    public bool IsTrialEncounter => IsTrial && TrialEncounter is not null;
+
+    // One entry of Extra["trial.encounters:<act>"] (bnb-content EncounterTrial.Single). `Kind`: normal, multi,
+    // elite or boss; `Stage`: the act's stage, the bosses' the one after the last.
+    public sealed record TrialSingle(string Encounter, string Name, int Stage, string Kind, RunTutorial Walk);
+
+    private static string TrialSavePath(int act, bool single = false) => TrialLog.SavePath(act, single);
 
     public bool HasTrial(int act) => Blueprint?.Presentation.Game?.Extra.ContainsKey($"trial:{act}") == true;
 
-    public bool HasTrialSave(int act) => Godot.FileAccess.FileExists(TrialSavePath(act));
+    public bool HasTrialSave(int act, bool single = false) => Godot.FileAccess.FileExists(TrialSavePath(act, single));
 
-    public bool HasTrialRetry(int act) => Godot.FileAccess.FileExists(TrialLog.PrefightPath(act));
+    public bool HasTrialRetry(int act, bool single = false) => Godot.FileAccess.FileExists(TrialLog.PrefightPath(act, single));
+
+    // Read once per act and game document: Act IV's list is a few hundred kilobytes.
+    private readonly Dictionary<int, (RunBlueprint Of, IReadOnlyList<TrialSingle> Singles)> _trialSingles = [];
+
+    public IReadOnlyList<TrialSingle> TrialSingles(int act)
+    {
+        if (_trialSingles.TryGetValue(act, out var known) && ReferenceEquals(known.Of, Blueprint))
+            return known.Singles;
+        IReadOnlyList<TrialSingle> singles = Blueprint?.Presentation.Game?.Extra.GetValueOrDefault($"trial.encounters:{act}") is { } json
+            ? System.Text.Json.JsonSerializer.Deserialize<List<TrialSingle>>(json, RunJson.CreateOptions())!
+            : [];
+        _trialSingles[act] = (Blueprint!, singles);
+        return singles;
+    }
+
+    // The encounter the single-encounter slot of an act holds, if it holds one.
+    public TrialSingle? SavedTrialSingle(int act) =>
+        HasTrialSave(act, single: true) && Godot.FileAccess.FileExists(TrialLog.EncounterOfSavePath(act))
+            && Godot.FileAccess.GetFileAsString(TrialLog.EncounterOfSavePath(act)).Trim() is { Length: > 0 } id
+            ? TrialSingles(act).FirstOrDefault(s => s.Encounter == id)
+            : null;
 
     // The walk in place of the acts, the Lieutenant alone (RunBlueprint.ForTutorial does the same for a lesson).
-    private RunBlueprint TrialBlueprint(int act)
+    private RunBlueprint TrialBlueprint(int act, string? encounter = null)
     {
-        var trial = System.Text.Json.JsonSerializer.Deserialize<RunTutorial>(
-            Blueprint.Presentation.Game!.Extra[$"trial:{act}"], RunJson.CreateOptions())!;
+        var trial = encounter is null
+            ? System.Text.Json.JsonSerializer.Deserialize<RunTutorial>(
+                Blueprint.Presentation.Game!.Extra[$"trial:{act}"], RunJson.CreateOptions())!
+            : TrialSingles(act).First(s => s.Encounter == encounter).Walk;
         return (Blueprint with
         {
             Map = trial.Map,
@@ -181,25 +216,35 @@ public partial class GameHost : Godot.Node
         return new RunPlayback(OnPlayChanged, profile);
     }
 
-    public void StartTrial(int act = 1)
+    // `encounter`: one fight of the act on its own, after the packages before its stage; null walks the whole act.
+    public void StartTrial(int act = 1, string? encounter = null)
     {
         IsTutorial = false;
         IsMultiplayer = false;
         IsProbe = false;
         IsTrial = true;
         TrialAct = act;
+        TrialEncounter = encounter;
         Play?.Dispose();
         Play = TrialPlayback();
-        Play.Start(TrialBlueprint(act), RunSeeds.Random(), interactive: true, TrialCharacter);
-        Godot.DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TrialLog.PrefightPath(act)));
+        Play.Start(TrialBlueprint(act, encounter), RunSeeds.Random(), interactive: true, TrialCharacter);
+        Godot.DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TrialLog.PrefightPath(act, encounter is not null)));
+        if (encounter is not null)
+        {
+            Godot.DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TrialSavePath(act, single: true)));
+            using var which = Godot.FileAccess.Open(TrialLog.EncounterOfSavePath(act), Godot.FileAccess.ModeFlags.Write);
+            which?.StoreString(encounter);
+        }
         EmitChanged();
     }
 
     // Take the trial up again: from its own save, or — `retry` — from the first turn of the fight it was lost in.
-    public bool ResumeTrial(int act = 1, bool retry = false)
+    // `encounter`: the single-encounter trial of that fight, on its own slot.
+    public bool ResumeTrial(int act = 1, bool retry = false, string? encounter = null)
     {
-        var path = retry ? TrialLog.PrefightPath(act) : TrialSavePath(act);
-        if (!Godot.FileAccess.FileExists(path))
+        var single = encounter is not null;
+        var path = retry ? TrialLog.PrefightPath(act, single) : TrialSavePath(act, single);
+        if (!Godot.FileAccess.FileExists(path) || (single && TrialSingles(act).All(s => s.Encounter != encounter)))
             return false;
         var save = RunSaveJson.FromJson(Godot.FileAccess.GetFileAsString(path));
         IsTutorial = false;
@@ -207,9 +252,10 @@ public partial class GameHost : Godot.Node
         IsProbe = false;
         IsTrial = true;
         TrialAct = act;
+        TrialEncounter = encounter;
         Play?.Dispose();
         Play = TrialPlayback();
-        Play.Resume(TrialBlueprint(act), save, interactive: true);
+        Play.Resume(TrialBlueprint(act, encounter), save, interactive: true);
         EmitChanged();
         return Play.Error is null;
     }
@@ -293,7 +339,7 @@ public partial class GameHost : Godot.Node
             if (Play?.Session?.Run is { Result: not RunResult.Ongoing })
                 return null;
             if (Play?.SaveJson() is { } trial)
-                using (var file = Godot.FileAccess.Open(TrialSavePath(TrialAct), Godot.FileAccess.ModeFlags.Write))
+                using (var file = Godot.FileAccess.Open(TrialSavePath(TrialAct, IsTrialEncounter), Godot.FileAccess.ModeFlags.Write))
                     file?.StoreString(trial);
             return null;
         }

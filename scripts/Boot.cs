@@ -242,6 +242,23 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
+        // One fight of a trial on its own, walked by its probe (SessionTrial.SmokeTrialEncounter): the act's first
+        // stage-2 normal fight unless `--trial-encounter=<id>` names one.
+        if (userArgs.Contains("--smoke-trial-encounter"))
+        {
+            var act = int.TryParse(userArgs.FirstOrDefault(a => a.StartsWith("--trial-act=", StringComparison.Ordinal))?["--trial-act=".Length..], out var trialAct) ? trialAct : 1;
+            var encounter = userArgs.FirstOrDefault(a => a.StartsWith("--trial-encounter=", StringComparison.Ordinal))?["--trial-encounter=".Length..]
+                ?? host.TrialSingles(act).FirstOrDefault(s => s.Stage == 2 && s.Kind == "normal")?.Encounter;
+            if (encounter is null)
+            {
+                GD.PrintErr($"smoke-trial-encounter: act {act} has no stage-2 normal fight · FAIL");
+                GetTree().Quit(1);
+                return;
+            }
+            host.StartTrial(act, encounter);
+            CallDeferred(nameof(GoToSession));
+            return;
+        }
         // The encounter trial, walked by its probe (SessionTrial.SmokeTrial).
         if (userArgs.Contains("--smoke-trial"))
         {
@@ -1051,30 +1068,17 @@ public partial class Boot : Control
 
         // THE ENCOUNTER TRIALS (GameHost.StartTrial): every fight of an act in turn, the Lieutenant mended after each —
         // a balance instrument played by hand, one save slot per act. A later act opens on the deck an average run
-        // would bring to its door.
-        foreach (var act in new[] { 1, 2, 3, 4 }.Where(host.HasTrial))
+        // would bring to its door. One entry per act (user, 2026-11-05): it asks whether to walk the full act or one
+        // of its fights on its own, and offers to continue either (TrialPanel). An act with a trial in the game
+        // document shows up here by itself.
+        foreach (var act in Enumerable.Range(1, 5).Where(host.HasTrial))
         {
-            var numeral = act switch { 1 => "I", 2 => "II", 3 => "III", _ => "IV" };
+            var numeral = TrialPanel.Numeral(act);
             var trial = new Button { Text = $"Encounter trial (Act {numeral})", Name = $"TrialButton{act}", CustomMinimumSize = new Vector2(160, 44) };
-            trial.TooltipText = $"Every Act {numeral} fight in stage order as the Lieutenant, healed after each, rewards between the stages. "
+            trial.TooltipText = $"The full Act {numeral} trial, or one of its fights on its own, as the Lieutenant. "
                 + "Every fight is written down for the balance.";
-            trial.Pressed += () =>
-            {
-                host.StartTrial(act);
-                if (host.Play?.Error is null)
-                    GoToSession();
-            };
+            trial.Pressed += () => TrialPanel.Open(this, host, act, GoToSession);
             actions.AddChild(trial);
-            if (host.HasTrialSave(act))
-            {
-                var resumeTrial = new Button { Text = $"Continue trial (Act {numeral})", Name = $"ContinueTrialButton{act}", CustomMinimumSize = new Vector2(160, 44) };
-                resumeTrial.Pressed += () =>
-                {
-                    if (host.ResumeTrial(act))
-                        GoToSession();
-                };
-                actions.AddChild(resumeTrial);
-            }
         }
 
         // THE ARCHIVE IS A MAIN-MENU ITEM, not a thing inside Settings. It is not a preference — it is the
