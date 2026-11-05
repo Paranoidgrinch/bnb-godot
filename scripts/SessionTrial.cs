@@ -16,8 +16,12 @@ public partial class SessionScreen
         var host = GameHost.Instance;
         var saveStamp = Godot.FileAccess.GetModifiedTime("user://run-save.json");
         Godot.DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TrialLog.LogPath));
-        var stageOne = host.Play?.Session?.Run.Map.Nodes.SkipWhile(n => n.Payload is EventRef)
-            .TakeWhile(n => n.Payload is EncounterRef).Count() ?? 0;
+        var nodes = host.Play?.Session?.Run.Map.Nodes ?? [];
+        var stageOne = nodes.SkipWhile(n => n.Payload is EventRef).TakeWhile(n => n.Payload is EncounterRef).Count();
+        // An act without stages (Act V: the catch-up, then the six gods and no package between them) has no
+        // "stage one and a fight past it"; its probe is the first god won and the next one fought.
+        if (!nodes.SkipWhile(n => n.Payload is EventRef).Any(n => n.Payload is EventRef))
+            stageOne = 1;
         var retried = 0;
         int Logged() => Godot.FileAccess.FileExists(TrialLog.LogPath)
             ? Godot.FileAccess.GetFileAsString(TrialLog.LogPath).Split('\n', StringSplitOptions.RemoveEmptyEntries).Length
@@ -73,15 +77,28 @@ public partial class SessionScreen
                 // refused, and tried forever.
                 var burdened = hero.Statuses.Any(st => st.DefinitionId.value == BurdenedStatus);
                 var energy = hero.Resources.TryGetValue(RogueDeck.Core.Combat.StandardCombatIds.EnergyResource, out var pool) ? pool.Current : 0;
+                // …and never a card that lends against tomorrow and comes straight back (Nanshe's Take From Tomorrow,
+                // tagged `borrow`): first in hand and free, it would be played for ever.
                 var card = combat.Hand.FirstOrDefault(c => CanPay(hero, c.DefinitionId.value) && combat.CanPlay(c.Id)
-                    && (!burdened || EffectiveCost(hero, c.DefinitionId.value) <= energy));
+                    && (!burdened || EffectiveCost(hero, c.DefinitionId.value) <= energy)
+                    // …and payable as the rules price it now: Enlil's No Word Shall Be Without Price puts 1 on a
+                    // free card, and a refused card left first in hand would be tried for ever.
+                    && PricedNow(combat, hero, c) <= energy
+                    && !(combat.Registry.CardDefinitions.TryGetValue(c.DefinitionId, out var definition)
+                        && definition.Tags.Contains(new RogueDeck.Core.Combat.TagId("borrow"))));
                 // The weakest enemy standing: a walk that always struck the first body would feed a Cairn every
                 // stone it throws back (Act III, 2026-11-03).
                 // A Downed body (Act IV) takes no damage until it rises, so it is not worth a card.
-                var target = combat.State.Combatants.Where(c => c.Id != combat.HeroId && c.IsAlive
+                // A body held at 1 HP by a rule (Nisaba's Indelible, tagged `cannot_fall`) is not worth one either,
+                // while anything else stands; a body that must be broken in time (her Final Line, `break_first`) is.
+                var standing = combat.State.Combatants.Where(c => c.Id != combat.HeroId && c.IsAlive
                     && c.TeamId == RogueDeck.Core.Combat.StandardCombatIds.EnemyTeam
-                    && !c.Statuses.Any(s => s.DefinitionId.value == "risen_downed"))
-                    .OrderBy(c => c.Health.Current).FirstOrDefault()?.Id;
+                    && !c.Statuses.Any(s => s.DefinitionId.value == "risen_downed")).ToList();
+                bool Tagged(RogueDeck.Core.Combat.CombatantState c, string tag) =>
+                    c.Statuses.Any(s => s.Tags.Contains(new RogueDeck.Core.Combat.TagId(tag)));
+                var target = (standing.FirstOrDefault(c => Tagged(c, "break_first"))
+                    ?? standing.Where(c => !(c.Health.Current <= 1 && Tagged(c, "cannot_fall"))).OrderBy(c => c.Health.Current).FirstOrDefault()
+                    ?? standing.OrderBy(c => c.Health.Current).FirstOrDefault())?.Id;
                 // Nothing standing that can be hurt (every body Downed): end the turn and let them rise.
                 if (card is not null && target is not null)
                     driver.PlayCard(card.Id, target);
@@ -105,8 +122,15 @@ public partial class SessionScreen
             session.Pick(session.PendingChoices[0].Id);
     }
 
+    private static int PricedNow(RogueDeck.Scenario.Scripting.ICombatView combat, RogueDeck.Core.Combat.CombatantState hero,
+        RogueDeck.Core.Combat.CardInstance card) =>
+        combat.Registry.CardDefinitions.TryGetValue(card.DefinitionId, out var definition)
+            ? RogueDeck.Core.Combat.CombatCardPlayProcessor.PreviewCosts(combat.State, combat.Registry, definition, hero, null, card.Id)
+                .Where(c => c.ResourceId == RogueDeck.Core.Combat.StandardCombatIds.EnergyResource).Sum(c => c.Amount)
+            : 0;
+
     // `--smoke-trial-encounter [--trial-act=N] [--trial-encounter=<id>]`: one fight of a trial on its own (by default
-    // the act's first stage-2 normal fight), walked like the full trial — its packages, then the fight — and
+    // the act's first stage-2 normal fight, or for an act without stages its first fight), walked like the full trial — its packages, then the fight — and
     // fought once more with "Retry this fight" once it is over, won or lost. It passes when both fights are
     // written down in the single-encounter notebook with "mode": "encounter" and the encounter's id, the walk
     // saved to its own slot on the way, and the full trial's notebook and save and the player's run save untouched.

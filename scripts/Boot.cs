@@ -248,7 +248,9 @@ public partial class Boot : Control
         {
             var act = int.TryParse(userArgs.FirstOrDefault(a => a.StartsWith("--trial-act=", StringComparison.Ordinal))?["--trial-act=".Length..], out var trialAct) ? trialAct : 1;
             var encounter = userArgs.FirstOrDefault(a => a.StartsWith("--trial-encounter=", StringComparison.Ordinal))?["--trial-encounter=".Length..]
-                ?? host.TrialSingles(act).FirstOrDefault(s => s.Stage == 2 && s.Kind == "normal")?.Encounter;
+                ?? host.TrialSingles(act).FirstOrDefault(s => s.Stage == 2 && s.Kind == "normal")?.Encounter
+                // an act without stages (Act V, the gauntlet): its first fight, a god
+                ?? (host.TrialSingles(act).All(s => s.Kind == "boss") ? host.TrialSingles(act).FirstOrDefault()?.Encounter : null);
             if (encounter is null)
             {
                 GD.PrintErr($"smoke-trial-encounter: act {act} has no stage-2 normal fight · FAIL");

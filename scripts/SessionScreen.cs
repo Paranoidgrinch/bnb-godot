@@ -3965,6 +3965,7 @@ public partial class SessionScreen : Control
     // same PLACE in every Act V fight, which it still does; it never required it to be tall enough for its
     // longest decree, and it has had a scroll of its own and a hover since the day it was built.
     private const int DivineBand = 80;
+    private const int DivineLiveLine = 18;
     private const int HintBand = 22;       // "click an enemy to play it"
     // THE HAND IS THE BIGGEST THING ON THE TABLE (playtest 3, B1–B3): its cards are drawn a quarter larger than
     // a card anywhere else, and the two piles shrink to a token in the very corners to give it the room.
@@ -4065,13 +4066,15 @@ public partial class SessionScreen : Control
 
         if (DivineRuleArea() is { } divine)
         {
-            var rule = TopRegion(arenaTop, DivineBand);
+            // a god with a live line (the decree, the moon) gets the one line more it needs
+            var band = LiveRuleLine() is null ? DivineBand : DivineBand + DivineLiveLine;
+            var rule = TopRegion(arenaTop, band);
             var ruleView = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
             ruleView.SetAnchorsPreset(LayoutPreset.FullRect);
             divine.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             ruleView.AddChild(divine);
             rule.AddChild(ruleView);
-            arenaTop += DivineBand + 8;
+            arenaTop += band + 8;
         }
 
         // Arena: hero far left, enemies far right, a stretchy gap between.
@@ -4178,18 +4181,27 @@ public partial class SessionScreen : Control
                 HorizontalAlignment = HorizontalAlignment.Center,
             });
 
-            var row = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+            // ★ A LONG QUESTION WRAPS (Act V, 2026-11-05): Inanna's gate names every regalium she still wears and
+            // what it does — up to seven options of a sentence each. Those flow onto rows of wrapped buttons; the
+            // short questions keep their one row.
+            var wordy = optionChoice.Count > 3 || optionChoice.Any(o => o.Length > 40);
+            Container row = wordy
+                ? new HFlowContainer { Alignment = FlowContainer.AlignmentMode.Center }
+                : new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
             row.AddThemeConstantOverride("separation", 10);
+            row.AddThemeConstantOverride("h_separation", 10);
+            row.AddThemeConstantOverride("v_separation", 6);
             for (var i = 0; i < optionChoice.Count; i++)
             {
                 var index = i;
                 var order = _selectedOptions.IndexOf(index);
                 var button = new Button
                 {
+                    AutowrapMode = wordy ? TextServer.AutowrapMode.WordSmart : TextServer.AutowrapMode.Off,
                     Text = order >= 0 && play.Seat.PendingOptionChoiceCount > 1
                         ? $"{order + 1}. {optionChoice[index]}"
                         : optionChoice[index],
-                    CustomMinimumSize = new Vector2(180, 48),
+                    CustomMinimumSize = new Vector2(wordy ? 290 : 180, 48),
                     // ⚠ AN OPTION IS A NAME LIKE ANY OTHER. These three buttons are the only place in a fight
                     // where the game asks a question in words of its own, and they were the one place that did
                     // not go through the glossary — so Utu's oaths arrived named and unexplained while every
@@ -6119,7 +6131,45 @@ public partial class SessionScreen : Control
         };
         body.AddThemeFontSizeOverride("font_size", 13);
         column.AddChild(body);
+
+        // ★ THE LIVE LINE (Act V rework, 2026-11-05): what the rule says NOW, read off the god's own body — the
+        // decree in force and the one announced, the moon's phase and the next. The document tags those statuses
+        // `divine_now`; a god that carries none (most of them) shows the plaque alone.
+        if (LiveRuleLine() is { Length: > 0 } live)
+        {
+            var now = new Label
+            {
+                Name = "DivineRuleNow",
+                Text = live,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            };
+            now.AddThemeFontSizeOverride("font_size", 13);
+            now.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
+            column.AddChild(now);
+            panel.TooltipText += $"\n{live}";
+        }
         return panel;
+    }
+
+    // "Now: No Wall Shall Rise Above Twenty · Next: The Fourth Work Shall Be the Last" — the names of the statuses
+    // tagged `divine_now` on the enemies standing, in the order they are worn; null when there are none.
+    private static string? LiveRuleLine()
+    {
+        if (Play?.Seat?.Current is not { } combat)
+            return null;
+        var looks = GameHost.Instance.Blueprint.Presentation.Statuses;
+        var names = combat.State.Combatants
+            .Where(c => c.Id != combat.HeroId && c.IsAlive)
+            .SelectMany(c => c.Statuses)
+            .Where(s => looks.GetValueOrDefault(s.DefinitionId.value)?.Tags.Contains("divine_now") == true)
+            .Select(s => combat.Registry.TryGetStatus(s.DefinitionId, out var definition) && definition is not null
+                && !string.IsNullOrWhiteSpace(definition.DisplayNameKey)
+                    ? definition.DisplayNameKey
+                    : Humanized(s.DefinitionId.value))
+            .Distinct()
+            .ToList();
+        return names.Count == 0 ? null : string.Join("  ·  ", names);
     }
 
     // WHICH BOSS THIS IS NOW, over the top of what it is about to do.
