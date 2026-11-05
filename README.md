@@ -11,7 +11,7 @@ The Godot 4.7 (.NET) frontend of Bureaucrats & Broomsticks, a satirical fantasy 
 
 The game has five acts on generated branching maps, four playable characters (Lieutenant, Bureaucrat, Hedge
 Witch and Sorcerer's Apprentice), combat with telegraphed enemy intents, elites and gods as bosses, events, shops,
-relics, an archive of everything encountered, a tutorial, ten music tracks and save/continue. It is in closed alpha (version 0.5.3,
+relics, an archive of everything encountered, a tutorial, ten music tracks and save/continue. It is in closed alpha (version 0.5.4,
 distributed to testers through itch.io).
 
 All game rules run in the RogueDeck engine, which is referenced as a sibling checkout via `ProjectReference`.
