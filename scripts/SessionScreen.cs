@@ -6257,11 +6257,17 @@ public partial class SessionScreen : Control
                             ? $" (Written: {written}.)" : ""),
                     bigNumber: true));
             }
-            if (parts.Count == 0 && blow > 0)
+            // A written blow that will not land (Act III trial 2026-11-07: the Queen Under the Hill sits out the
+            // action after three kept turns, and her plate said only "Attack"): say so, with the written number.
+            else if (written is not null)
+                chips.AddChild(IntentChip("⚔ 0", MoonvineTheme.TextMuted, promise,
+                    $"Will not hit you this turn, everything counted. (Written: {written}.)", bigNumber: true));
+            var chipped = blow > 0 || written is not null;
+            if (parts.Count == 0 && chipped)
                 effects = "";
             else
                 effects = string.Join(", ", parts);
-            if (effects.Length == 0 && blow > 0)
+            if (effects.Length == 0 && chipped)
             {
                 column.AddChild(chips);
                 plate.AddChild(column);
