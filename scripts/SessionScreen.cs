@@ -4998,6 +4998,21 @@ public partial class SessionScreen : Control
     private static readonly Dictionary<string, (string Label, string Explanation)> CardMarks =
         new(StringComparer.Ordinal)
         {
+            // The content review of 2026-11-08: the reworked enemies' marks.
+            ["wrapped_in_red_tape"] = ("RED TAPE",
+                "The Red Tape Golem has wrapped this card: it costs 1 more. Play a Working to cut it free."),
+            ["called_by_the_crier"] = ("CALLED",
+                "The Queue-Crier called this cost: as your first card this turn it costs 0. Play another cost first "
+                + "and you gain 1 Panic."),
+            ["returned_by_slip"] = ("FORWARDED",
+                "Returned through the Dead-Letter Ouroboros: it costs 1 more the next time you play it."),
+            ["under_a_cup"] = ("UNDER A CUP",
+                "The Roadside Witchling put a cup over this card. One cup hides a hex that hurts you when played. "
+                + "Leave all three cups unplayed and her law is broken."),
+            ["eyed_by_the_frog"] = ("THE FROG'S FARE",
+                "The Great Toll Frog wants this card. Pay its fare, or at the end of your turn it swallows it."),
+            ["in_the_frogs_belly"] = ("SWALLOWED",
+                "Swallowed by the Great Toll Frog. Deal it 25 in one turn and it spits this card back."),
             // The Seizure Procession's wax seal: play the card this turn, or the Lock Cart takes it.
             ["inventoried"] = ("WAX SEAL",
                 "The Seizure Procession has sealed this card. Play it this turn, or the Lock Cart locks it away "
@@ -5009,9 +5024,6 @@ public partial class SessionScreen : Control
             // Act II's one card mark (user, 2026-11-03: the act's marks were not visible): the next play does half.
             ["redacted"] = ("REDACTED",
                 "Blacked out by the archive. Its next play does only half, then the mark is gone."),
-            // The Black-Ink Oracle's question: its cost is hidden until you have guessed it.
-            ["queried_by_the_oracle"] = ("COST BLACKED OUT",
-                "The Oracle has hidden what this card costs. Guess it: right, you draw a card; wrong, you take 5 damage."),
             // The Catalogue of Unwise Names: an entry holds until the card is played.
             ["named_cheaper"] = ("NAMED: CHEAPER",
                 "The Catalogue entered this card cheaper: it costs 1 less and Exhausts when played."),
@@ -5027,7 +5039,8 @@ public partial class SessionScreen : Control
             ["referenced_certificate"] = ("CITED",
                 "The Blank Death Certificate cited this card. Play it this turn, or you owe it 1 Overdue."),
             ["referenced_entry"] = ("CITED",
-                "The Second-Person Entry cited this card. Play it this turn, or you owe it 1 Overdue."),
+                "The Second-Person Entry cited this card from your discard pile. Its Requisition Slip brings it back "
+                + "for 1 Energy; otherwise it is exhausted at the end of your turn."),
             ["referenced_alphabet"] = ("CITED",
                 "The Fanged Alphabet cited this card. Play it this turn, or you owe it 1 Overdue."),
             ["referenced_citation"] = ("CITED",
