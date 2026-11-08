@@ -1,6 +1,10 @@
 # Rebuilding the music
 
-Everything here is what turned ten downloaded tracks into the ten `.ogg` files in
+**Since 2026-11-08 nine of the ten tracks come from `fade.sh`** (title, Acts I–IV, elite, boss, shop,
+campfire): whole tracks from the user's own download, faded in and out instead of cut to a loop. Only the
+Act V theme, *Land of the Great Gods*, is still built by the pipeline below.
+
+Everything else here is what turned ten downloaded tracks into the ten `.ogg` files in
 `assets/music/`. It is kept so the result can be re-derived rather than trusted — the licence
 record and what was done to each file is `assets/music/SOURCES.md`.
 

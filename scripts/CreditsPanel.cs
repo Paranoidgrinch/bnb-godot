@@ -7,19 +7,11 @@ namespace BnbGodot;
 //
 // Every track in BnB is somebody else's work used under a Creative Commons licence, and all but one of those
 // licences REQUIRE attribution — this screen is not a courtesy, it is the condition the music is used on.
-// So the data below is not a summary of the integration document; it is what each author's own OpenGameArt
-// page asks for, which in three cases is more than a name:
+// Nine of the ten tracks (2026-11-08) come from free-stock-music.com, each with the licence notice that came with
+// it: title, composer and the composer's own site. The tenth, the Act V theme, is from OpenGameArt.
 //
-//   · Viktor Kraus asks for the sentence, not the credit line ("composed, performed, mixed and mastered by").
-//   · Marcelo Fernandez asks for the title, his name, and his site — and his page carries TWO licences, CC BY
-//     3.0 in the site's metadata and CC BY 4.0 in his own notice. The stricter reading of his own words wins:
-//     4.0 is what he wrote, so 4.0 is what is shown.
-//   · Cleyton Kauffman released under CC0, which requires nothing at all, and asked to be credited anyway.
-//     He is credited anyway.
-//
-// `Note` is the other half of the bargain. Every one of these files was CUT — the tracks were written with
-// endings and a game needs loops — and CC BY asks that modifications be indicated. Saying "edited to loop"
-// under the track is how that is done.
+// `Note` is the other half of the bargain: CC BY asks that modifications be indicated. The nine were faded in and
+// out so they can loop whole; the Act V theme was cut to a loop.
 //
 // The SOUND EFFECTS follow the same rule: three packs are CC0 and are credited anyway; "Spell 3" is CC BY
 // 3.0 (Bart Kelsey) and "Falling body" CC BY-SA 3.0 (remaxim, from a recording by qubodup), and both of those
@@ -38,27 +30,29 @@ public partial class CreditsPanel : PanelContainer
 
     private static readonly Entry[] Music =
     [
-        new("Secret Sanctum", "composed, performed, mixed and mastered by Viktor Kraus", By3,
-            "https://opengameart.org/content/secret-sanctum", "edited to loop"),
-        new("Waystone Inn", "Enkrez", By4,
-            "https://opengameart.org/content/waystone-inn", "edited to loop"),
-        new("Fantasy Music - The Savvy Merchant", "HitCtrl", By3,
-            "https://opengameart.org/content/fantasy-music-the-savvy-merchant", "edited to loop"),
-        new("Victoriana Loop", "Joe Baxter-Webb (BossLevelVGM)", By3,
-            "https://opengameart.org/content/victoriana-loop", "edited to loop"),
-        new("Dark chamber", "Marcelo Fernandez — marcelofernandezmusic.com", By4,
-            "https://opengameart.org/content/dark-chamber", "edited to loop"),
-        new("Forest Whisper Theme", "Cleyton Kauffman — soundcloud.com/cleytonkauffman", Zero,
-            "https://opengameart.org/content/forest-whisper-theme"),
-        new("Fantasy Music - The Eternal Sands", "HitCtrl", By3,
-            "https://opengameart.org/content/fantasy-music-the-eternal-sands", "edited to loop"),
-        new("Dark Descent", "Matthew Pablo — matthewpablo.com", By3,
-            "https://opengameart.org/content/dark-descent", "edited to loop"),
-        new("The Desecrated Temple", "Insydnis", By3,
-            "https://opengameart.org/content/the-descecrated-temple", "edited to loop"),
+        new("Unraveling", "Scott Buckley — soundcloud.com/scottbuckley", By4,
+            "https://soundcloud.com/scottbuckley", Faded),
+        new("The Things That Keep Us Here", "Scott Buckley — soundcloud.com/scottbuckley", By4,
+            "https://soundcloud.com/scottbuckley", Faded),
+        new("Adventure", "Alexander Nakarada (CreatorChords) — creatorchords.com", By4,
+            "https://creatorchords.com", Faded),
+        new("Lurking Sloth", "Alexander Nakarada (CreatorChords) — creatorchords.com", By4,
+            "https://creatorchords.com", Faded),
+        new("The Long Dark", "Scott Buckley — soundcloud.com/scottbuckley", By4,
+            "https://soundcloud.com/scottbuckley", Faded),
+        new("Fairy Of The Forest", "Alexander Nakarada (CreatorChords) — creatorchords.com", By4,
+            "https://creatorchords.com", Faded),
+        new("The Legend of Narmer", "WombatNoisesAudio — soundcloud.com/user-734462061", By3,
+            "https://soundcloud.com/user-734462061", Faded),
+        new("Hearts Of Iron", "Alex-Productions — onsound.eu", By3,
+            "https://onsound.eu/", Faded),
+        new("Endless Storm", "Makai Symphony — makai-symphony.com", BySa3,
+            "http://makai-symphony.com", Faded),
         new("Land of the Great Gods", "Alexandr Zhelanov", By4,
             "https://opengameart.org/content/land-of-the-great-gods", "edited to loop"),
     ];
+
+    private const string Faded = "faded in and out · via free-stock-music.com";
 
     private static readonly Entry[] Sounds =
     [

@@ -49,15 +49,15 @@ public partial class MusicDirector : Godot.Node
     // the folder alone — a file that stops existing is a missing-music warning at boot, not a silent screen.
     private static readonly Dictionary<Track, string> Files = new()
     {
-        [Track.Title] = "music_title_secret_sanctum.ogg",
-        [Track.Campfire] = "music_campfire_waystone_inn.ogg",
-        [Track.Shop] = "music_shop_savvy_merchant.ogg",
-        [Track.ActOne] = "music_act1_victoriana_loop.ogg",
-        [Track.ActTwo] = "music_act2_dark_chamber.ogg",
-        [Track.ActThree] = "music_act3_forest_whisper_theme.ogg",
-        [Track.ActFour] = "music_act4_eternal_sands.ogg",
-        [Track.Elite] = "music_elite_dark_descent.ogg",
-        [Track.Boss] = "music_boss_desecrated_temple.ogg",
+        [Track.Title] = "music_title_unraveling.ogg",
+        [Track.Campfire] = "music_campfire_the_things_that_keep_us_here.ogg",
+        [Track.Shop] = "music_shop_adventure.ogg",
+        [Track.ActOne] = "music_act1_lurking_sloth.ogg",
+        [Track.ActTwo] = "music_act2_the_long_dark.ogg",
+        [Track.ActThree] = "music_act3_fairy_of_the_forest.ogg",
+        [Track.ActFour] = "music_act4_the_legend_of_narmer.ogg",
+        [Track.Elite] = "music_elite_hearts_of_iron.ogg",
+        [Track.Boss] = "music_boss_endless_storm.ogg",
         [Track.ActFive] = "music_act5_land_of_the_great_gods.ogg",
     };
 
