@@ -1350,7 +1350,7 @@ public partial class Boot : Control
         string At(int hours) => start.AddHours(hours).ToString("O", System.Globalization.CultureInfo.InvariantCulture);
         RunHistory.Append(new RunSummary { StartedUtc = At(0), EndedUtc = At(1), Seed = 11, Character = "Bureaucrat",
             Result = "Defeat", Act = 1, Rooms = 9, Health = 0, MaxHealth = 70, Gold = 41, EndedAt = "Sealed Door Ward",
-            Deck = ["Paper Cut", "Paper Cut", "Cower Behind a Desk", "Strong Binder+"], Relics = ["Rubber Stamp"] });
+            Deck = ["Paper Cut", "Paper Cut", "Under the Desk", "Strong Binder+"], Relics = ["Rubber Stamp"] });
         RunHistory.Append(new RunSummary { StartedUtc = At(2), EndedUtc = At(3), Seed = 12, Character = "Bureaucrat",
             Result = "Abandoned", Rooms = 3 });
         RunHistory.Append(new RunSummary { StartedUtc = At(4), EndedUtc = At(6), Seed = 13, Character = "Bureaucrat",
