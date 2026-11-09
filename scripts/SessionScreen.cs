@@ -5657,7 +5657,7 @@ public partial class SessionScreen : Control
         // never the size it was handed. A card 24 px wider than its slot overlaps the neighbour it was placed
         // 12 px clear of, and a card whose title wraps to two lines is taller than the card beside it and
         // hangs out of the hand row into whatever is under it. Drift across clicks is the second.
-        var asked = new Vector2(CardVisuals.CardW, CardVisuals.CardH);
+        var asked = new Vector2(HandW, HandH); // the hand is drawn at HandScale since 2026-10-26
         var wrong = 0;
         for (var i = 0; i < low.Count; i++)
         {
