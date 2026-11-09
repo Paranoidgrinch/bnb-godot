@@ -14,7 +14,7 @@ What is drawn, in order:
          - the ink skips in streaks along the pen's angle (noise stretched long and turned to 38 degrees)
          - the edge is torn by the fibre (fine noise on the edge, then cut hard again)
          - hairline scratches where the nib's points caught, spatter where it flicked off
-    4  blots round the name: a fat drop, a crown of satellites (the near ones still joined to it), and
+    4  blots above and below the name, never on it (it must stay readable): a fat drop, a crown of satellites (the near ones still joined to it), and
        sometimes a run where it slid. Hard-edged, because ink dries where it lands.
     5  ink laid like ink on rag paper: the density wanders a little across the sheet
 
@@ -148,11 +148,21 @@ def back(ss=SS, seed=SEED):
     rng = np.random.default_rng(seed)
     whirl = spiral(w, h, rng, ss, eye=0.25, strokes=560)
     logo = scratchy_logo(w, h, rng, ss)
+    # the blots fall above and below the name, never on it: a blot that would touch the letters (or come
+    # within a nib's width of them) is not kept, and another is dropped in its place
+    keep_clear = Image.fromarray((logo > 0.1).astype('uint8') * 255).filter(ImageFilter.MaxFilter(2 * int(1.5 * ss) + 1))
+    keep_clear = arr(keep_clear) > 0
     mess = np.zeros_like(logo)
     for k in range(7):
-        a = rng.uniform(0, 2 * math.pi); r = rng.uniform(0.04, 0.22) * w
-        br = rng.uniform(0.012, 0.03) * w * (1.6 if k < 2 else 1.0)
-        mess = np.maximum(mess, blot(w, h, rng, ss, w / 2 + math.cos(a) * r * 1.2, h / 2 + math.sin(a) * r, br))
+        for _ in range(60):
+            # turn about: one above the name, the next below
+            a = rng.uniform(math.pi, 2 * math.pi) if k % 2 == 0 else rng.uniform(0, math.pi)
+            r = rng.uniform(0.04, 0.22) * w
+            br = rng.uniform(0.012, 0.03) * w * (1.6 if k < 2 else 1.0)
+            b = blot(w, h, rng, ss, w / 2 + math.cos(a) * r * 1.2, h / 2 + math.sin(a) * r, br)
+            if not (b[keep_clear] > 0.05).any():
+                mess = np.maximum(mess, b)
+                break
     ink_layer(im, whirl, INK, rng, (0.88, 1.0))
     ink_layer(im, np.maximum(logo, mess * 0.95), INK, rng, (0.8, 1.0))
     # the paper's own cut is the card's edge: nothing drawn may stand outside it
