@@ -48,8 +48,7 @@ Host and screens
   - The combat pane has six fixed regions (heading, divine rule, arena, hand, controls, draw pile), declared
     as constants and anchored. Containers distribute minimum heights first, which previously let an Act V boss
     with a rule panel and many statuses squeeze the hero's health bar; overflowing regions now scroll.
-  - The draw pile is built once per fight and updated in place, because its card back is a video and a
-    recreated video restarts at 0 (checked by `--smoke-deck`).
+  - The draw pile is built once per fight and updated in place.
   - The relic shelf on the right is an `HFlowContainer`. Horizontal scrolling of the sidebar is disabled on
     purpose: a horizontally scrolling `ScrollContainer` gives its child only its minimum width, which for a
     wrapping container is one tile (checked by `--smoke-shelf` with 69 relics).
@@ -107,8 +106,22 @@ Settings, audio, theme
 
 Cards, relics and art
 
-- `CardVisuals.cs`: the card widget, printed on `assets/cards/card-frame.png`. Every field is a measured
-  fraction of the card, so the same layout serves hand cards and thumbnails.
+- `CardVisuals.cs`: the card widget. A card is a paper form filled in by a clerk, laid in layers: a sheet of
+  paper, the printed form (with its title rule and the picture box), the cost stamp, the clerk's handwriting
+  (`CardWriting.cs`) and, on an improved card, a wax seal. Every layer is a fraction of the card, so the same
+  layout serves hand cards and thumbnails.
+  - The pictures and their generators live together under `assets/cards/` (`paper/`, `form/`, `seal/`,
+    `back/`, each with its `make_*.py`). `form/layout.json` is written by the form generator and says where
+    every part goes; `CardForm.cs` reads it, so the code holds no positions of its own.
+  - Paper sheet, form, stamp and seal are picked from the card's id, so a card always looks the same; the
+    form is turned and shifted a little per card, as a hand press would.
+  - The rarity is the ink of the title, and of the cost stamp: brown-black for starter and common, green for
+    uncommon, red for rare. Junk, curses and cards a fight forces into the hand are a red notice on rose
+    paper with SERVED stamped across the picture.
+  - The clerk underlines every glossary term and, on an improved card, strikes out each number that changed
+    and writes the new one after it in blue-black.
+  - The whole game is set in the same hand, Clerk of Boston (`theme/font/`, made by `make_font.py`); symbols
+    the hand does not have come from Godot's own face.
   - No element on a card may report a minimum size. Godot grows a `Control` to its children's minimum, which
     used to change a card's shape when clicked (checked by `--smoke-format`).
   - The hand overlaps more as it grows. The hovered card is lifted out of the fan, scaled 1.5×, straightened
@@ -128,12 +141,11 @@ Cards, relics and art
 - New pictures are only visible after Godot has imported them: run `tools/import-art.sh`; `--smoke-art`
   reports how many slots are filled. `project.godot` turns on mipmaps for imported textures, because the
   pictures are drawn much smaller than they are painted.
-- The card back is `assets/cards/card-back.ogv` (animated, on the deck) and `card-back.png` (static). Both
-  are cut to their drawn size, since video textures cannot be mipmapped; the ffmpeg commands for re-cutting
-  are in `VISUAL_OVERHAUL_PLAN.md` under D2.
-- A slot without a file is a normal state: the card shows an empty socket with its code, a relic shows its
-  name. Rarity tints hand cards; card, relic and character flavour text is shown in tooltips and on the title
-  screen.
+- The card back is `assets/cards/back/card_back.png`, a still, the same for every card. The paper, form and
+  back pictures are imported at half their size (`process/size_limit=760`): a card is never drawn larger than
+  that, and the full-size files stay in the repo as the generators made them.
+- A slot without a file is a normal state: the card shows the form's empty, hatched picture box, a relic
+  shows its name. Card, relic and character flavour text is shown in tooltips and on the title screen.
 
 Other
 
@@ -179,7 +191,7 @@ audit.
 Windowed checks (each walks to a room and saves a screenshot to `user://`):
 
 ```text
-godot -- --smoke-deck      the draw-pile video keeps playing over three card plays
+godot -- --smoke-paper     one card of each kind (rarities, improved, notice, wand, long name) and the back
 godot -- --smoke-window    the same fight at three window sizes
 godot -- --smoke-settings  the settings dialog
 godot -- --smoke-newrun    the New run dialog

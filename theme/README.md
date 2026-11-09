@@ -2,7 +2,12 @@
 
 ## Changing the font for the whole game
 
-The game runs on Godot's built-in face. To change it everywhere at once:
+The whole game is written in one hand, **Clerk of Boston** (`theme/font/clerk-of-boston.ttf`), a quill hand
+built for this game from 18th-century clerks' papers. `theme/font/make_font.py` makes it; it needs numpy,
+shapely and fontTools. Symbols the hand does not have (⚔, ♥, arrows) come from Godot's own face, which is
+set as its fallback.
+
+To change it everywhere at once:
 
 1. Drop a `.ttf` or `.otf` in this folder, e.g. `theme/bnb.ttf`.
 2. In `scripts/MoonvineTheme.cs`, set the one field near the top of the file:
@@ -18,10 +23,9 @@ prints a warning and falls back to the Godot default rather than crashing the ru
 **No screen may load a font of its own.** The moment one does, "change the font later" stops being this
 one line and becomes twenty edits scattered across `SessionScreen`, `MapView` and `Boot`.
 
-**The card face is the strongest argument for changing it.** `CardVisuals` sizes a card's name to the frame's
-title band and shrinks it until it fits, but the longest names in the game (*Break the Great Seal of
-Execution*, 33 characters) still reach the ellipsis at the floor size in a 105 px band. A condensed face is
-the one edit that buys them back — and it is this edit.
+**A long card name is written smaller, then narrower.** `CardWriting` sets a card's name in the largest size
+that fits its rule and, when even the smallest is too wide, squeezes it sideways, the way a clerk crams a long
+name into a short space. Nothing is cut off.
 
 ## Colours
 

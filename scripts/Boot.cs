@@ -275,7 +275,7 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-cauldron" or "--smoke-wand" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-effects" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-deck" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover" or "--smoke-mapkey" or "--smoke-piles" or "--smoke-keys" or "--smoke-preview" or "--smoke-intents" or "--smoke-peek" or "--smoke-report" or "--smoke-summaries" or "--smoke-tip-flip" or "--smoke-log" or "--smoke-treasure"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-cauldron" or "--smoke-wand" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-effects" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover" or "--smoke-mapkey" or "--smoke-piles" or "--smoke-keys" or "--smoke-preview" or "--smoke-intents" or "--smoke-peek" or "--smoke-report" or "--smoke-summaries" or "--smoke-tip-flip" or "--smoke-log" or "--smoke-treasure"))
         {
             host.StartNewRun(seed: 7,
                 // Who walks it: `--character=<id>` (the roster's first otherwise) — a probe of the Hedge
@@ -351,6 +351,14 @@ public partial class Boot : Control
             return;
         }
         // The compendium, opened from its title-screen button the way a player opens it, on Paperwork.
+        // THE PAPER CARD, ONE OF EACH KIND (`--smoke-paper`): a starter and its improvement, a common, an uncommon
+        // and a rare, a long name, a wand card, junk, a fight card, and the back — photographed side by side, at
+        // hand size and at twice that. Touches no file but the picture.
+        if (userArgs.Contains("--smoke-paper") && !DisplayServer.GetName().Contains("headless"))
+        {
+            _ = PaperProbe(blueprint);
+            return;
+        }
         // The archive's shelves, read as a player reads them: the cards tab, scrolled well down, one card picked.
         // Says whether the shelf stayed where it was read, and photographs it. Touches no file but the picture.
         if (userArgs.Contains("--smoke-archive-shelf") && !DisplayServer.GetName().Contains("headless"))
@@ -882,6 +890,61 @@ public partial class Boot : Control
             + $" · scrolled to {before}, picked {deep.Name}, shelf now at {after} {(after == before && before > 0 ? "(STAYED)" : "— MOVED")}");
         GetViewport().GetTexture().GetImage().SavePng("user://smoke-archive-shelf.png");
         GD.Print("smoke: screenshot user://smoke-archive-shelf.png");
+        GetTree().Quit();
+    }
+
+    private async System.Threading.Tasks.Task PaperProbe(RunBlueprint blueprint)
+    {
+        string[] ids =
+        [
+            "lt_watch_cut", "lt_watch_cut+", "waxing_authority", "black_ledger", "red_ink_doctrine+",
+            "smouldering_correspondence", "stolen_hour", "red_tape", "summons_to_appear", "heavy_pie",
+        ];
+        GetWindow().Size = new Vector2I(1920, 1080);
+        var page = new ColorRect { Color = MoonvineTheme.Bg };
+        page.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        AddChild(page);
+        var rows = new VBoxContainer { Position = new Vector2(12, 8) };
+        rows.AddThemeConstantOverride("separation", 10);
+        page.AddChild(rows);
+        HBoxContainer Row()
+        {
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 12);
+            rows.AddChild(row);
+            return row;
+        }
+        Control Card(string id, float scale)
+        {
+            var card = blueprint.Cards.FirstOrDefault(c => c.Id == id);
+            var look = blueprint.Presentation.Cards.GetValueOrDefault(id);
+            return CardVisuals.Face(new CardVisuals.CardFace(
+                Id: id,
+                Title: card?.NameKey ?? id,
+                Cost: card is null || card.Costs.Count == 0 ? "" : string.Join("\u00b7", card.Costs.Select(c => c.Amount)),
+                Rules: look?.FlavorText ?? "",
+                Rarity: look?.Rarity,
+                Tooltip: id,
+                Dimmed: false,
+                Armed: false), scale: scale);
+        }
+        // Hand size first (the window is 1.5 × the 1280 × 720 the screens are laid out for, as on a 1080p screen),
+        // then four of them larger, where the hand's pen strokes can be checked.
+        foreach (var (part, last) in new[] { (ids[..5], false), (ids[5..], true) })
+        {
+            var row = Row();
+            foreach (var id in part)
+                row.AddChild(Card(id, 1f));
+            if (last)
+                row.AddChild(CardVisuals.Back());
+        }
+        var big = Row();
+        foreach (var id in new[] { "lt_watch_cut+", "black_ledger", "summons_to_appear", "smouldering_correspondence" })
+            big.AddChild(Card(id, 1.5f));
+        for (var i = 0; i < 6; i++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        GetViewport().GetTexture().GetImage().SavePng("user://smoke-paper.png");
+        GD.Print("smoke-paper: screenshot user://smoke-paper.png");
         GetTree().Quit();
     }
 

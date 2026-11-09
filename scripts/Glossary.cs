@@ -100,6 +100,29 @@ public static class Glossary
         return found;
     }
 
+    // The NAMES of every term this text uses, for the clerk who underlines them on a card. The same reading as
+    // In — longest names first, a longer term speaking for the shorter one inside it — but not capped: every
+    // term on a card is underlined, not just the five a tooltip has room for.
+    public static IReadOnlyList<string> NamesIn(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return [];
+        var key = $"names|{text}";
+        if (Memo.TryGetValue(key, out var remembered))
+            return remembered;
+        var found = new List<string>();
+        foreach (var (name, _) in Terms)
+        {
+            if (name.Length < 4 || !Mentions(text, name))
+                continue;
+            if (found.Any(c => c.Contains(name, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            found.Add(name);
+        }
+        Memo[key] = found;
+        return found;
+    }
+
     // A whole-word match, so "Seal" is not found inside "Sealed" and "Doubt" not inside "Doubtful".
     private static bool Mentions(string text, string name)
     {

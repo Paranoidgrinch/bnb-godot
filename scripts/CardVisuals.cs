@@ -4,11 +4,12 @@ using Godot;
 
 namespace BnbGodot;
 
-// THE CARD. One widget, printed on the master frame, used by the hand, the card pickers and everything else
-// that has to show a card as a card. `assets/cards/card-frame.png` is the artwork: an ornate near-black
-// border with HOLES cut in it — a title band across the top, a ring at its left end, a big window in the
-// middle and a plaque at the foot. The face draws its fields into those holes and lays the frame over the
-// top, so the frame and the text can never disagree about where a field is.
+// THE CARD. One widget, used by the hand, the card pickers and everything else that has to show a card as a
+// card. Since 2026-11-09 a card is a PAPER FORM filled in by a clerk: a sheet of yellowed paper, a form printed
+// on it, a cost stamp, the picture in the form's box, a wax seal when the card was improved, and the clerk's
+// handwriting over all of it. CardForm knows the pictures and where they go (layout.json, written by the
+// generator that drew them); CardWriting is the hand. Every layer is anchored by fraction of the card, so one
+// layout serves a hand card, a picker and a thumbnail alike.
 //
 // ⚠ NOTHING ON A CARD MAY REPORT A MINIMUM SIZE. Godot clamps a Control's size UP to the combined minimum of
 // its container children — so the old face, a PanelContainer around a VBox around a wrapping Label, came out
@@ -19,34 +20,38 @@ namespace BnbGodot;
 // fixed, clipped window anchored by fraction, and `--smoke-format` measures it.
 public static class CardVisuals
 {
-    // +20 %, as asked — and the old 112 × 156 was a 0.718 card, which the master frame is not. 134 / 190 is
-    // the frame's own ratio, so the artwork is never stretched.
+    // +20 %, as asked — and the old 112 × 156 was a 0.718 card. 134 × 190 is the design canvas every card
+    // picture is drawn on (the paper is 8 × that), so nothing is ever stretched.
     public const int CardW = 134;
     public const int CardH = 190; // 134 / 0.7048
 
-    // ── the frame's geometry, MEASURED off its alpha channel ─────────────────────
-    // Every hole in card-frame.png (1053 × 1494) is a field, expressed as a fraction of the card so one
-    // layout serves a hand card, a picker and a thumbnail alike.
-    private const float ArtL = 0.0437f, ArtT = 0.1419f, ArtR = 0.9554f, ArtB = 0.7209f;
-    private const float PlaqueL = 0.0437f, PlaqueT = 0.7416f, PlaqueR = 0.9554f, PlaqueB = 0.9645f;
+    // Junk, curses and the cards a fight forces into the hand are served on the office's red notice; every
+    // card the player chose is on the office's own form (user, 2026-11-09). The archive's shelf says which.
+    private static CardForm.Look LookOf(string id)
+    {
+        var section = Presented(id)?.Extra.GetValueOrDefault("archiveSection");
+        return section is "Junk & curses" or "Fight cards" ? CardForm.Look.Notice : CardForm.Look.Office;
+    }
 
-    // ⚠ THE TITLE BAND IS NOT A RECTANGLE. It is a long lens: pinched at both ends, widest at its foot
-    // (x 0.048–0.952 down at y 0.098), with the cost ring biting into its left end, the broom badge into its
-    // right, and an ornamental diamond hanging into its middle from above. The title TEXT therefore gets the
-    // band's honest middle — anywhere wider and a long name is printed on the frame instead of in it.
-    private const float TitleL = 0.11f, TitleT = 0.033f, TitleR = 0.89f, TitleB = 0.115f;
+    // The kind of paper, from the card's own tags: Deed, Working, Rite, …
+    private static readonly string[] Kinds = ["deed", "working", "rite", "form", "argument", "action", "junk"];
 
-    // The ring at the band's left end. Its hole is small — 6.8 % of the card's width — so the cost is set in
-    // the largest digit that fits it and no larger.
-    private const float CostCx = 0.0684f, CostCy = 0.0495f;
+    private static string KindOf(string id)
+    {
+        var tags = Presented(id)?.Tags ?? [];
+        var kind = Kinds.FirstOrDefault(tags.Contains);
+        return kind is null ? "" : char.ToUpperInvariant(kind[0]) + kind[1..];
+    }
 
-    private static VideoStream? _stream;
-    private static Texture2D? _poster;
-    private static Texture2D? _frame;
+    // What the card said before it was improved, so the clerk can strike the old numbers out.
+    private static string? WasOf(string id) => Presented(id.TrimEnd('+'))?.FlavorText;
 
-    private static VideoStream Stream => _stream ??= GD.Load<VideoStream>("res://assets/cards/card-back.ogv");
-    private static Texture2D Poster => _poster ??= GD.Load<Texture2D>("res://assets/cards/card-back.png");
-    private static Texture2D Frame => _frame ??= GD.Load<Texture2D>("res://assets/cards/card-frame.png");
+    private static RogueDeck.Run.EntityPresentation? Presented(string id)
+    {
+        var host = GameHost.Instance;
+        var presentation = host is null ? null : host.Blueprint?.Presentation;
+        return presentation?.Cards.GetValueOrDefault(id);
+    }
 
     // ── the art slots ────────────────────────────────────────────────────────────
     // THE CONTRACT'S PATH IS THE PATH ON DISK. Every card and every relic the document ships already names its
@@ -183,158 +188,91 @@ public static class CardVisuals
             TooltipText = card.Tooltip,
         };
 
-        // ⚠ THE GROUND IS ROUNDED TO THE FRAME'S OWN CORNER. The card ground is lit (it is what makes the
-        // black frame visible at all), so a square of it behind a frame with 7.4 %-radius corners shows as
-        // four bright nubs poking out past the artwork. Everywhere else the frame is opaque and covers the
-        // ground itself, so this is the only place the shape has to be repeated.
-        var ground = new Panel { MouseFilter = Control.MouseFilterEnum.Ignore };
-        ground.AddThemeStyleboxOverride("panel", new StyleBoxFlat
-        {
-            BgColor = MoonvineTheme.CardGround,
-            CornerRadiusTopLeft = (int)Mathf.Round(0.074f * w),
-            CornerRadiusTopRight = (int)Mathf.Round(0.074f * w),
-            CornerRadiusBottomLeft = (int)Mathf.Round(0.074f * w),
-            CornerRadiusBottomRight = (int)Mathf.Round(0.074f * w),
-        });
-        ground.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        root.AddChild(ground);
+        // An improved copy fights as "<id>+" and is named "… +", or is drawn as the card with a "+" on its name
+        // (the archive). The seal says it now, so one "+" comes off the name; a second improvement keeps its own.
+        var sealed_ = card.Id.EndsWith('+') || card.Title.EndsWith('+');
+        var title = card.Title.EndsWith('+') ? card.Title[..^1].TrimEnd() : card.Title;
+        var look = LookOf(card.Id);
 
-        // ── the picture, or the socket where one goes ────────────────────────────
-        var art = Window(root, ArtL, ArtT, ArtR, ArtB);
-        // A shade under the rest of the card — a recess waiting for a picture — but still lit enough that the
-        // frame's inner rail has something to be a silhouette against.
-        var socket = new ColorRect { Color = MoonvineTheme.CardGround.Darkened(0.3f), MouseFilter = Control.MouseFilterEnum.Ignore };
-        socket.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        art.AddChild(socket);
-        if (CardArt(card.Id) is { } picture)
+        // ── the sheet ────────────────────────────────────────────────────────────
+        // The paper's own ragged cut is the card's edge; a notice is the same paper, tinted rose.
+        var paper = Picture(root, CardForm.Paper(card.Id), 0, 0, 1, 1);
+        if (look == CardForm.Look.Notice)
+            paper.SelfModulate = CardForm.NoticeTint;
+
+        // ── the form, and what sits in it ────────────────────────────────────────
+        // The forme sat a little crooked in the press: the form, its title rule and the picture in its box
+        // turn and shift TOGETHER, by the card's own amount, so the picture still sits square in its box.
+        var (degrees, units) = CardForm.Jitter(card.Id);
+        var forme = new Control
         {
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            PivotOffset = new Vector2(w, h) / 2,
+            RotationDegrees = degrees,
+        };
+        forme.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        forme.OffsetLeft = forme.OffsetRight = units.X * w / CardW;
+        forme.OffsetTop = forme.OffsetBottom = units.Y * w / CardW;
+        root.AddChild(forme);
+        Picture(forme, CardForm.Form(card.Id, look), 0, 0, 1, 1);
+        var strip = CardForm.TitleStripHeight / 2;
+        Picture(forme, CardForm.TitleRule(look, sealed_), 0, CardForm.TitleRuleY - strip, 1, CardForm.TitleRuleY + strip);
+
+        var box = CardForm.ArtBox(look);
+        var inX = CardForm.ArtInset;
+        var inY = CardForm.ArtInset * CardW / CardH;
+        if (CardArt(card.Id) is { } art)
+        {
+            var window = Window(forme, box.Position.X + inX, box.Position.Y + inY, box.End.X - inX, box.End.Y - inY);
             var image = new TextureRect
             {
-                Texture = picture,
+                Texture = art,
                 ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
                 StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
                 // Both halves of D1's lesson: the file is imported WITH a mip chain (project.godot's
-                // importer defaults) and it is drawn through one. A picture painted at 488x440 lands in a
-                // 122x110 window; either half missing and that reduction glitters.
+                // importer defaults) and it is drawn through one. A picture painted at 488x385 lands in a
+                // 99x77 box; either half missing and that reduction glitters.
                 TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
                 MouseFilter = Control.MouseFilterEnum.Ignore,
             };
             image.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-            art.AddChild(image);
-        }
-        else
-        {
-            var code = new Label
-            {
-                Text = card.Id,
-                ClipText = true,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                HorizontalAlignment = HorizontalAlignment.Center,
-            };
-            code.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-            code.AddThemeColorOverride("font_color", new Color(MoonvineTheme.TextMuted, 0.55f));
-            code.AddThemeFontSizeOverride("font_size", Math.Max(7, (int)Mathf.Round(8 * scale)));
-            art.AddChild(code);
+            window.AddChild(image);
         }
 
-        // ── the name, in the band ────────────────────────────────────────────────
-        var titleWindow = Window(root, TitleL, TitleT, TitleR, TitleB);
-        var title = new Label
+        // ── the stamps ───────────────────────────────────────────────────────────
+        // Square pictures, centred where they were struck: the anchors of a square on a card that is not one.
+        void Centred(Texture2D texture, Vector2 centre, float side)
         {
-            Text = card.Title,
-            ClipText = true,
-            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
+            var half = new Vector2(side / 2, side / 2 * CardW / CardH);
+            Picture(root, texture, centre.X - half.X, centre.Y - half.Y, centre.X + half.X, centre.Y + half.Y);
+        }
+        if (card.Cost.Length > 0)
+            Centred(CardForm.Stamp(card.Id, CardForm.StampInk(card.Rarity, look)), CardForm.StampCentre,
+                2 * CardForm.StampImageR * CardForm.StampR);
+        if (look == CardForm.Look.Notice)
+            Centred(CardForm.Served(card.Id), CardForm.ServedCentre, CardForm.ServedSize);
+
+        // ── the clerk's hand ─────────────────────────────────────────────────────
+        var writing = new CardWriting
+        {
+            Cost = card.Cost,
+            Title = title,
+            TitleInk = CardForm.TitleInk(card.Rarity, look),
+            TitleEnd = CardForm.TitleEnd(look, sealed_),
+            Kind = KindOf(card.Id),
+            Rules = card.Rules,
+            Was = sealed_ ? WasOf(card.Id) : null,
+            Look = look,
+            Seed = card.Id,
         };
-        title.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        title.AddThemeColorOverride("font_color", card.Dimmed ? MoonvineTheme.TextMuted : MoonvineTheme.RarityColor(card.Rarity));
-        title.AddThemeFontSizeOverride("font_size",
-            FitLine(card.Title, (TitleR - TitleL) * w, (int)Mathf.Round(12 * scale), Math.Max(6, (int)Mathf.Round(8 * scale))));
-        titleWindow.AddChild(title);
+        writing.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        root.AddChild(writing);
 
-        // ── the cost, in the ring ────────────────────────────────────────────────
-        // A box anchored from the card's edge to twice the ring's centre is a box CENTRED on the ring, which
-        // an anchor cannot express directly (they are clamped to 0–1 and the ring sits near the corner).
-        var costWindow = Window(root, 0f, 0f, CostCx * 2f, CostCy * 2f);
-        var cost = new Label
-        {
-            Text = card.Cost,
-            ClipText = true,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        cost.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        cost.AddThemeColorOverride("font_color", card.Dimmed ? MoonvineTheme.TextMuted : MoonvineTheme.Signal);
-        cost.AddThemeFontSizeOverride("font_size",
-            FitLine(card.Cost, CostCx * 2f * w * 0.9f, (int)Mathf.Round(12 * scale), Math.Max(6, (int)Mathf.Round(7 * scale))));
-        costWindow.AddChild(cost);
+        // The seal goes on last: it is pressed onto the finished card, over the end of the title's rule.
+        if (sealed_)
+            Centred(CardForm.Seal(card.Id), CardForm.SealCentre, 2 * CardForm.SealImageR * CardForm.SealR);
 
-        // ── the rules, on the plaque ─────────────────────────────────────────────
-        var plaque = Window(root, PlaqueL + 0.035f, PlaqueT + 0.014f, PlaqueR - 0.035f, PlaqueB - 0.012f);
-        var box = new Vector2((PlaqueR - PlaqueL - 0.07f) * w, (PlaqueB - PlaqueT - 0.026f) * h);
-        // A card with a WAND part (the Sorcerer's Apprentice's, and the general cards he can inscribe) carries it after
-        // a "Wand:" line: the play text above, the wand text under it in the wand's colour.
-        var (playText, wandText) = SplitWand(card.Rules);
-        var size = FitBlock(wandText is null ? playText : $"{playText}\n\nWAND {wandText}", box,
-            (int)Mathf.Round(11 * scale), Math.Max(6, (int)Mathf.Round(7 * scale)));
-        // ⚠ NO CONTAINER ON THE PLAQUE. The two parts stood in a VBoxContainer once, and a wrapping label in a box
-        // asks the box for its width while the box asks it for its height: the hand never settled, and Godot sorted
-        // it until its message queue ran out (--smoke-screens as the Apprentice, 2026-10-20). Each part is measured
-        // here and pinned where it goes, the pair centred on the plaque the way the single paragraph was.
-        Label Part(string text, Color colour, int fontSize, float top, float height)
-        {
-            var label = new Label
-            {
-                Text = text,
-                AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                ClipText = true,
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-                AnchorRight = 1,
-                OffsetTop = top,
-                OffsetBottom = top + height,
-            };
-            label.AddThemeConstantOverride("line_spacing", 0);
-            label.AddThemeColorOverride("font_color", card.Dimmed ? MoonvineTheme.TextMuted : colour);
-            label.AddThemeFontSizeOverride("font_size", fontSize);
-            plaque.AddChild(label);
-            return label;
-        }
-        if (wandText is null)
-            Part(playText, MoonvineTheme.TextSoft, size, 0, box.Y);
-        else
-        {
-            var wandSize = Math.Max(5, size - 1);
-            const float Gap = 2;
-            var playHeight = TypeFace.GetMultilineStringSize(playText, HorizontalAlignment.Left, box.X, size).Y;
-            var wandHeight = TypeFace.GetMultilineStringSize("WAND " + wandText, HorizontalAlignment.Left, box.X, wandSize).Y;
-            var top = Math.Max(0, (box.Y - playHeight - Gap - wandHeight) / 2);
-            Part(playText, MoonvineTheme.TextSoft, size, top, playHeight);
-            Part("WAND " + wandText, MoonvineTheme.Arcane, wandSize, top + playHeight + Gap,
-                Math.Max(0, Math.Min(wandHeight, box.Y - top - playHeight - Gap)));
-        }
-
-        // ── the frame itself, over all of it ─────────────────────────────────────
-        // IgnoreSize, or the TextureRect would report the artwork's own 1053 × 1494 as a minimum and blow the
-        // card up to the size of the file it is drawn from.
-        var frame = new TextureRect
-        {
-            Texture = Frame,
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            StretchMode = TextureRect.StretchModeEnum.Scale,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-            // The artwork is 1053 px wide and a card is 134: without mipmaps that eightfold shrink samples
-            // one pixel in eight and the filigree comes out as glitter. (The matching mipmaps/generate=true
-            // is in card-frame.png.import — the flag has to be set on BOTH sides or there is nothing to
-            // sample.)
-            TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
-        };
-        frame.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        root.AddChild(frame);
-
-        // A card you cannot pay for is dimmed as an OBJECT — frame, plaque and picture together — rather than
+        // A card you cannot pay for is dimmed as an OBJECT — paper, stamp and picture together — rather than
         // having each of its texts recoloured, because it is the whole card that is out of reach.
         if (card.Dimmed)
         {
@@ -348,7 +286,7 @@ public static class CardVisuals
         if (card.Armed)
         {
             var edge = new Panel { MouseFilter = Control.MouseFilterEnum.Ignore };
-            var ring = MoonvineTheme.Panel(new Color(0, 0, 0, 0), MoonvineTheme.AccentLight, (int)Mathf.Round(10 * scale));
+            var ring = MoonvineTheme.Panel(new Color(0, 0, 0, 0), MoonvineTheme.AccentLight, (int)Mathf.Round(4 * scale));
             ring.BorderWidthTop = ring.BorderWidthBottom = ring.BorderWidthLeft = ring.BorderWidthRight = 2;
             edge.AddThemeStyleboxOverride("panel", ring);
             edge.SetAnchorsPreset(Control.LayoutPreset.FullRect);
@@ -367,16 +305,18 @@ public static class CardVisuals
         // A per-instance mark is content's way of making one copy special, and a stamp only the engine can see
         // is a rule nobody was told. The chips go in the picture's top-right corner and ABOVE the click
         // overlay, or the overlay would swallow the hover that explains them — so each one is itself a button
-        // that plays the card, and the card behaves the same wherever on it you click.
+        // that plays the card, and the card behaves the same wherever on it you click. Written in the stamp's
+        // red, the one ink on the paper that says "the office did this".
         if (card.Marks is { Count: > 0 } marks)
         {
-            var strip = new HBoxContainer
+            var chips = new HBoxContainer
             {
-                AnchorLeft = ArtL + 0.02f, AnchorTop = ArtT + 0.012f, AnchorRight = ArtR - 0.02f, AnchorBottom = ArtT + 0.075f,
+                AnchorLeft = box.Position.X + 0.02f, AnchorTop = box.Position.Y + 0.012f,
+                AnchorRight = box.End.X - 0.02f, AnchorBottom = box.Position.Y + 0.075f,
                 Alignment = BoxContainer.AlignmentMode.End,
             };
-            strip.AddThemeConstantOverride("separation", 3);
-            root.AddChild(strip);
+            chips.AddThemeConstantOverride("separation", 3);
+            root.AddChild(chips);
             foreach (var (label, explanation) in marks)
             {
                 var chip = new Button { Text = label, Flat = true, TooltipText = explanation };
@@ -384,16 +324,34 @@ public static class CardVisuals
                 chip.AddThemeStyleboxOverride("hover", new StyleBoxEmpty());
                 chip.AddThemeStyleboxOverride("pressed", new StyleBoxEmpty());
                 chip.AddThemeStyleboxOverride("focus", new StyleBoxEmpty());
-                chip.AddThemeColorOverride("font_color", MoonvineTheme.Signal);
-                chip.AddThemeColorOverride("font_hover_color", MoonvineTheme.AccentLight);
+                chip.AddThemeColorOverride("font_color", CardForm.StampRed);
+                chip.AddThemeColorOverride("font_hover_color", CardForm.Ink);
                 chip.AddThemeFontSizeOverride("font_size", Math.Max(7, (int)Mathf.Round(8 * scale)));
                 if (onClick is not null)
                     chip.Pressed += onClick;
-                strip.AddChild(chip);
+                chips.AddChild(chip);
             }
         }
 
         return root;
+    }
+
+    // One of the card's pictures, laid at a fraction of the card. IgnoreSize, or the TextureRect would report
+    // the picture's own 1072 × 1520 as a minimum and blow the card up to the size of the file it is drawn from;
+    // mipmaps on the draw (the import makes them), or an eightfold shrink samples one pixel in eight.
+    private static TextureRect Picture(Control parent, Texture2D texture, float l, float t, float r, float b)
+    {
+        var picture = new TextureRect
+        {
+            Texture = texture,
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.Scale,
+            TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            AnchorLeft = l, AnchorTop = t, AnchorRight = r, AnchorBottom = b,
+        };
+        parent.AddChild(picture);
+        return picture;
     }
 
     // ── the shelf ────────────────────────────────────────────────────────────────
@@ -538,25 +496,6 @@ public static class CardVisuals
         return window;
     }
 
-    // ── the back ─────────────────────────────────────────────────────────────────
-    // THE BACK IS ALREADY A WHOLE CARD. It arrives ornamented — corner medallions, a silver-and-violet
-    // border, and the card's rounded silhouette cut into the picture with plain black outside the round —
-    // so the old wrapper, a bordered panel of card ground, would have drawn a second frame around the first
-    // and lit four nubs of ground in the gaps at the corners: exactly the bug the front had in D1, arriving
-    // from the other direction. The back therefore gets no chrome at all. The picture IS the card, edge to
-    // edge, and the gold this corner owes the rest of the screen is paid by the pile's count, not by a ring
-    // around a painting.
-    //
-    // ⚠⚠ A VIDEO TEXTURE CANNOT BE MIPMAPPED. Its frame is rebuilt every tick, so there is no chain to
-    // build and no `LinearWithMipmaps` to reach for — D1's glitter trap with the exit welded shut. The only
-    // remaining lever is the encode, so each rendition is cut to the size it is actually drawn at: the clip
-    // at 134x190, where 1:1 means it is never resampled at all, and the poster at 2x WITH mipmaps, because
-    // a still can carry the chain the clip cannot. ⚠ Both are cut from `BaB-cardback-master.mp4`, which is
-    // NOT in this repo (34 MB); if CardW/CardH ever move, re-cut both — see VISUAL_OVERHAUL_PLAN.md D2 for
-    // the two ffmpeg lines.
-    //
-    // animated=true plays the looping clip (Godot decodes Theora on the CPU, so only a FEW should ever
-    // animate at once — the deck's top card); everywhere else uses the still poster.
     // THE BODY IN ITS COLUMN: the picture if the file is there, and the stick figure if it is not. The size
     // is the COLUMN's, not the picture's — a crowd of four shares the pane and every body in it is drawn
     // narrower, so the picture is fitted into the room the arena gave it and never the other way round.
@@ -592,7 +531,12 @@ public static class CardVisuals
         return art;
     }
 
-    public static Control Back(bool animated, float scale = 1f)
+    // ── the back ─────────────────────────────────────────────────────────────────
+    // THE BACK IS THE SAME FOR EVERY CARD, and still: an ink whirl on the back of a sheet with B&B in its calm
+    // eye (assets/cards/back/make_back.py, user 2026-11-09 — no animation). The paper's own ragged cut is its
+    // edge, so it gets no chrome at all; the gold this corner owes the rest of the screen is paid by the
+    // pile's count, not by a ring around the card.
+    public static Control Back(float scale = 1f)
     {
         var root = new Control
         {
@@ -601,35 +545,7 @@ public static class CardVisuals
             ClipContents = true,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
-
-        Control picture;
-        if (animated)
-        {
-            // No Play() here: Autoplay already starts the clip the moment the player enters the tree, and
-            // calling it before that only prints "Condition !is_inside_tree() is true" — once per card back,
-            // which under a headless probe is often enough to bury everything else the run has to say.
-            picture = new VideoStreamPlayer
-            {
-                Stream = Stream,
-                Autoplay = true,
-                Loop = true,
-                Expand = true,
-            };
-        }
-        else
-        {
-            picture = new TextureRect
-            {
-                Texture = Poster,
-                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-                StretchMode = TextureRect.StretchModeEnum.Scale,
-                TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
-            };
-        }
-
-        picture.MouseFilter = Control.MouseFilterEnum.Ignore;
-        picture.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        root.AddChild(picture);
+        Picture(root, CardForm.Back, 0, 0, 1, 1);
         return root;
     }
 }

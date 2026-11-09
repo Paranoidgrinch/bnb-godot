@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://h518613dtey2"
-path="res://.godot/imported/card-back.png-f02cd42a17df5338829f2e41fc5227db.ctex"
+uid="uid://bh6stnbyddw5i"
+path="res://.godot/imported/form_notice_1.png-3cecb2f9801af33ee5956d26026bc747.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/cards/card-back.png"
-dest_files=["res://.godot/imported/card-back.png-f02cd42a17df5338829f2e41fc5227db.ctex"]
+source_file="res://assets/cards/form/form_notice_1.png"
+dest_files=["res://.godot/imported/form_notice_1.png-3cecb2f9801af33ee5956d26026bc747.ctex"]
 
 [params]
 
@@ -36,5 +36,5 @@ process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
-process/size_limit=0
+process/size_limit=760
 detect_3d/compress_to=1

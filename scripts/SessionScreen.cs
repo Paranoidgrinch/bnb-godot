@@ -46,7 +46,7 @@ public partial class SessionScreen : Control
     // The hand's faces as they were last laid out, so `--smoke-format` can measure the real nodes.
     private readonly List<Control> _handFaces = [];
     private Control? _deckTopNode;
-    private Control? _deckHolder;              // the pile itself: made once per fight, never rebuilt (its back is a video)
+    private Control? _deckHolder;              // the pile itself: made once per fight, never rebuilt
     private readonly List<Control> _deckStills = [];
     private Label? _deckCount;
     private static bool _fastForward;   // a smoke probe is walking: draw the screen, do not animate it
@@ -255,8 +255,6 @@ public partial class SessionScreen : Control
             _ = SmokeSaveAndQuit();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-shelf"))
             _ = SmokeShelf();
-        else if (OS.GetCmdlineUserArgs().Contains("--smoke-deck"))
-            _ = SmokeDeck();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-window"))
             _ = SmokeWindow();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-archive-run"))
@@ -2462,7 +2460,7 @@ public partial class SessionScreen : Control
             GetTree().Quit(code);
             return;
         }
-        // Let animations (draw fly-in, the deck's video) settle before the still capture.
+        // Let animations (the draw fly-in) settle before the still capture.
         await ToSignal(GetTree().CreateTimer(1.6), SceneTreeTimer.SignalName.Timeout);
         var image = GetViewport().GetTexture().GetImage();
         image.SavePng($"user://{file}");
@@ -2842,12 +2840,9 @@ public partial class SessionScreen : Control
             _cardFlips.Remove(gone);
         foreach (var child in _combatRoot.GetChildren())
         {
-            // ⚠ A CLIP THAT IS REBUILT NEVER PLAYS. Every state change in a fight — a card played, an enemy
-            // acting, a card drawn — runs this teardown, and the deck's back is a VideoStreamPlayer: freed and
-            // made again, it starts at 0.00 every single time, so a 36-second turn of the card back never got
-            // past its first tenth of a second. MEASURED (`players a13: …@1.59` then `players b0: …@0.00`, a
-            // brand-new instance id): the pile visibly snapped back to the top of the loop on every click.
-            // The pile is therefore built ONCE per fight and updated in place; it is freed when the fight is.
+            // The piles are built ONCE per fight and updated in place; they are freed when the fight is. (They
+            // had to be while the deck's back was a video, which restarted at 0.00 whenever it was rebuilt; a
+            // still back does not care, but a pile that is not rebuilt on every click is still the cheaper one.)
             if (inCombat && (child == _deckHolder || child == _discardHolder))
                 continue;
             child.QueueFree();
@@ -4359,11 +4354,10 @@ public partial class SessionScreen : Control
         GameHost.Instance.AutoSave();
     }
 
-    // The draw pile in the bottom-left corner: a few offset card backs (the top one animated), plus a count.
+    // The draw pile in the bottom-left corner: a few offset card backs, plus a count.
     //
-    // Built once per fight and UPDATED afterwards — see the note in Rebuild(): the animated back is a video,
-    // and a video that is re-created cannot play. So the nodes here are made on the first render of a fight
-    // and only their visibility, their position and the count change from then on.
+    // Built once per fight and UPDATED afterwards (see the note in Rebuild()): the nodes here are made on the
+    // first render of a fight and only their visibility, their position and the count change from then on.
     private void BuildDeckPile(ICombatView combat)
     {
         var drawCount = combat.State.GetCardZones(combat.HeroId).GetCardsInZone(CardZone.DrawPile).Count;
@@ -4389,22 +4383,21 @@ public partial class SessionScreen : Control
             _combatRoot.AddChild(holder);
             _deckHolder = holder;
 
-            // Static backs for depth, laid from the BOTTOM of the lean upward; the top one animates.
+            // Backs for depth, laid from the BOTTOM of the lean upward.
             _deckStills.Clear();
             for (var i = 0; i < 3; i++)
             {
-                var still = CardVisuals.Back(animated: false, PileScale);
+                var still = CardVisuals.Back(PileScale);
                 holder.AddChild(still);
                 _deckStills.Add(still);
             }
-            var top = CardVisuals.Back(animated: true, PileScale);
+            var top = CardVisuals.Back(PileScale);
             holder.AddChild(top);
             _deckTopNode = top;
 
             // ⚠ THE GOLD IN THIS CORNER IS THE COUNT, NOT A FRAME. The plan asked for a gold frame around the
-            // pile so the back's violet would not read as a second accent — but the clip turned out to carry
-            // its own ornate border, and a gold ring drawn around an already-framed painting is not an accent,
-            // it is a picture in the wrong frame. The count is the only chrome the pile actually owns, so it
+            // pile so the back would not read as a second accent — but a gold ring drawn around a sheet of
+            // paper is not an accent, it is a picture in the wrong frame. The count is the only chrome the pile actually owns, so it
             // is the thing that goes gold: the corner still answers to the rest of the screen, and the
             // artwork is left to be artwork.
             _deckCount = new Label
@@ -4604,7 +4597,7 @@ public partial class SessionScreen : Control
             card.Position = startLocal;
 
             // A still back covers the face until the flip's midpoint.
-            var back = CardVisuals.Back(animated: false);
+            var back = CardVisuals.Back();
             back.SetAnchorsPreset(LayoutPreset.FullRect);
             card.AddChild(back);
 
@@ -5189,66 +5182,6 @@ public partial class SessionScreen : Control
         await ToSignal(GetTree().CreateTimer(0.34), SceneTreeTimer.SignalName.Timeout);
         GetViewport().GetTexture().GetImage().SavePng("user://smoke-draw.png");
         GD.Print("smoke: screenshot user://smoke-draw.png (mid-draw)");
-        GetTree().Quit();
-    }
-
-    // THE PILE MUST KEEP PLAYING. The deck's back is a 36-second clip, and the screen it stands on is rebuilt
-    // from scratch on every state change in a fight. When the pile was rebuilt with it, its VideoStreamPlayer
-    // was a new object each time and started at 0.00 — so the loop never got past its first tenth of a second
-    // and the card back visibly snapped back on every click. This plays three cards and reports whether the
-    // clip is still the SAME player and whether its position moved forward; a rebuilt pile fails both.
-    private async System.Threading.Tasks.Task SmokeDeck()
-    {
-        var session = Session;
-        for (var i = 0; i < 8 && Play?.Seat?.Current is null && session is not null; i++)
-        {
-            if (session.IsAwaitingNodeChoice) session.PickNode(session.PendingNodeChoices[0].Id.Value);
-            else if (session.IsAwaitingInterlude) session.Continue();
-            else break;
-        }
-        if (Play?.Seat?.Current is null || DisplayServer.GetName().Contains("headless"))
-        {
-            GD.Print("smoke-deck: needs a window (the clip does not decode headless)");
-            GetTree().Quit();
-            return;
-        }
-
-        (ulong Id, double At)? first = null;
-        (ulong Id, double At)? last = null;
-        var players = 0;
-        for (var round = 0; round < 4; round++)
-        {
-            await ToSignal(GetTree().CreateTimer(0.3), SceneTreeTimer.SignalName.Timeout);
-            var found = new List<VideoStreamPlayer>();
-            void Walk(Godot.Node n)
-            {
-                if (n is VideoStreamPlayer v) found.Add(v);
-                foreach (var c in n.GetChildren()) Walk(c);
-            }
-            Walk(this);
-            players = Math.Max(players, found.Count);
-            if (found.Count > 0)
-            {
-                var seen = (found[0].GetInstanceId(), (double)found[0].StreamPosition);
-                first ??= seen;
-                last = seen;
-            }
-            if (Play?.Seat?.Current is { } fight && fight.IsHeroTurn)
-            {
-                var hero = fight.State.GetCombatant(fight.HeroId);
-                var card = fight.Hand.FirstOrDefault(c => CanPay(hero, c.DefinitionId.value));
-                var target = fight.State.Combatants.FirstOrDefault(c => c.Id != fight.HeroId && c.IsAlive
-                    && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
-                if (card is not null) Play.Seat.PlayCard(card.Id, target);
-            }
-        }
-
-        var kept = first is { } f && last is { } l && f.Id == l.Id;
-        var advanced = first is { } f2 && last is { } l2 && l2.At > f2.At + 0.5;
-        GetViewport().GetTexture().GetImage().SavePng("user://smoke-deck.png");
-        GD.Print($"smoke-deck: players={players} same-clip={(kept ? "yes" : "NO")} "
-            + $"advanced={(advanced ? "yes" : "NO")} from={first?.At:0.00} to={last?.At:0.00} "
-            + $"{(kept && advanced ? "PASS" : "FAIL")}");
         GetTree().Quit();
     }
 

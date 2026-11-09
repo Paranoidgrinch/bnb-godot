@@ -184,13 +184,11 @@ public partial class SessionScreen
 
     // ── THE DISCARD PILE, IN THE RIGHT-HAND CORNER (user, 2026-09-28) ─────────────────────────────────────
     // The mirror of the draw pile: a small stack of backs with its count under it, and the picture is the
-    // button — it opens the discard pile, with the exhausted cards as a section of their own. Rebuilt every
-    // render (it has no animated card, so nothing is lost by making it again).
+    // button — it opens the discard pile, with the exhausted cards as a section of their own.
     private const string DiscardPileName = "DiscardPile";
     private Control? _discardHolder;
 
-    // Built ONCE per fight and updated afterwards, like the draw pile — and for the same reason: its top card is
-    // the animated back, a video, and a video made again on every render never gets to play.
+    // Built ONCE per fight and updated afterwards, like the draw pile.
     private readonly List<Control> _discardStills = [];
     private Control? _discardTop;
     private Label? _discardCount;
@@ -218,11 +216,11 @@ public partial class SessionScreen
             _discardStills.Clear();
             for (var i = 0; i < 3; i++)
             {
-                var still = CardVisuals.Back(animated: false, PileScale);
+                var still = CardVisuals.Back(PileScale);
                 holder.AddChild(still);
                 _discardStills.Add(still);
             }
-            var top = CardVisuals.Back(animated: true, PileScale);
+            var top = CardVisuals.Back(PileScale);
             holder.AddChild(top);
             _discardTop = top;
 
@@ -250,7 +248,7 @@ public partial class SessionScreen
         }
 
         // Leaning up and to the LEFT, the draw pile's lean turned round, so the two corners face each other. The
-        // stack grows from the bottom as cards are discarded, and the animated back is always the top one.
+        // stack grows from the bottom as cards are discarded.
         var backing = Math.Min(discarded > 0 ? discarded - 1 : 0, 3);
         for (var i = 0; i < _discardStills.Count; i++)
         {

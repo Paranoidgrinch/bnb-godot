@@ -59,13 +59,14 @@ public static class MoonvineTheme
     public static readonly Color Copper = new("b87333"); // worked metal: the bench
 
     // ── THE ONE PLACE THE TYPEFACE IS CHOSEN ─────────────────────────────────────
-    // The game runs on Godot's built-in face today, at the user's call. To change it for the WHOLE game:
-    // drop a .ttf/.otf into `theme/` and put its res:// path in FontPath below. Build() writes it into the
+    // One hand for the whole game (user, 2026-11-09): Clerk of Boston, a quill hand built for it from 18th-century
+    // clerks' papers (theme/font/make_font.py makes it). To change it for the WHOLE game: drop a .ttf/.otf
+    // into `theme/` and put its res:// path in FontPath below. Build() writes it into the
     // Theme's default font, which every Label, Button, RichTextLabel and card face inherits — so the change
     // is this one line and nothing else. ⚠ No screen may load a font of its own; the moment one does,
     // "change the font later" stops being one edit and becomes twenty.
     // (a field, not a const: a const null would fold the lookup below away at compile time)
-    private static readonly string? FontPath = null; // e.g. "res://theme/bnb.ttf"
+    private static readonly string? FontPath = "res://theme/font/clerk-of-boston.ttf";
 
     private static Font? _font;
     private static bool _fontLooked;
@@ -78,7 +79,12 @@ public static class MoonvineTheme
                 return _font;
             _fontLooked = true;
             if (FontPath is { } path && ResourceLoader.Exists(path))
+            {
                 _font = GD.Load<Font>(path);
+                // A clerk's hand has letters, figures and the marks a clerk writes; the game's symbols (⚔, ♥,
+                // arrows) come from Godot's own face, which falls back on the system's in turn.
+                _font.Fallbacks = [ThemeDB.Singleton.FallbackFont];
+            }
             else if (FontPath is not null)
                 GD.PushWarning($"MoonvineTheme: font '{FontPath}' not found — falling back to the Godot default.");
             return _font;
