@@ -258,7 +258,10 @@ public static class CardVisuals
             Cost = card.Cost,
             Title = title,
             TitleInk = CardForm.TitleInk(card.Rarity, look),
-            TitleEnd = CardForm.TitleEnd(look, sealed_),
+            // The rule runs on under the seal; the name stops where the wax begins.
+            TitleEnd = sealed_
+                ? Math.Min(CardForm.TitleEnd(look, true), CardForm.SealCentre.X - CardForm.SealR - 0.01f)
+                : CardForm.TitleEnd(look, false),
             Kind = KindOf(card.Id),
             Rules = card.Rules,
             Was = sealed_ ? WasOf(card.Id) : null,

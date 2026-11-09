@@ -356,7 +356,24 @@ public partial class Boot : Control
         // hand size and at twice that. Touches no file but the picture.
         if (userArgs.Contains("--smoke-paper") && !DisplayServer.GetName().Contains("headless"))
         {
-            _ = PaperProbe(blueprint);
+            _ = PaperProbe(blueprint, "smoke-paper",
+                [
+                    ["lt_watch_cut", "lt_watch_cut+", "waxing_authority", "black_ledger", "red_ink_doctrine+"],
+                    ["smouldering_correspondence", "stolen_hour", "red_tape", "summons_to_appear", "heavy_pie"],
+                ],
+                ["lt_watch_cut+", "black_ledger", "summons_to_appear", "smouldering_correspondence"]);
+            return;
+        }
+        // THE LONGEST NAMES (`--smoke-titles`): the names a clerk has to write on two lines, sealed and unsealed,
+        // on the office's form and on the notice. Touches no file but the picture.
+        if (userArgs.Contains("--smoke-titles") && !DisplayServer.GetName().Contains("headless"))
+        {
+            _ = PaperProbe(blueprint, "smoke-titles",
+                [
+                    ["smouldering_correspondence", "smouldering_correspondence+", "ask_for_expedited_service", "the_black_cat_sat_down+", "protective_adjournment+"],
+                    ["ap_bell_book+", "threefold_injunction", "clerical_discretion+", "swear_by_the_sun_40", "summons_to_appear"],
+                ],
+                ["smouldering_correspondence+", "the_black_cat_sat_down+", "ask_for_expedited_service", "summons_to_appear"]);
             return;
         }
         // The archive's shelves, read as a player reads them: the cards tab, scrolled well down, one card picked.
@@ -893,13 +910,8 @@ public partial class Boot : Control
         GetTree().Quit();
     }
 
-    private async System.Threading.Tasks.Task PaperProbe(RunBlueprint blueprint)
+    private async System.Threading.Tasks.Task PaperProbe(RunBlueprint blueprint, string name, string[][] small, string[] large)
     {
-        string[] ids =
-        [
-            "lt_watch_cut", "lt_watch_cut+", "waxing_authority", "black_ledger", "red_ink_doctrine+",
-            "smouldering_correspondence", "stolen_hour", "red_tape", "summons_to_appear", "heavy_pie",
-        ];
         GetWindow().Size = new Vector2I(1920, 1080);
         var page = new ColorRect { Color = MoonvineTheme.Bg };
         page.SetAnchorsPreset(Control.LayoutPreset.FullRect);
@@ -930,21 +942,21 @@ public partial class Boot : Control
         }
         // Hand size first (the window is 1.5 × the 1280 × 720 the screens are laid out for, as on a 1080p screen),
         // then four of them larger, where the hand's pen strokes can be checked.
-        foreach (var (part, last) in new[] { (ids[..5], false), (ids[5..], true) })
+        for (var r = 0; r < small.Length; r++)
         {
             var row = Row();
-            foreach (var id in part)
+            foreach (var id in small[r])
                 row.AddChild(Card(id, 1f));
-            if (last)
+            if (r == small.Length - 1)
                 row.AddChild(CardVisuals.Back());
         }
         var big = Row();
-        foreach (var id in new[] { "lt_watch_cut+", "black_ledger", "summons_to_appear", "smouldering_correspondence" })
+        foreach (var id in large)
             big.AddChild(Card(id, 1.5f));
         for (var i = 0; i < 6; i++)
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-        GetViewport().GetTexture().GetImage().SavePng("user://smoke-paper.png");
-        GD.Print("smoke-paper: screenshot user://smoke-paper.png");
+        GetViewport().GetTexture().GetImage().SavePng($"user://{name}.png");
+        GD.Print($"{name}: screenshot user://{name}.png");
         GetTree().Quit();
     }
 

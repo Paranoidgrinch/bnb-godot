@@ -192,6 +192,7 @@ Windowed checks (each walks to a room and saves a screenshot to `user://`):
 
 ```text
 godot -- --smoke-paper     one card of each kind (rarities, improved, notice, wand, long name) and the back
+godot -- --smoke-titles    the longest card names, sealed and unsealed, office form and notice
 godot -- --smoke-window    the same fight at three window sizes
 godot -- --smoke-settings  the settings dialog
 godot -- --smoke-newrun    the New run dialog
