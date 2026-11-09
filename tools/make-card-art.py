@@ -4,15 +4,17 @@
     tools/make-card-art.py                     # every card slot that has no picture yet
     tools/make-card-art.py --only levy_stamp    tools/make-card-art.py --force    tools/make-card-art.py --clean
 
-The plate is 488 x 440 — four times the 122 x 110 window the frame prints it into, drawn large on purpose so
-the mip chain does the reduction (a placeholder that glitters teaches nothing about the real picture).
-Cropped to FILL that window, so nothing important may sit near an edge; everything here is centred.
+The plate is 488 x 385 — about 4.6 times the 106 x 84 picture box of the paper card's printed form
+(assets/cards/form/layout.json, art_box "office"), drawn large on purpose so the mip chain does the reduction
+(a placeholder that glitters teaches nothing about the real picture). Cropped to FILL that box, so nothing
+important may sit near an edge; everything here is centred. The forced cards' "notice" box is a little wider
+(111 x 84): there the plate loses about 2 % at top and bottom.
 """
 import argparse
 
 from placeholder_art import DIM, FONT_BOLD, FONT_MONO, INK, arguments, block, card_slots, document, plate, run
 
-SIZE = (488, 440)
+SIZE = (488, 385)
 
 
 def paint(code, name):
