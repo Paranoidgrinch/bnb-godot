@@ -120,8 +120,9 @@ Cards, relics and art
     paper with SERVED stamped across the picture.
   - The clerk underlines every glossary term and, on an improved card, strikes out each number that changed
     and writes the new one after it in blue-black.
-  - The whole game is set in the same hand, Clerk of Boston (`theme/font/`, made by `make_font.py`); symbols
-    the hand does not have come from Godot's own face.
+  - The cards are written in Clerk of Boston (`theme/font/`, made by `make_font.py`); everything off the cards
+    is set in Moonvine Polter, a heavy Short Stack (made by `make_ui_font.py`, OFL). Symbols neither face has
+    come from Godot's own face.
   - No element on a card may report a minimum size. Godot grows a `Control` to its children's minimum, which
     used to change a card's shape when clicked (checked by `--smoke-format`).
   - The hand overlaps more as it grows. The hovered card is lifted out of the fan, scaled 1.5×, straightened

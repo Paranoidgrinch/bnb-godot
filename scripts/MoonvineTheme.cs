@@ -62,12 +62,13 @@ public static class MoonvineTheme
     // ── THE ONE PLACE THE TYPEFACES ARE CHOSEN ───────────────────────────────────
     // Two hands (user, 2026-11-10). The CARDS are written in Clerk of Boston, a quill hand built for them from
     // 18th-century clerks' papers (theme/font/make_font.py makes it); everything else — screens, buttons,
-    // tooltips, the map — is set in the game's own UI face. Build() writes the UI face into the Theme's default
+    // tooltips, the map — is set in Moonvine Polter, a heavy, bouncing Short Stack (theme/font/make_ui_font.py
+    // makes it; OFL, see theme/font/OFL-polter.txt). Build() writes the UI face into the Theme's default
     // font, which every Label, Button and RichTextLabel inherits; the card's writing asks for CardFont. To change
     // either: drop a .ttf/.otf into `theme/font/` and put its res:// path below. ⚠ No screen may load a font of
     // its own; the moment one does, "change the font later" stops being one edit and becomes twenty.
     // (fields, not consts: a const null would fold the lookups below away at compile time)
-    private static readonly string? FontPath = "res://theme/font/clerk-of-boston.ttf";
+    private static readonly string? FontPath = "res://theme/font/polter.ttf";
     private static readonly string? CardFontPath = "res://theme/font/clerk-of-boston.ttf";
 
     private static Font? _font;

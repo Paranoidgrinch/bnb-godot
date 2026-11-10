@@ -17,6 +17,9 @@ namespace BnbGodot;
 // 3.0 (Bart Kelsey) and "Falling body" CC BY-SA 3.0 (remaxim, from a recording by qubodup), and both of those
 // REQUIRE the line. The hits were converted from FLAC to Ogg and nothing else was done to any of them.
 //
+// The UI FONT is Short Stack (Sorkin Type Co) made heavier as Moonvine Polter, under the SIL OFL 1.1, which
+// asks for no screen but is credited all the same; its licence ships as theme/font/OFL-polter.txt.
+//
 // The URLs are real but never shown: a screen full of https://opengameart.org/content/… is unreadable, so
 // the word "Source" carries the link and the licence name carries its own.
 public partial class CreditsPanel : PanelContainer
@@ -27,6 +30,7 @@ public partial class CreditsPanel : PanelContainer
     private const string By4 = "CC BY 4.0";
     private const string Zero = "CC0";
     private const string BySa3 = "CC BY-SA 3.0";
+    private const string Ofl = "SIL OFL 1.1";
 
     private static readonly Entry[] Music =
     [
@@ -68,8 +72,15 @@ public partial class CreditsPanel : PanelContainer
             "https://opengameart.org/content/falling-body"),
     ];
 
+    private static readonly Entry[] Fonts =
+    [
+        new("Short Stack", "Sorkin Type Co — sorkintype.com", Ofl,
+            "https://fonts.google.com/specimen/Short+Stack", "made heavier and narrower as Moonvine Polter"),
+    ];
+
     private static string LicenseUrl(string license) => license switch
     {
+        Ofl => "https://openfontlicense.org/open-font-license-official-text/",
         Zero => "https://creativecommons.org/publicdomain/zero/1.0/",
         By4 => "https://creativecommons.org/licenses/by/4.0/",
         BySa3 => "https://creativecommons.org/licenses/by-sa/3.0/",
@@ -118,6 +129,9 @@ public partial class CreditsPanel : PanelContainer
             list.AddChild(EntryRow(entry));
         list.AddChild(Heading("Sound effects"));
         foreach (var entry in Sounds)
+            list.AddChild(EntryRow(entry));
+        list.AddChild(Heading("Font"));
+        foreach (var entry in Fonts)
             list.AddChild(EntryRow(entry));
 
         var close = new Button { Text = "Close", CustomMinimumSize = new Vector2(0, 40) };

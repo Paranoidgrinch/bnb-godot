@@ -1,24 +1,32 @@
 # theme/
 
-## Changing the font for the whole game
+## The two fonts
 
-The whole game is written in one hand, **Clerk of Boston** (`theme/font/clerk-of-boston.ttf`), a quill hand
-built for this game from 18th-century clerks' papers. `theme/font/make_font.py` makes it; it needs numpy,
-shapely and fontTools. Symbols the hand does not have (⚔, ♥, arrows) come from Godot's own face, which is
-set as its fallback.
+The game is written in two faces, both made by scripts in `theme/font/`:
 
-To change it everywhere at once:
+- **Clerk of Boston** (`clerk-of-boston.ttf`, made by `make_font.py`; needs numpy, shapely and fontTools) is
+  the quill hand the CARDS are written in, built for this game from 18th-century clerks' papers.
+- **Moonvine Polter** (`polter.ttf`, made by `make_ui_font.py`; needs fontTools and skia-pathops) is
+  everything else: screens, buttons, tooltips, the map. It is Short Stack (`src/ShortStack-Regular.ttf`) made
+  heavy and narrower, with letters that hop and lean a little. Short Stack is under the SIL Open Font
+  License with a Reserved Font Name, so the result has its own name; `OFL-polter.txt` is its licence.
 
-1. Drop a `.ttf` or `.otf` in this folder, e.g. `theme/bnb.ttf`.
-2. In `scripts/MoonvineTheme.cs`, set the one field near the top of the file:
+Symbols neither face has (⚔, ♥, arrows) come from Godot's own face, which is set as their fallback.
+`--ui-font <file>` sets the UI face for one session from any .ttf/.otf on disk, to try one in the real screens.
+
+To change one of them everywhere at once:
+
+1. Drop a `.ttf` or `.otf` in `theme/font/`, e.g. `theme/font/bnb.ttf`.
+2. In `scripts/MoonvineTheme.cs`, set one of the two fields near the top of the file (`FontPath` for the
+   UI, `CardFontPath` for the cards):
 
    ```csharp
-   private static readonly string? FontPath = "res://theme/bnb.ttf";
+   private static readonly string? FontPath = "res://theme/font/bnb.ttf";
    ```
 
-That is the whole change. `MoonvineTheme.Build()` writes the face into the Theme's **default font**, and
-every `Label`, `Button`, `RichTextLabel` and card face in the game inherits it. A path that does not resolve
-prints a warning and falls back to the Godot default rather than crashing the run.
+That is the whole change. `MoonvineTheme.Build()` writes the UI face into the Theme's **default font**, and
+every `Label`, `Button` and `RichTextLabel` in the game inherits it; the card's writing asks for the card
+face. A path that does not resolve prints a warning and falls back to the Godot default rather than crashing the run.
 
 **No screen may load a font of its own.** The moment one does, "change the font later" stops being this
 one line and becomes twenty edits scattered across `SessionScreen`, `MapView` and `Boot`.

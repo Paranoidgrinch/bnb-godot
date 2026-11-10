@@ -185,7 +185,9 @@ public partial class SessionScreen
             pulse.TweenProperty(frame, "modulate:a", 1f, 0.7).SetTrans(Tween.TransitionType.Sine);
         }
 
-        var panel = new PanelContainer { MouseFilter = MouseFilterEnum.Stop };
+        // A CanvasLayer cuts the theme off, so the panel is handed the screen's own (as the other overlays are);
+        // without it the coach was set in Godot's default face.
+        var panel = new PanelContainer { MouseFilter = MouseFilterEnum.Stop, Theme = Theme };
         var style = MoonvineTheme.Panel(MoonvineTheme.BgRaised, MoonvineTheme.Signal, radius: 8);
         style.BorderWidthTop = style.BorderWidthBottom = style.BorderWidthLeft = style.BorderWidthRight = 2;
         style.ContentMarginLeft = style.ContentMarginRight = 18;
