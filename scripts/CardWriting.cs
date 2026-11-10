@@ -29,7 +29,7 @@ public partial class CardWriting : Control
     public CardForm.Look Look { get; init; }
     public string Seed { get; init; } = "";
 
-    private static Font TypeFace => MoonvineTheme.Font ?? ThemeDB.Singleton.FallbackFont;
+    private static Font TypeFace => MoonvineTheme.CardFont ?? ThemeDB.Singleton.FallbackFont;
 
     public CardWriting()
     {
@@ -49,9 +49,12 @@ public partial class CardWriting : Control
             var c = CardForm.StampCentre * new Vector2(w, h);
             var r = CardForm.StampR * w;
             var size = Fit(Cost, 1.25f * r, 21 * u, 9 * u);
-            var width = TypeFace.GetStringSize(Cost, HorizontalAlignment.Left, -1, size).X;
-            DrawString(TypeFace, new Vector2(c.X + 0.6f * u - width / 2, c.Y + 0.28f * size), Cost,
-                HorizontalAlignment.Left, -1, size, CardForm.Ink);
+            // Centred by its INK, not by its advance and ascent: a written "1" carries a lead-in stroke and
+            // stands shorter than the line is tall, so the box a Label would centre is not the figure. Then a
+            // little below the middle: the stamp's top runs into the paper's edge, and the eye finds the middle
+            // of the ring it can see.
+            var ink = Ink(Cost, size);
+            DrawString(TypeFace, c - ink.GetCenter() + new Vector2(0, 0.9f * u), Cost, HorizontalAlignment.Left, -1, size, CardForm.Ink);
         }
 
         // ── the name, on its rule ────────────────────────────────────────────────
@@ -270,6 +273,30 @@ public partial class CardWriting : Control
             points[i] = new Vector2(x0 - 0.1f * size + (x1 - x0 + 0.25f * size) * i / Steps,
                 y + slope * i / Steps + Mathf.Sin(i * 1.3f + phase) * 0.05f * size);
         DrawPolyline(points, CardForm.Ink, Math.Max(1f, 0.075f * size), true);
+    }
+
+    // Where a string's ink lies, relative to the pen at the start of its baseline: the union of its glyphs'
+    // drawn boxes, through whichever face (the hand or a fallback) each glyph comes from.
+    private static Rect2 Ink(string text, int size)
+    {
+        var server = TextServerManager.Singleton.GetPrimaryInterface();
+        var shaped = server.CreateShapedText();
+        server.ShapedTextAddString(shaped, text, TypeFace.GetRids(), size);
+        var pen = 0f;
+        Rect2? ink = null;
+        foreach (var glyph in server.ShapedTextGetGlyphs(shaped))
+        {
+            var rid = glyph["font_rid"].AsRid();
+            var index = glyph["index"].AsInt64();
+            var at = new Vector2I(size, 0);
+            var box = new Rect2(new Vector2(pen, 0) + glyph["offset"].AsVector2() + server.FontGetGlyphOffset(rid, at, index),
+                server.FontGetGlyphSize(rid, at, index));
+            if (box.Size.X > 0 && box.Size.Y > 0)
+                ink = ink is { } sofar ? sofar.Merge(box) : box;
+            pen += glyph["advance"].AsSingle();
+        }
+        server.FreeRid(shaped);
+        return ink ?? new Rect2(0, -0.7f * size, Measure(text, size), 0.7f * size);
     }
 
     private static int Px(float size) => Math.Max(5, (int)Mathf.Round(size));

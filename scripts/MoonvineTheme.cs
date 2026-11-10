@@ -1,9 +1,10 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 
 namespace BnbGodot;
 
-// THE GROUND THE WHOLE GAME IS PRINTED ON. One file, one palette, one typeface — every screen reads its
+// THE GROUND THE WHOLE GAME IS PRINTED ON. One file, one palette, two typefaces — every screen reads its
 // colours from here and no screen anywhere may invent one of its own.
 //
 // The look is a ledger kept in a dark room: a near-black page that is not neutral but bled slightly red,
@@ -58,19 +59,24 @@ public static class MoonvineTheme
     public static readonly Color Arcane = new("b98fd0"); // the unknown: a door, a hex, a rare find
     public static readonly Color Copper = new("b87333"); // worked metal: the bench
 
-    // ── THE ONE PLACE THE TYPEFACE IS CHOSEN ─────────────────────────────────────
-    // One hand for the whole game (user, 2026-11-09): Clerk of Boston, a quill hand built for it from 18th-century
-    // clerks' papers (theme/font/make_font.py makes it). To change it for the WHOLE game: drop a .ttf/.otf
-    // into `theme/` and put its res:// path in FontPath below. Build() writes it into the
-    // Theme's default font, which every Label, Button, RichTextLabel and card face inherits — so the change
-    // is this one line and nothing else. ⚠ No screen may load a font of its own; the moment one does,
-    // "change the font later" stops being one edit and becomes twenty.
-    // (a field, not a const: a const null would fold the lookup below away at compile time)
+    // ── THE ONE PLACE THE TYPEFACES ARE CHOSEN ───────────────────────────────────
+    // Two hands (user, 2026-11-10). The CARDS are written in Clerk of Boston, a quill hand built for them from
+    // 18th-century clerks' papers (theme/font/make_font.py makes it); everything else — screens, buttons,
+    // tooltips, the map — is set in the game's own UI face. Build() writes the UI face into the Theme's default
+    // font, which every Label, Button and RichTextLabel inherits; the card's writing asks for CardFont. To change
+    // either: drop a .ttf/.otf into `theme/font/` and put its res:// path below. ⚠ No screen may load a font of
+    // its own; the moment one does, "change the font later" stops being one edit and becomes twenty.
+    // (fields, not consts: a const null would fold the lookups below away at compile time)
     private static readonly string? FontPath = "res://theme/font/clerk-of-boston.ttf";
+    private static readonly string? CardFontPath = "res://theme/font/clerk-of-boston.ttf";
 
     private static Font? _font;
     private static bool _fontLooked;
+    private static Font? _cardFont;
+    private static bool _cardFontLooked;
 
+    // The UI face. `--ui-font <file>` (a .ttf/.otf anywhere on disk) sets it for one session, to try a face in
+    // the real screens before it is chosen.
     public static Font? Font
     {
         get
@@ -78,17 +84,48 @@ public static class MoonvineTheme
             if (_fontLooked)
                 return _font;
             _fontLooked = true;
-            if (FontPath is { } path && ResourceLoader.Exists(path))
+            var args = OS.GetCmdlineUserArgs();
+            var at = Array.IndexOf(args, "--ui-font");
+            if (at >= 0 && at + 1 < args.Length)
             {
-                _font = GD.Load<Font>(path);
-                // A clerk's hand has letters, figures and the marks a clerk writes; the game's symbols (⚔, ♥,
-                // arrows) come from Godot's own face, which falls back on the system's in turn.
-                _font.Fallbacks = [ThemeDB.Singleton.FallbackFont];
+                var file = new FontFile();
+                if (file.LoadDynamicFont(args[at + 1]) == Error.Ok)
+                    _font = WithSymbols(file);
+                else
+                    GD.PushWarning($"MoonvineTheme: --ui-font '{args[at + 1]}' could not be read.");
             }
-            else if (FontPath is not null)
-                GD.PushWarning($"MoonvineTheme: font '{FontPath}' not found — falling back to the Godot default.");
+            _font ??= Load(FontPath);
             return _font;
         }
+    }
+
+    // The clerk's hand on the cards.
+    public static Font? CardFont
+    {
+        get
+        {
+            if (_cardFontLooked)
+                return _cardFont;
+            _cardFontLooked = true;
+            return _cardFont = Load(CardFontPath);
+        }
+    }
+
+    private static Font? Load(string? path)
+    {
+        if (path is not null && ResourceLoader.Exists(path))
+            return WithSymbols(GD.Load<Font>(path));
+        if (path is not null)
+            GD.PushWarning($"MoonvineTheme: font '{path}' not found — falling back to the Godot default.");
+        return null;
+    }
+
+    // A hand has letters, figures and the marks a writer makes; the game's symbols (⚔, ♥, arrows) come from
+    // Godot's own face, which falls back on the system's in turn.
+    private static Font WithSymbols(Font font)
+    {
+        font.Fallbacks = [ThemeDB.Singleton.FallbackFont];
+        return font;
     }
 
     // Intent-kind accents for enemy telegraphs. An ATTACK is the one intent that is aimed at the player, so
