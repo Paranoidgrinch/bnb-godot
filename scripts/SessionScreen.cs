@@ -3929,10 +3929,22 @@ public partial class SessionScreen : Control
                      MapNodeTags.Rest, MapNodeTags.Treasure, MapNodeTags.Shop, MapNodeTags.Boss,
                  })
         {
-            var label = new Label { Text = MapView.Label(role) };
+            // the rooms carry no words any more, so the legend is where a token is put to its word
+            var entry = new HBoxContainer();
+            entry.AddThemeConstantOverride("separation", 3);
+            if (MapView.Token(role) is { } token)
+                entry.AddChild(new TextureRect
+                {
+                    Texture = token,
+                    CustomMinimumSize = new Vector2(22, 22),
+                    ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                    StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                });
+            var label = new Label { Text = MapView.Label(role), VerticalAlignment = VerticalAlignment.Center };
             label.AddThemeFontSizeOverride("font_size", 11);
             label.AddThemeColorOverride("font_color", MapView.RoleColor(role));
-            row.AddChild(label);
+            entry.AddChild(label);
+            row.AddChild(entry);
         }
         return row;
     }

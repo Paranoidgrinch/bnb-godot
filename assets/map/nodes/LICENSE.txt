@@ -1,0 +1,14 @@
+The symbols in src/ are from game-icons.net, licensed under CC BY 3.0
+(https://creativecommons.org/licenses/by/3.0/). Lorc's are also on OpenGameArt as "700+ RPG Icons".
+
+  combat.png        "Crossed swords"  by Lorc        https://game-icons.net/1x1/lorc/crossed-swords.html
+  multi-combat.png  "Bully minion"    by Delapouite  https://game-icons.net/1x1/delapouite/bully-minion.html
+  elite.png         "Horned skull"    by Lorc        https://game-icons.net/1x1/lorc/horned-skull.html
+  boss.png          "Crowned skull"   by Lorc        https://game-icons.net/1x1/lorc/crowned-skull.html
+  shop.png          "Scales"          by Lorc        https://game-icons.net/1x1/lorc/scales.html
+  rest.png          "Candle light"    by Lorc        https://game-icons.net/1x1/lorc/candle-light.html
+  treasure.png      "Locked chest"    by Lorc        https://game-icons.net/1x1/lorc/locked-chest.html
+  event.png         "Uncertainty"     by Lorc        https://game-icons.net/1x1/lorc/uncertainty.html
+
+Changes: the tokens next to this file (made by make_nodes.py) shrink each silhouette, roughen its edge, ink it
+brown-black and set it on a paper disc in a coloured ring.

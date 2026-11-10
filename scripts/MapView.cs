@@ -6,8 +6,8 @@ using RunNode = RogueDeck.Run.Node;
 namespace BnbGodot;
 
 // The act's map as a navigable graph: the entry at the top, the boss at the bottom, every room drawn where its
-// depth puts it, edges as lines, each room colored by what it IS and by how the run stands to it (walked /
-// standing here / open). During a path fork the reachable rooms are the clickable buttons; otherwise the map is
+// depth puts it, edges as lines, each room a round token whose symbol and ring say what it IS (from
+// assets/map/nodes/), shaded by how the run stands to it (walked / standing here / open). During a path fork the reachable rooms are the clickable buttons; otherwise the map is
 // a read-only "you are here".
 //
 // Two things this must get right, because both would lie to the player:
@@ -26,11 +26,13 @@ public partial class MapView : Control
     private readonly System.Collections.Generic.IReadOnlyDictionary<string, System.Collections.Generic.List<string>>? _votes;
     private System.Collections.Generic.Dictionary<NodeId, Vector2> _positions = new();
 
-    private const int NodeW = 116;
-    private const int NamedNodeW = 240; // a boss room that wears its own name needs the room to write it in
-    private const int NodeH = 40;
-    private const int LaneW = 132; // horizontal step between two rooms of the same depth
-    private const int RowH = 66;   // vertical step between one depth and the next
+    // A room is a token, not a word (user, 2026-11-10): the symbol says what it is, so the map is half as wide as
+    // it was with 116 px name plates.
+    private const int NodeD = 44;  // the token's width and height
+    private const int NameW = 200; // a boss room that wears its own name writes it under its token, this wide
+    private const int NameH = 30;
+    private const int LaneW = 76;  // horizontal step between two rooms of the same depth
+    private const int RowH = 64;   // vertical step between one depth and the next
     private const int Margin = 14;
 
     public MapView(
@@ -59,16 +61,17 @@ public partial class MapView : Control
 
     public override void _Ready()
     {
-        _positions = Layout(_map);
-
         // An act with SEVERAL boss rooms is a gauntlet, and its whole shape is which bosses stand in it and in
-        // what order — so those rooms wear their names rather than the word "Boss" three times over. An
+        // what order — so those rooms wear their names under their tokens rather than three crowned skulls. An
         // ordinary act's single boss stays unnamed: finding out who ends the act is part of walking it.
         var named = _map.Nodes.Count(n => Role(n) == MapNodeTags.Boss) > 1;
 
-        var roomW = named ? NamedNodeW : NodeW;
-        var width = _positions.Count == 0 ? roomW : (int)_positions.Values.Max(p => p.X) + roomW + Margin;
-        var height = _positions.Count == 0 ? NodeH : (int)_positions.Values.Max(p => p.Y) + NodeH + Margin;
+        // a named room is NameW wide; its token sits in the middle of that
+        var side = named ? (NameW - NodeD) / 2 : 0;
+        _positions = Layout(_map, named ? NameW + 8 : LaneW, named ? RowH + NameH : RowH, Margin + side);
+        var width = _positions.Count == 0 ? NodeD : (int)_positions.Values.Max(p => p.X) + NodeD + side + Margin;
+        var height = _positions.Count == 0 ? NodeD
+            : (int)_positions.Values.Max(p => p.Y) + NodeD + (named ? NameH : 0) + Margin;
         CustomMinimumSize = new Vector2(width, height);
 
         foreach (var node in _map.Nodes)
@@ -85,14 +88,18 @@ public partial class MapView : Control
             // 240 px rooms would not be a map any more.
             var who = role is MapNodeTags.Boss or MapNodeTags.Elite ? NameOf(node) : null;
             var name = named && role == MapNodeTags.Boss ? who : null;
+            var token = Token(role);
             var button = new Button
             {
-                Text = name ?? Label(role),
+                // a kind of room with no token of its own still says what it is, in its word
+                Text = token is null ? Label(role) : "",
+                Icon = token,
+                ExpandIcon = true,
+                IconAlignment = HorizontalAlignment.Center,
                 Position = pos,
-                Size = new Vector2(name is null ? NodeW : NamedNodeW, NodeH),
+                Size = new Vector2(NodeD, NodeD),
                 Disabled = !isReachable || _onPick is null,
-                TooltipText = who is null ? Tooltip(role) : $"{who} — {Tooltip(role)}",
-                AutowrapMode = name is null ? TextServer.AutowrapMode.Off : TextServer.AutowrapMode.WordSmart,
+                TooltipText = who is null ? $"{Label(role)} — {Tooltip(role)}" : $"{who} — {Tooltip(role)}",
             };
             Style(button, node, role, isReachable);
             if (isReachable && _onPick is { } pick)
@@ -101,14 +108,29 @@ public partial class MapView : Control
                 button.Pressed += () => pick(id);
             }
             AddChild(button);
+            if (name is not null)
+            {
+                var plate = new Label
+                {
+                    Text = name,
+                    Position = pos + new Vector2((NodeD - NameW) / 2f, NodeD + 2),
+                    Size = new Vector2(NameW, NameH),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                    MouseFilter = MouseFilterEnum.Ignore,
+                };
+                plate.AddThemeFontSizeOverride("font_size", 11);
+                plate.AddThemeColorOverride("font_color", RoleColor(role));
+                AddChild(plate);
+            }
             // THE TABLE'S VOTES hang under the room they are for: who wants to go there, by name.
             if (_votes is not null && _votes.TryGetValue(node.Id.Value, out var voters) && voters.Count > 0)
             {
                 var badge = new Label
                 {
                     Text = $"◆ {string.Join(", ", voters)}",
-                    Position = pos + new Vector2(0, NodeH - 2),
-                    Size = new Vector2(button.Size.X, 18),
+                    Position = pos + new Vector2((NodeD - LaneW) / 2f, NodeD - 2),
+                    Size = new Vector2(LaneW, 18),
                     HorizontalAlignment = HorizontalAlignment.Center,
                     ClipText = true,
                     TooltipText = $"Voted for this room: {string.Join(", ", voters)}",
@@ -126,7 +148,8 @@ public partial class MapView : Control
 
     // Depth downward, lanes across — the shape a run map is read in. The engine's layered layout already knows
     // each node's depth (longest path from an entry); this turns its columns into rows and centres each row.
-    private static System.Collections.Generic.Dictionary<NodeId, Vector2> Layout(RunMap map)
+    // `laneW` and `rowH` are the steps across and down; `inset` is where the first room's token starts.
+    private static System.Collections.Generic.Dictionary<NodeId, Vector2> Layout(RunMap map, int laneW, int rowH, int inset)
     {
         var resolved = MapGraphLayout.Resolve(map);
         var depth = new System.Collections.Generic.Dictionary<NodeId, int>();
@@ -143,8 +166,8 @@ public partial class MapView : Control
         {
             var row = depth[node.Id];
             var inRow = lane.Count(l => depth[l.Key] == row);
-            var offset = (widest - inRow) * LaneW / 2f;
-            result[node.Id] = new Vector2(Margin + offset + lane[node.Id] * LaneW, Margin + row * RowH);
+            var offset = (widest - inRow) * laneW / 2f;
+            result[node.Id] = new Vector2(inset + offset + lane[node.Id] * laneW, Margin + row * rowH);
         }
         return result;
     }
@@ -158,38 +181,61 @@ public partial class MapView : Control
         {
             if (!_positions.TryGetValue(edge.From, out var from) || !_positions.TryGetValue(edge.To, out var to))
                 continue;
-            var a = new Vector2(from.X + NodeW / 2f, from.Y + NodeH);
-            var b = new Vector2(to.X + NodeW / 2f, to.Y);
+            // centre to centre, stopped short of both rims
+            var middle = new Vector2(NodeD / 2f, NodeD / 2f);
+            var dir = (to - from).Normalized();
+            var a = from + middle + dir * (NodeD / 2f + 2);
+            var b = to + middle - dir * (NodeD / 2f + 2);
             var walked = _run.VisitedNodes.Any(n => n.Value == edge.From.Value)
                 && _run.VisitedNodes.Any(n => n.Value == edge.To.Value);
             DrawLine(a, b, walked ? traveled : ahead, walked ? 3f : 1.5f);
         }
     }
 
+    // The token carries the room's colour in its ring; the button around it only says how the run stands to it.
+    // Rooms that cannot be walked to now are faded, so the fork's open rooms are the bright ones; walked rooms
+    // are greyed; the room the run stands in wears a gold halo, and an open room a thin one until hovered.
     private void Style(Button button, RunNode node, string role, bool reachable)
     {
         var visited = _run.VisitedNodes.Any(n => n.Value == node.Id.Value);
         var current = _run.CurrentNodeId?.Value == node.Id.Value;
-        var accent = RoleColor(role);
+        var open = reachable && _onPick is not null;
 
-        var fill = current ? MoonvineTheme.BgControl
-            : visited ? MoonvineTheme.BgPanelStrong
-            : reachable ? MoonvineTheme.BgPanel
-            : MoonvineTheme.BgPanelStrong;
-        var border = current ? MoonvineTheme.AccentLight
-            : reachable ? accent
-            : new Color(accent, 0.35f);
+        StyleBox rest = current ? Halo(MoonvineTheme.AccentLight, 3)
+            : open ? Halo(new Color(MoonvineTheme.Accent, 0.8f), 2)
+            : new StyleBoxEmpty();
+        foreach (var state in new[] { "normal", "pressed", "disabled", "focus" })
+            button.AddThemeStyleboxOverride(state, rest);
+        button.AddThemeStyleboxOverride("hover", Halo(MoonvineTheme.AccentLight, 3));
 
-        var style = MoonvineTheme.Panel(fill, border, 8);
-        style.BorderWidthTop = style.BorderWidthBottom = style.BorderWidthLeft = style.BorderWidthRight = current ? 3 : 1;
-        button.AddThemeStyleboxOverride("normal", style);
-        button.AddThemeStyleboxOverride("hover", MoonvineTheme.Panel(MoonvineTheme.BgControl, MoonvineTheme.Accent, 8));
-        button.AddThemeStyleboxOverride("pressed", style);
-        button.AddThemeStyleboxOverride("disabled", style);
-        var text = visited && !current ? MoonvineTheme.TextMuted : reachable || current ? MoonvineTheme.Text : accent;
+        var tint = current || open ? Colors.White
+            : visited ? new Color(0.62f, 0.6f, 0.58f, 0.85f)
+            : reachable ? Colors.White
+            : new Color(1, 1, 1, 0.55f);
+        foreach (var state in new[] { "icon_normal_color", "icon_hover_color", "icon_pressed_color", "icon_disabled_color", "icon_focus_color" })
+            button.AddThemeColorOverride(state, tint);
+        // the word a room without a token falls back to
+        var text = visited && !current ? MoonvineTheme.TextMuted : RoleColor(role);
         button.AddThemeColorOverride("font_color", text);
         button.AddThemeColorOverride("font_disabled_color", text);
-        button.AddThemeFontSizeOverride("font_size", 11);
+        button.AddThemeFontSizeOverride("font_size", 9);
+    }
+
+    // A ring just outside the token's own.
+    private static StyleBoxFlat Halo(Color color, int width)
+    {
+        var halo = new StyleBoxFlat { DrawCenter = false, BorderColor = color, AntiAliasing = true };
+        halo.SetBorderWidthAll(width);
+        halo.SetCornerRadiusAll(NodeD / 2 + 3);
+        halo.SetExpandMarginAll(3);
+        return halo;
+    }
+
+    // The token for a kind of room (assets/map/nodes/make_nodes.py), or null for a kind that has none yet.
+    public static Texture2D? Token(string role)
+    {
+        var path = $"res://assets/map/nodes/{role}.png";
+        return ResourceLoader.Exists(path) ? GD.Load<Texture2D>(path) : null;
     }
 
     // ── what a room is ───────────────────────────────────────────────────────────

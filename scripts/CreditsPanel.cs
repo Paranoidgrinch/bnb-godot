@@ -20,6 +20,9 @@ namespace BnbGodot;
 // The UI FONT is Short Stack (Sorkin Type Co) made heavier as Moonvine Polter, under the SIL OFL 1.1, which
 // asks for no screen but is credited all the same; its licence ships as theme/font/OFL-polter.txt.
 //
+// The MAP SYMBOLS are silhouettes from game-icons.net, CC BY 3.0, inked onto the map's round room tokens;
+// assets/map/nodes/LICENSE.txt names each one.
+//
 // The URLs are real but never shown: a screen full of https://opengameart.org/content/… is unreadable, so
 // the word "Source" carries the link and the licence name carries its own.
 public partial class CreditsPanel : PanelContainer
@@ -78,6 +81,12 @@ public partial class CreditsPanel : PanelContainer
             "https://fonts.google.com/specimen/Short+Stack", "made heavier and narrower as Moonvine Polter"),
     ];
 
+    private static readonly Entry[] Symbols =
+    [
+        new("Map symbols", "Lorc and Delapouite — game-icons.net", By3, "https://game-icons.net",
+            "eight silhouettes, inked onto the map's room tokens"),
+    ];
+
     private static string LicenseUrl(string license) => license switch
     {
         Ofl => "https://openfontlicense.org/open-font-license-official-text/",
@@ -132,6 +141,9 @@ public partial class CreditsPanel : PanelContainer
             list.AddChild(EntryRow(entry));
         list.AddChild(Heading("Font"));
         foreach (var entry in Fonts)
+            list.AddChild(EntryRow(entry));
+        list.AddChild(Heading("Symbols"));
+        foreach (var entry in Symbols)
             list.AddChild(EntryRow(entry));
 
         var close = new Button { Text = "Close", CustomMinimumSize = new Vector2(0, 40) };
