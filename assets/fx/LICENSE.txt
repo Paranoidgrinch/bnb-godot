@@ -1,0 +1,8 @@
+shield_block.png: made by make_fx.py from src/skull-shield.png, "Skull shield" by Lorc, game-icons.net, CC BY 3.0
+(https://creativecommons.org/licenses/by/3.0/). Changes: the skull left out, the outline filled steel blue with a
+pale rim, scaled. Credited in the game's Credits screen with the map symbols.
+
+drops/drop_NN.png: made by make_fx.py from src/ink-stain-6.jpg and src/ink-stain-1.jpg ("Ink-stain-texture-6" and
+"-1" by designshard, Wikimedia Commons, CC BY 2.0, https://creativecommons.org/licenses/by/2.0/) and
+src/ink-splatter.png ("Slightly blue ink splatter - Cropped" by Balthazar, Wikimedia Commons, public domain).
+Changes: the paper removed, single drops cut out, made white so the game can tint them. Credited in the Credits screen.

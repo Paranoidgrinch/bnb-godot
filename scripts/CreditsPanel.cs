@@ -89,7 +89,7 @@ public partial class CreditsPanel : PanelContainer
     private static readonly Entry[] Symbols =
     [
         new("Map symbols", "Lorc and Delapouite — game-icons.net", By3, "https://game-icons.net",
-            "eight silhouettes, inked onto the map's room tokens"),
+            "eight silhouettes on the map's room tokens, and the shield beside a block number"),
     ];
 
     private static readonly Entry[] Maps =
@@ -101,6 +101,8 @@ public partial class CreditsPanel : PanelContainer
             "https://www.metmuseum.org/about-the-met/policies-and-documents/open-access", "on the Act IV and Act V maps"),
         new("Books of the Dead of Hunefer and of Ani", "The British Museum (public domain)", "Public domain",
             "https://commons.wikimedia.org/wiki/Category:Book_of_the_Dead_of_Hunefer", "on the Act IV map"),
+        new("Ink stain textures 6 and 1", "designshard (Wikimedia Commons)", "CC BY 2.0",
+            "https://commons.wikimedia.org/wiki/File:Ink-stain-texture-6.jpg", "their drops, cut out, round the numbers of a fight"),
         new("Noto Sans Egyptian Hieroglyphs", "The Noto Project Authors", Ofl,
             "https://github.com/notofonts/egyptian-hieroglyphs", "the sphinx sign along the Act IV way"),
     ];
@@ -108,6 +110,7 @@ public partial class CreditsPanel : PanelContainer
     private static string LicenseUrl(string license) => license switch
     {
         "Public domain" => "https://creativecommons.org/publicdomain/mark/1.0/",
+        "CC BY 2.0" => "https://creativecommons.org/licenses/by/2.0/",
         Ofl => "https://openfontlicense.org/open-font-license-official-text/",
         Zero => "https://creativecommons.org/publicdomain/zero/1.0/",
         By4 => "https://creativecommons.org/licenses/by/4.0/",

@@ -85,39 +85,48 @@ public partial class SessionScreen
 
         var worn = session.Run.Relics.Select(r => r.Id.Value).ToHashSet(StringComparer.Ordinal);
         var beat = 0;
+        // What the blows took from each body over everything shown, for the pale trail on its bar.
+        var firstHealth = new Dictionary<string, int>(StringComparer.Ordinal);
+        var lastBlow = new Dictionary<string, double>(StringComparer.Ordinal);
+        var numbers = 0;   // every number shown, so neighbours fly to alternate sides
         foreach (var step in shown)
         {
             // How many numbers each body has had in this step: the next one rises a little after and lower.
             var row = new Dictionary<string, int>(StringComparer.Ordinal);
+            // The blows of this step on each body, counted into one number (SessionNumbers).
+            var tallies = new Dictionary<string, List<Blow>>(StringComparer.Ordinal);
             foreach (var trace in step.Trace)
             {
                 switch (trace)
                 {
                     case DamageResolvedTraceEvent hit when hit.HealthLost > 0 || hit.BlockedAmount > 0:
-                        // Pop staggers by the body's row itself; the flash keeps time with its number.
                         var who = hit.TargetCombatantId.value;
                         var at = beat * Beat + row.GetValueOrDefault(who) * HitBeat;
+                        row[who] = row.GetValueOrDefault(who) + 1;
                         Sound(Sfx.Kind.Hit, at);
+                        var lethal = hit.HealthBefore > 0 && hit.HealthAfter <= 0;
                         // A body that this blow put down falls a moment after it lands.
-                        if (hit.HealthBefore > 0 && hit.HealthAfter <= 0 && hit.TargetCombatantId != combat.HeroId)
+                        if (lethal && hit.TargetCombatantId != combat.HeroId)
                             Sound(Sfx.Kind.Death, at + 0.18);
                         if (hit.HealthLost > 0)
                         {
                             Wound(who, at);
-                            Pop(who, $"−{hit.HealthLost}", MoonvineTheme.Harm, 34, beat * Beat, row);
+                            (tallies.TryGetValue(who, out var list) ? list : tallies[who] = []).Add(new Blow(at, hit.HealthLost, lethal));
+                            firstHealth.TryAdd(who, hit.HealthBefore);
+                            lastBlow[who] = at;
                         }
                         if (hit.BlockedAmount > 0)
                         {
                             Shield(who, at);
-                            Pop(who, $"blocked {hit.BlockedAmount}", MoonvineTheme.Steel, 24, beat * Beat, row);
+                            Seal(who, $"{hit.BlockedAmount}", breaks: true, at, numbers++);
+                            BarChip(who, hit.BlockedAmount, Math.Max(0, BlockOf(combat, who)), at);
                         }
                         break;
                     case HealResolvedTraceEvent mend when mend.HealedAmount > 0:
-                        Pop(mend.TargetCombatantId.value, $"+{mend.HealedAmount}", Heal, 30, beat * Beat, row);
+                        Mend(mend.TargetCombatantId.value, mend.HealedAmount, beat * Beat, numbers++);
                         break;
                     case BlockGainResolvedTraceEvent guard when guard.BlockAfter > guard.BlockBefore:
-                        Pop(guard.TargetCombatantId.value, $"+{guard.BlockAfter - guard.BlockBefore} Block",
-                            MoonvineTheme.Steel, 26, beat * Beat, row);
+                        Seal(guard.TargetCombatantId.value, $"+{guard.BlockAfter - guard.BlockBefore}", breaks: false, beat * Beat, numbers++);
                         Shield(guard.TargetCombatantId.value, beat * Beat);
                         Sound(Sfx.Kind.Block, beat * Beat);
                         break;
@@ -129,10 +138,17 @@ public partial class SessionScreen
                         break;
                 }
             }
-            if (row.Count > 0)
+            foreach (var (who, blows) in tallies)
+                DamageTally(who, blows, numbers++);
+            if (row.Count > 0 || tallies.Count > 0)
                 beat++;
         }
+        foreach (var (who, health) in firstHealth)
+            BarTrail(who, health, lastBlow[who]);
     }
+
+    private static int BlockOf(ICombatView combat, string id) =>
+        combat.State.Combatants.FirstOrDefault(c => c.Id.value == id) is { } c ? Block(c) : 0;
 
     private static readonly Color Heal = new("6fbf73");
 

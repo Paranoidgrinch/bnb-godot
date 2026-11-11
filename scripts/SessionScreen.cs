@@ -4986,11 +4986,28 @@ public partial class SessionScreen : Control
         bg.SetAnchorsPreset(LayoutPreset.FullRect);
         holder.AddChild(bg);
         var ratio = max > 0 ? Mathf.Clamp((float)current / max, 0, 1) : 0;
-        var fill = new ColorRect { Color = MoonvineTheme.Harm };
+        var fill = new ColorRect { Color = MoonvineTheme.Harm, Name = "Fill" };
         fill.SetAnchorsPreset(LayoutPreset.FullRect);
         fill.AnchorRight = ratio;
         fill.OffsetRight = 0;
         holder.AddChild(fill);
+        // Block as a steel plate over the end of the health it guards (user, 2026-11-11): a blow chips it first.
+        if (block > 0 && max > 0)
+        {
+            var plate = new ColorRect { Color = new Color("6f8fa8", 0.85f), Name = "Plate", MouseFilter = MouseFilterEnum.Ignore };
+            plate.SetAnchorsPreset(LayoutPreset.FullRect);
+            plate.AnchorLeft = Mathf.Max(0, ratio - (float)block / max);
+            plate.AnchorRight = Mathf.Max(ratio, Mathf.Min(1, (float)block / max));
+            plate.OffsetLeft = plate.OffsetRight = 0;
+            plate.OffsetTop = 3;
+            plate.OffsetBottom = -3;
+            holder.AddChild(plate);
+            var edge = new ColorRect { Color = new Color("c9dae6"), MouseFilter = MouseFilterEnum.Ignore };
+            edge.SetAnchorsPreset(LayoutPreset.TopWide);
+            edge.Size = new Vector2(0, 1);
+            edge.OffsetBottom = 1;
+            plate.AddChild(edge);
+        }
         var label = new Label
         {
             Text = $"{current}/{max}" + (block > 0 ? $"   Block {block}" : ""),
