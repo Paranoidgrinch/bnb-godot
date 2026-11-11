@@ -4,6 +4,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BnbGodot</RootNamespace>
+    <!-- NuGet packages (Clipper2, for the map art) are copied next to the game assembly, where Godot loads them from. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,5 +19,9 @@
     <ProjectReference Include="../RogueDeck-Core/src/RogueDeck.Sandbox.Run/RogueDeck.Sandbox.Run.csproj" />
     <!-- The runner's brain, shared with the console runner and bnb-content's playtest walker (R4). -->
     <ProjectReference Include="../RogueDeck-Core/src/RogueDeck.Bot/RogueDeck.Bot.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Clipper2" Version="2.0.0" />
   </ItemGroup>
 </Project>

@@ -23,6 +23,11 @@ namespace BnbGodot;
 // The MAP SYMBOLS are silhouettes from game-icons.net, CC BY 3.0, inked onto the map's round room tokens;
 // assets/map/nodes/LICENSE.txt names each one.
 //
+// The MAPS are drawn by the game (scripts/MapArt) on scans and photos: the Act III plan carries the eagle
+// cartouche, compass and scale of a Weikersheim forest map from the Landesarchiv Baden-Wuerttemberg, CC BY 4.0,
+// and that line is REQUIRED. The rest is public domain or CC0 (old paper scans, the Met's papyrus, Book of the
+// Dead papyri, clay fragments) and is credited anyway; assets/map/grounds and assets/map/art list every source.
+//
 // The URLs are real but never shown: a screen full of https://opengameart.org/content/… is unreadable, so
 // the word "Source" carries the link and the licence name carries its own.
 public partial class CreditsPanel : PanelContainer
@@ -87,8 +92,22 @@ public partial class CreditsPanel : PanelContainer
             "eight silhouettes, inked onto the map's room tokens"),
     ];
 
+    private static readonly Entry[] Maps =
+    [
+        new("Forest map of Weikersheim, \"Das sogenannte Neußemer Teich\"", "Landesarchiv Baden-Württemberg, Hohenlohe-Zentralarchiv Neuenstein GA 100 Nr. 435", By4,
+            "https://commons.wikimedia.org/wiki/File:Weikersheim_%22Das_sogenannte_Neu%C3%9Femer_Teich%22,_Forstkarte_Beschreibung-_40_Ruten_%3D_7,2_cm;_62_x_45_cm;_Norden_oben;_Papier;_Federzeichnung;_B%C3%A4ume_und_We_-_LABW_-_Hohenlohe-Zentralarchiv_Neuenstein_GA_100_Nr._435_-1.jpg",
+            "its cartouche, compass and scale, on the Act III map"),
+        new("Book of the Dead of the Singer of Amun Nany; blank papyrus 26.3.317; clay tablet fragments", "The Metropolitan Museum of Art", Zero,
+            "https://www.metmuseum.org/about-the-met/policies-and-documents/open-access", "on the Act IV and Act V maps"),
+        new("Books of the Dead of Hunefer and of Ani", "The British Museum (public domain)", "Public domain",
+            "https://commons.wikimedia.org/wiki/Category:Book_of_the_Dead_of_Hunefer", "on the Act IV map"),
+        new("Noto Sans Egyptian Hieroglyphs", "The Noto Project Authors", Ofl,
+            "https://github.com/notofonts/egyptian-hieroglyphs", "the sphinx sign along the Act IV way"),
+    ];
+
     private static string LicenseUrl(string license) => license switch
     {
+        "Public domain" => "https://creativecommons.org/publicdomain/mark/1.0/",
         Ofl => "https://openfontlicense.org/open-font-license-official-text/",
         Zero => "https://creativecommons.org/publicdomain/zero/1.0/",
         By4 => "https://creativecommons.org/licenses/by/4.0/",
@@ -144,6 +163,9 @@ public partial class CreditsPanel : PanelContainer
             list.AddChild(EntryRow(entry));
         list.AddChild(Heading("Symbols"));
         foreach (var entry in Symbols)
+            list.AddChild(EntryRow(entry));
+        list.AddChild(Heading("Maps"));
+        foreach (var entry in Maps)
             list.AddChild(EntryRow(entry));
 
         var close = new Button { Text = "Close", CustomMinimumSize = new Vector2(0, 40) };

@@ -1,0 +1,14 @@
+The map art pieces here are made by make_art.py from the crops in src/ (sources in src/sources.json).
+
+Act III, weik_*.png: from the forest map of Weikersheim, "Das sogenannte Neussemer Teich", Landesarchiv
+  Baden-Wuerttemberg, Hohenlohe-Zentralarchiv Neuenstein GA 100 Nr. 435, CC BY 4.0
+  (https://creativecommons.org/licenses/by/4.0/). Credited in the game's Credits screen. Changes: cropped,
+  scaled, the paper divided out so only the ink remains.
+
+Act IV, egypt_IV-*.png: Book of the Dead of Hunefer (sheet 3) and Papyrus of Ani (sheet 12), The British
+  Museum, public domain; Book of the Dead of the Singer of Amun Nany, The Metropolitan Museum of Art, CC0.
+  Changes: cropped, scaled, the papyrus taken away so only paint and ink remain.
+
+Act IV, sphinx_l.png / sphinx_r.png: the lion sign U+130ED of Noto Sans Egyptian Hieroglyphs, Copyright 2022
+  The Noto Project Authors, SIL Open Font License 1.1 (src/OFL-NotoSansEgyptianHieroglyphs.txt), rendered and
+  filled.

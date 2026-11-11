@@ -1,0 +1,219 @@
+[
+ {
+  "id": "IV-1a",
+  "label": "Goetterfries",
+  "kind": "frieze",
+  "w": 140.0,
+  "h": 39.0
+ },
+ {
+  "id": "IV-1b",
+  "label": "Goetterfries",
+  "kind": "frieze",
+  "w": 140.0,
+  "h": 39.0
+ },
+ {
+  "id": "IV-2",
+  "label": "Anubis",
+  "kind": "figure",
+  "w": 62.0,
+  "h": 150.0
+ },
+ {
+  "id": "IV-3",
+  "label": "Thot",
+  "kind": "figure",
+  "w": 62.0,
+  "h": 147.5
+ },
+ {
+  "id": "IV-4",
+  "label": "Horus",
+  "kind": "figure",
+  "w": 72.0,
+  "h": 137.5
+ },
+ {
+  "id": "IV-5",
+  "label": "Ammit",
+  "kind": "figure",
+  "w": 78.0,
+  "h": 93.0
+ },
+ {
+  "id": "IV-6",
+  "label": "Schrein des Osiris",
+  "kind": "figure",
+  "w": 124.0,
+  "h": 140.0
+ },
+ {
+  "id": "IV-7",
+  "label": "Gefluegelter Falke",
+  "kind": "figure",
+  "w": 96.0,
+  "h": 64.0
+ },
+ {
+  "id": "IV-8",
+  "label": "Textband",
+  "kind": "band",
+  "w": 300.0,
+  "h": 22.0
+ },
+ {
+  "id": "IV-9",
+  "label": "Ibisse mit Koerben",
+  "kind": "figure",
+  "w": 124.0,
+  "h": 52.5
+ },
+ {
+  "id": "IV-10",
+  "label": "Schlangen",
+  "kind": "figure",
+  "w": 110.0,
+  "h": 85.5
+ },
+ {
+  "id": "IV-11",
+  "label": "Osiris",
+  "kind": "figure",
+  "w": 76.0,
+  "h": 323.0
+ },
+ {
+  "id": "IV-12",
+  "label": "Nany betend",
+  "kind": "figure",
+  "w": 90.0,
+  "h": 300.0
+ },
+ {
+  "id": "IV-13",
+  "label": "Hieroglyphenspalten",
+  "kind": "script",
+  "w": 110.0,
+  "h": 228.0
+ },
+ {
+  "id": "IV-14",
+  "label": "Spruchspalten",
+  "kind": "script",
+  "w": 110.0,
+  "h": 85.5
+ },
+ {
+  "id": "IV-15",
+  "label": "Ani und seine Frau",
+  "kind": "figure",
+  "w": 100.0,
+  "h": 131.5
+ },
+ {
+  "id": "IV-16",
+  "label": "Falke auf dem Schrein",
+  "kind": "figure",
+  "w": 80.0,
+  "h": 121.5
+ },
+ {
+  "id": "IV-17",
+  "label": "Schreine",
+  "kind": "figure",
+  "w": 72.0,
+  "h": 99.0
+ },
+ {
+  "id": "IV-18",
+  "label": "Textspalten Ani",
+  "kind": "script",
+  "w": 80.0,
+  "h": 130.5
+ },
+ {
+  "id": "IV-19",
+  "label": "Spruchspalten mit roten Koepfen",
+  "kind": "script",
+  "w": 124.0,
+  "h": 81.0
+ },
+ {
+  "id": "IV-20",
+  "label": "Spruchspalten unter den Mumien",
+  "kind": "script",
+  "w": 124.0,
+  "h": 80.0
+ },
+ {
+  "id": "IV-21",
+  "label": "Spalten links",
+  "kind": "script",
+  "w": 70.0,
+  "h": 187.0
+ },
+ {
+  "id": "IV-22",
+  "label": "Spalten rechts",
+  "kind": "script",
+  "w": 56.0,
+  "h": 201.0
+ },
+ {
+  "id": "IV-23",
+  "label": "Text ueber Nany",
+  "kind": "script",
+  "w": 110.0,
+  "h": 50.0
+ },
+ {
+  "id": "IV-24",
+  "label": "Spruchspalten Nany",
+  "kind": "script",
+  "w": 124.0,
+  "h": 132.5
+ },
+ {
+  "id": "IV-25",
+  "label": "Kolophon",
+  "kind": "script",
+  "w": 50.0,
+  "h": 87.5
+ },
+ {
+  "id": "weik_cartouche",
+  "label": "cartouche",
+  "kind": "weik",
+  "w": 140.0,
+  "h": 85.0
+ },
+ {
+  "id": "weik_compass",
+  "label": "compass",
+  "kind": "weik",
+  "w": 96.0,
+  "h": 89.5
+ },
+ {
+  "id": "weik_scala",
+  "label": "scala",
+  "kind": "weik",
+  "w": 180.0,
+  "h": 48.0
+ },
+ {
+  "id": "sphinx_l",
+  "label": "sphinx",
+  "kind": "sphinx",
+  "w": 16.0,
+  "h": 7.0
+ },
+ {
+  "id": "sphinx_r",
+  "label": "sphinx",
+  "kind": "sphinx",
+  "w": 16.0,
+  "h": 7.0
+ }
+]

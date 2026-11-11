@@ -25,6 +25,9 @@ public partial class MapView : Control
     // Who at a multiplayer table has voted for which room (node id → names); null alone.
     private readonly System.Collections.Generic.IReadOnlyDictionary<string, System.Collections.Generic.List<string>>? _votes;
     private System.Collections.Generic.Dictionary<NodeId, Vector2> _positions = new();
+    // The act drawn as a plan of its own (scripts/MapArt): the rooms stand on it, so the map grows by the plan's
+    // margins and every room moves in by them. Not drawn without a renderer (the headless smoke runs).
+    private TextureRect? _art;
 
     // A room is a token, not a word (user, 2026-11-10): the symbol says what it is, so the map is half as wide as
     // it was with 116 px name plates.
@@ -73,6 +76,8 @@ public partial class MapView : Control
         var height = _positions.Count == 0 ? NodeD
             : (int)_positions.Values.Max(p => p.Y) + NodeD + (named ? NameH : 0) + Margin;
         CustomMinimumSize = new Vector2(width, height);
+        if (_positions.Count > 0 && !DisplayServer.GetName().Contains("headless"))
+            StartArt(width, height);
 
         foreach (var node in _map.Nodes)
         {
@@ -146,6 +151,55 @@ public partial class MapView : Control
         }
     }
 
+    // The plan under the rooms: worked out on a worker thread and drawn once, then kept for the run (MapArt/Bake).
+    private void StartArt(int width, int height)
+    {
+        var input = new MapArt.Plan.Input(
+            _run.ActNumber, _run.RandomSeed, width, height, NodeD,
+            [.. _map.Nodes.Select(n => new MapArt.Plan.Room(n.Id.Value, Role(n), _positions[n.Id].X, _positions[n.Id].Y))],
+            [.. _map.Edges.Select(e => (e.From.Value, e.To.Value))]);
+        // dev: BNB_MAPART_ACT=5 draws Act V's fragments under three rooms of whatever map is open (top, middle,
+        // bottom), since no probe stops on the gauntlet's map
+        if (System.Environment.GetEnvironmentVariable("BNB_MAPART_ACT") == "5")
+        {
+            var byY = input.Rooms.OrderBy(r => r.Y).ToList();
+            input = input with { Act = 5, Rooms = [byY[0], byY[byY.Count / 2], byY[^1]] };
+        }
+        var origin = new Vector2(MapArt.Plan.Side, MapArt.Plan.Top);
+        _positions = _positions.ToDictionary(kv => kv.Key, kv => kv.Value + origin);
+        CustomMinimumSize = new Vector2(width + 2 * MapArt.Plan.Side, height + MapArt.Plan.Top + MapArt.Plan.Foot);
+        _art = new TextureRect
+        {
+            Size = CustomMinimumSize,
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.Scale,
+            TextureFilter = TextureFilterEnum.LinearWithMipmaps,
+            MouseFilter = MouseFilterEnum.Ignore,
+            Name = "MapArt",
+        };
+        AddChild(_art);
+        var key = $"{_run.RandomSeed}:{_run.ActNumber}:{_map.Nodes.Count}:{_map.Edges.Count}";
+        if (MapArt.Bake.Cached(key) is { } done)
+            _art.Texture = done;
+        else
+            ShowArtWhenReady(key, input);
+    }
+
+    private async void ShowArtWhenReady(string key, MapArt.Plan.Input input)
+    {
+        try
+        {
+            var tex = await MapArt.Bake.Get(key, GetTree().Root, () => MapArt.Plan.Make(input));
+            if (IsInstanceValid(this) && _art is not null && IsInstanceValid(_art))
+                _art.Texture = tex;
+        }
+        catch (Exception e)
+        {
+            // the plan is a picture: the map still works without it, so say so and carry on
+            GD.PushWarning($"map art for act {input.Act} failed: {e.Message}");
+        }
+    }
+
     // Depth downward, lanes across — the shape a run map is read in. The engine's layered layout already knows
     // each node's depth (longest path from an entry); this turns its columns into rows and centres each row.
     // `laneW` and `rowH` are the steps across and down; `inset` is where the first room's token starts.
@@ -181,6 +235,10 @@ public partial class MapView : Control
         {
             if (!_positions.TryGetValue(edge.From, out var from) || !_positions.TryGetValue(edge.To, out var to))
                 continue;
+            var walkedHere = _run.VisitedNodes.Any(n => n.Value == edge.From.Value)
+                && _run.VisitedNodes.Any(n => n.Value == edge.To.Value);
+            if (_art is not null && !walkedHere)
+                continue;   // the plan draws the paths; only the road walked is marked over it
             // centre to centre, stopped short of both rims
             var middle = new Vector2(NodeD / 2f, NodeD / 2f);
             var dir = (to - from).Normalized();

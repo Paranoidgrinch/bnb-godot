@@ -713,6 +713,16 @@ public partial class SessionScreen : Control
                 + $"{music.Visited.Count} of 10 tracks reached "
                 + $"({string.Join(" ", music.Visited.OrderBy(t => t.ToString(), StringComparer.Ordinal))}), "
                 + $"ending on {music.Current}");
+        QuitWhenMapArtDone();
+    }
+
+    // With BNB_MAPART_DUMP set the marathon is also the way to see every act's map art: the last act's is still
+    // being drawn when the run ends, so the probe waits for it (a minute at most) before it leaves.
+    private async void QuitWhenMapArtDone()
+    {
+        if (System.Environment.GetEnvironmentVariable("BNB_MAPART_DUMP") is not null)
+            for (var i = 0; i < 120 && MapArt.Bake.Busy; i++)
+                await ToSignal(GetTree().CreateTimer(0.5), SceneTreeTimer.SignalName.Timeout);
         GetTree().Quit();
     }
 

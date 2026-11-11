@@ -1,0 +1,231 @@
+{
+ "papyrus": {
+  "hunefer3": [
+   0.6784342527389526,
+   0.5953876972198486,
+   0.4681940972805023
+  ],
+  "nany551": [
+   0.9034903049468994,
+   0.764819860458374,
+   0.5713802576065063
+  ],
+  "ani12": [
+   0.7133719325065613,
+   0.6077997088432312,
+   0.4632706344127655
+  ],
+  "nany11632": [
+   0.831348180770874,
+   0.6888724565505981,
+   0.5101490616798401
+  ],
+  "nany11631": [
+   0.9218890070915222,
+   0.7730167508125305,
+   0.5667303800582886
+  ]
+ },
+ "pieces": [
+  {
+   "id": "IV-1",
+   "label": "Goetterfries",
+   "scan": "hunefer3",
+   "width": 400,
+   "where": "top",
+   "text": false
+  },
+  {
+   "id": "IV-2",
+   "label": "Anubis",
+   "scan": "hunefer3",
+   "width": 62,
+   "where": "side",
+   "text": false
+  },
+  {
+   "id": "IV-3",
+   "label": "Thot",
+   "scan": "hunefer3",
+   "width": 62,
+   "where": "side",
+   "text": false
+  },
+  {
+   "id": "IV-4",
+   "label": "Horus",
+   "scan": "hunefer3",
+   "width": 72,
+   "where": "side",
+   "text": false
+  },
+  {
+   "id": "IV-5",
+   "label": "Ammit",
+   "scan": "hunefer3",
+   "width": 78,
+   "where": "side",
+   "text": false
+  },
+  {
+   "id": "IV-6",
+   "label": "Schrein des Osiris",
+   "scan": "hunefer3",
+   "width": 140,
+   "where": "side",
+   "text": false
+  },
+  {
+   "id": "IV-7",
+   "label": "Gefluegelter Falke",
+   "scan": "hunefer3",
+   "width": 96,
+   "where": "side",
+   "text": false
+  },
+  {
+   "id": "IV-8",
+   "label": "Textband",
+   "scan": "hunefer3",
+   "width": 400,
+   "where": "foot",
+   "text": false
+  },
+  {
+   "id": "IV-9",
+   "label": "Ibisse mit Koerben",
+   "scan": "nany551",
+   "width": 150,
+   "where": "side",
+   "text": false
+  },
+  {
+   "id": "IV-10",
+   "label": "Schlangen",
+   "scan": "nany551",
+   "width": 110,
+   "where": "side",
+   "text": false
+  },
+  {
+   "id": "IV-11",
+   "label": "Osiris",
+   "scan": "nany551",
+   "width": 76,
+   "where": "side",
+   "text": false
+  },
+  {
+   "id": "IV-12",
+   "label": "Nany betend",
+   "scan": "nany551",
+   "width": 90,
+   "where": "side",
+   "text": false
+  },
+  {
+   "id": "IV-13",
+   "label": "Hieroglyphenspalten",
+   "scan": "nany551",
+   "width": 110,
+   "where": "side",
+   "text": true
+  },
+  {
+   "id": "IV-14",
+   "label": "Spruchspalten",
+   "scan": "nany551",
+   "width": 110,
+   "where": "side",
+   "text": true
+  },
+  {
+   "id": "IV-15",
+   "label": "Ani und seine Frau",
+   "scan": "ani12",
+   "width": 100,
+   "where": "side",
+   "text": false
+  },
+  {
+   "id": "IV-16",
+   "label": "Falke auf dem Schrein",
+   "scan": "ani12",
+   "width": 80,
+   "where": "side",
+   "text": false
+  },
+  {
+   "id": "IV-17",
+   "label": "Schreine",
+   "scan": "ani12",
+   "width": 72,
+   "where": "side",
+   "text": false
+  },
+  {
+   "id": "IV-18",
+   "label": "Textspalten Ani",
+   "scan": "ani12",
+   "width": 80,
+   "where": "side",
+   "text": true
+  },
+  {
+   "id": "IV-19",
+   "label": "Spruchspalten mit roten Koepfen",
+   "scan": "nany11632",
+   "width": 124,
+   "where": "side",
+   "text": true
+  },
+  {
+   "id": "IV-20",
+   "label": "Spruchspalten unter den Mumien",
+   "scan": "nany11632",
+   "width": 124,
+   "where": "side",
+   "text": true
+  },
+  {
+   "id": "IV-21",
+   "label": "Spalten links",
+   "scan": "nany11631",
+   "width": 70,
+   "where": "side",
+   "text": true
+  },
+  {
+   "id": "IV-22",
+   "label": "Spalten rechts",
+   "scan": "nany11631",
+   "width": 56,
+   "where": "side",
+   "text": true
+  },
+  {
+   "id": "IV-23",
+   "label": "Text ueber Nany",
+   "scan": "nany11632",
+   "width": 110,
+   "where": "side",
+   "text": true
+  },
+  {
+   "id": "IV-24",
+   "label": "Spruchspalten Nany",
+   "scan": "nany551",
+   "width": 124,
+   "where": "side",
+   "text": true
+  },
+  {
+   "id": "IV-25",
+   "label": "Kolophon",
+   "scan": "nany11632",
+   "width": 50,
+   "where": "side",
+   "text": true
+  }
+ ]
+}
