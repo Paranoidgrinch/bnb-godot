@@ -1,0 +1,36 @@
+The map grounds are made by make_grounds.py from the scans and photos in src/, all from Wikimedia Commons.
+None needs attribution; the list is kept so every source can be found again (also in src/sources.json).
+
+Paper (acts 1-3), public domain:
+  src/paper1.jpg  Old paper1.jpg  https://commons.wikimedia.org/wiki/File:Old_paper1.jpg
+  src/paper2.jpg  Old paper2.jpg  https://commons.wikimedia.org/wiki/File:Old_paper2.jpg
+  src/paper4.jpg  Old paper4.jpg  https://commons.wikimedia.org/wiki/File:Old_paper4.jpg
+  src/paper6.jpg  Old paper6.jpg  https://commons.wikimedia.org/wiki/File:Old_paper6.jpg
+  src/paper7.jpg  Old paper7.jpg  https://commons.wikimedia.org/wiki/File:Old_paper7.jpg
+  src/paperT.jpg  Old Paper texture.jpg  https://commons.wikimedia.org/wiki/File:Old_Paper_texture.jpg
+
+Papyrus (act 4), CC0, The Metropolitan Museum of Art, 26.3.317:
+  src/papyrus1.jpg  Blank sheet of papyrus MET 26.3.317 EGDP015983-5984 Stitiched.jpg  https://commons.wikimedia.org/wiki/File:Blank_sheet_of_papyrus_MET_26.3.317_EGDP015983-5984_Stitiched.jpg
+  src/papyrus2.jpg  Blank sheet of papyrus MET 26.3.317 EGDP015983.jpg  https://commons.wikimedia.org/wiki/File:Blank_sheet_of_papyrus_MET_26.3.317_EGDP015983.jpg
+
+Clay fragments (act 5, shard_NN.png cut from src/shards/rawNN.jpg), CC0, The Metropolitan Museum of Art:
+  raw01.jpg  Cuneiform tablet- fragment MET vsz86.11.500.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_MET_vsz86.11.500.jpg
+  raw04.jpg  Cuneiform tablet- fragment MET vs86.11.491.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_MET_vs86.11.491.jpg
+  raw05.jpg  Cuneiform tablet- fragment of a contract MET vsz86.11.481.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_of_a_contract_MET_vsz86.11.481.jpg
+  raw06.jpg  Cuneiform tablet- fragment of a contract MET vsz86.11.487.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_of_a_contract_MET_vsz86.11.487.jpg
+  raw07.jpg  Cuneiform tablet- fragment MET vs86 11 434.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_MET_vs86_11_434.jpg
+  raw08.jpg  Cuneiform tablet- fragment MET vs86 11 455.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_MET_vs86_11_455.jpg
+  raw09.jpg  Cuneiform tablet- fragment MET vs86 11 428.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_MET_vs86_11_428.jpg
+  raw10.jpg  Cuneiform tablet- fragment of Syllabary A MET vs86 11 533a.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_of_Syllabary_A_MET_vs86_11_533a.jpg
+  raw12.jpg  Cuneiform tablet- fragment of a quittance (?) MET vs86 11 466a.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_of_a_quittance_(%3F)_MET_vs86_11_466a.jpg
+  raw13.jpg  Cuneiform tablet- fragment of a contract MET vs86 11 456.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_of_a_contract_MET_vs86_11_456.jpg
+  raw14.jpg  Cuneiform tablet- fragment of a contract MET vs86 11 454.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_of_a_contract_MET_vs86_11_454.jpg
+  raw16.jpg  Cuneiform tablet- fragment of a contract MET vs86 11 536.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_of_a_contract_MET_vs86_11_536.jpg
+  raw18.jpg  Cuneiform tablet- fragment of Syllabary A MET vs86 11 528.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_of_Syllabary_A_MET_vs86_11_528.jpg
+  raw19.jpg  Cuneiform tablet- fragment of a contract (?) MET vs86 11 458.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_of_a_contract_(%3F)_MET_vs86_11_458.jpg
+  raw20.jpg  Cuneiform tablet- fragment of Syllabary A MET vs86 11 530.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_of_Syllabary_A_MET_vs86_11_530.jpg
+  raw26.jpg  Cuneiform tablet- fragment of a contract MET vs86 11 427.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_of_a_contract_MET_vs86_11_427.jpg
+  raw28.jpg  Cuneiform tablet- fragment of Syllabary B MET vs86 11 490a.jpg  https://commons.wikimedia.org/wiki/File:Cuneiform_tablet-_fragment_of_Syllabary_B_MET_vs86_11_490a.jpg
+
+Changes: scans downscaled and recompressed; cropped, flipped, toned and given damage layers (stains, mould,
+foxing, crumpling, holes, worn and brittle edges) by make_grounds.py; fragments cut from their backgrounds.
