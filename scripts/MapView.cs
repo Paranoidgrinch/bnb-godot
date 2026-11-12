@@ -106,6 +106,8 @@ public partial class MapView : Control
                 Disabled = !isReachable || _onPick is null,
                 TooltipText = who is null ? $"{Label(role)} — {Tooltip(role)}" : $"{who} — {Tooltip(role)}",
             };
+            if (_run.CurrentNodeId?.Value == node.Id.Value)
+                AddChild(Beacon(pos));
             Style(button, node, role, isReachable);
             if (isReachable && _onPick is { } pick)
             {
@@ -277,6 +279,52 @@ public partial class MapView : Control
         button.AddThemeColorOverride("font_color", text);
         button.AddThemeColorOverride("font_disabled_color", text);
         button.AddThemeFontSizeOverride("font_size", 9);
+    }
+
+    // WHERE YOU ARE glows. On a full drawn plan the gold halo alone is one ring among many, and the eye loses
+    // its own room. Behind the token: an amber light that slowly brightens and dims, and a thin ring that drifts
+    // outward from the rim and fades, once per breath; the movement is what the eye finds. Amber rather than
+    // the theme's pale gold, which vanishes on the parchment. It sits under the button, so the token and its
+    // halo stay as they are.
+    private static readonly Color BeaconColor = new("f0a020");
+    private const double BeaconBreath = 2.4; // seconds, one bright-dim cycle and one ring
+
+    private static Control Beacon(Vector2 pos)
+    {
+        const float Pad = 26f;
+        var size = NodeD + 2 * Pad;
+        var rim = NodeD / 2f + 3;
+        var phase = 0f;
+        var glow = new Control
+        {
+            Position = pos - new Vector2(Pad, Pad),
+            Size = new Vector2(size, size),
+            MouseFilter = MouseFilterEnum.Ignore,
+            Name = "CurrentRoomGlow",
+        };
+        glow.Draw += () =>
+        {
+            var centre = new Vector2(size / 2, size / 2);
+            // brightness breathes 0.45..1 on a sine
+            var breath = 0.45f + 0.55f * (0.5f - 0.5f * Mathf.Cos(phase * Mathf.Tau));
+            // the light: stacked circles from Pad-wide out to the rim, denser near the token
+            const int Steps = 16;
+            for (var i = 0; i < Steps; i++)
+            {
+                var t = i / (Steps - 1f);
+                var r = rim + (Pad - 4) * (1 - t);
+                glow.DrawCircle(centre, r, new Color(BeaconColor, 0.07f * breath), antialiased: true);
+            }
+            // the ring drifting outward, fading as it goes
+            var ring = rim + (Pad - 2) * phase;
+            glow.DrawArc(centre, ring, 0, Mathf.Tau, 64, new Color(BeaconColor, 0.85f * (1 - phase)), 2.5f, antialiased: true);
+        };
+        glow.Ready += () =>
+        {
+            var tween = glow.CreateTween().SetLoops();
+            tween.TweenMethod(Callable.From<float>(p => { phase = p; glow.QueueRedraw(); }), 0f, 1f, BeaconBreath);
+        };
+        return glow;
     }
 
     // A ring just outside the token's own.
