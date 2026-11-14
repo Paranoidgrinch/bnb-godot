@@ -5004,8 +5004,7 @@ public partial class SessionScreen : Control
             holder.AddChild(plate);
             var edge = new ColorRect { Color = new Color("c9dae6"), MouseFilter = MouseFilterEnum.Ignore };
             edge.SetAnchorsPreset(LayoutPreset.TopWide);
-            edge.Size = new Vector2(0, 1);
-            edge.OffsetBottom = 1;
+            edge.OffsetBottom = 1;   // one pixel tall; the anchors give the width (a Size here only warned)
             plate.AddChild(edge);
         }
         var label = new Label
