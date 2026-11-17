@@ -3,8 +3,9 @@ using Godot;
 
 namespace BnbGodot;
 
-// ── ONE ACT'S ENCOUNTER TRIAL, ASKED HOW (user, 2026-11-05) ──────────────────────────────────────────────────
-// The title has one entry per act's trial; this sheet asks which: the full act, as it always was (and taking a
+// ── THE ENCOUNTER TRIALS, ONE SHEET FOR ALL ACTS (user, 2026-11-05; 2026-11-17) ──────────────────────────────
+// The title has ONE "Trials" entry (one button per act made the menu a wall of them); this sheet carries a tab per
+// act that has a trial and opens on the act last played. For the act chosen it asks which: the full act, as it always was (and taking a
 // full trial up again), or one fight of the act on its own — listed stage by stage, normal, multi, elite, then
 // the bosses, each by its name. A single fight first hands out what the full trial would have by then (the
 // packages of every stage before its own, GameHost.TrialSingles), then fights that fight alone. Built the way
@@ -12,7 +13,8 @@ namespace BnbGodot;
 public partial class TrialPanel : PanelContainer
 {
     private readonly GameHost _host;
-    private readonly int _act;
+    private int _act;
+    private VBoxContainer _body = null!;
     private readonly Action _onStarted;
     private readonly Action _onCancel;
 
@@ -42,11 +44,82 @@ public partial class TrialPanel : PanelContainer
         column.AddThemeConstantOverride("separation", 8);
         margin.AddChild(column);
 
-        var numeral = Numeral(_act);
-        var title = new Label { Text = $"Act {numeral} encounter trial", HorizontalAlignment = HorizontalAlignment.Center };
+        var title = new Label { Text = "Encounter trials", HorizontalAlignment = HorizontalAlignment.Center };
         title.AddThemeFontSizeOverride("font_size", 20);
         title.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
         column.AddChild(title);
+
+        // One tab per act with a trial in the game document; the act shown is pressed in.
+        var tabs = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center, Name = "TrialActTabs" };
+        tabs.AddThemeConstantOverride("separation", 6);
+        var group = new ButtonGroup();
+        foreach (var act in Acts(_host))
+        {
+            var tab = new Button
+            {
+                Text = $"Act {Numeral(act)}",
+                Name = $"TrialAct{act}",
+                ToggleMode = true,
+                ButtonGroup = group,
+                ButtonPressed = act == _act,
+                CustomMinimumSize = new Vector2(84, 34),
+                TooltipText = _host.HasTrialSave(act) || _host.SavedTrialSingle(act) is not null
+                    ? $"Act {Numeral(act)} — a trial is waiting to be continued" : $"Act {Numeral(act)}",
+            };
+            var chosen = act;
+            tab.Toggled += on => { if (on) Show(chosen); };
+            tabs.AddChild(tab);
+        }
+        column.AddChild(tabs);
+
+        _body = new VBoxContainer { Name = "TrialActBody" };
+        _body.AddThemeConstantOverride("separation", 8);
+        column.AddChild(_body);
+        Fill(_body);
+
+        var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        var cancel = new Button { Text = "Back", CustomMinimumSize = new Vector2(120, 40) };
+        cancel.Pressed += () => _onCancel();
+        actions.AddChild(cancel);
+        column.AddChild(actions);
+    }
+
+    // The acts whose trial is in the game document, in order.
+    public static System.Collections.Generic.List<int> Acts(GameHost host) =>
+        [.. System.Linq.Enumerable.Where(System.Linq.Enumerable.Range(1, 5), host.HasTrial)];
+
+    // The act the sheet opens on: the one last started here this session, else one with a trial waiting to be
+    // continued, else the first.
+    private static int? _lastAct;
+
+    public static int DefaultAct(GameHost host)
+    {
+        var acts = Acts(host);
+        if (_lastAct is { } last && acts.Contains(last))
+            return last;
+        foreach (var act in acts)
+            if (host.HasTrialSave(act) || host.SavedTrialSingle(act) is not null)
+                return act;
+        return acts.Count > 0 ? acts[0] : 1;
+    }
+
+    private void Show(int act)
+    {
+        if (act == _act)
+            return;
+        _act = act;
+        foreach (var child in _body.GetChildren())
+        {
+            _body.RemoveChild(child);
+            child.QueueFree();
+        }
+        Fill(_body);
+    }
+
+    // Everything the sheet says about the act shown.
+    private void Fill(VBoxContainer column)
+    {
+        var numeral = Numeral(_act);
 
         // (a) The full act, as it always was.
         var full = new Button { Text = "Full act trial", Name = "FullTrialButton", CustomMinimumSize = new Vector2(0, 40) };
@@ -113,16 +186,12 @@ public partial class TrialPanel : PanelContainer
             }
         }
 
-        var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
-        var cancel = new Button { Text = "Back", CustomMinimumSize = new Vector2(120, 40) };
-        cancel.Pressed += () => _onCancel();
-        actions.AddChild(cancel);
-        column.AddChild(actions);
     }
 
     // Starting and taking up both report through the playback; a failed resume says so by returning false.
     private void Begin(Func<bool> start)
     {
+        _lastAct = _act;
         if (start() && _host.Play?.Error is null)
             _onStarted();
     }
@@ -134,6 +203,9 @@ public partial class TrialPanel : PanelContainer
     });
 
     public const string OverlayName = "TrialOverlay";
+
+    public static void Open(Godot.Node screen, GameHost host, Action onStarted) =>
+        Open(screen, host, DefaultAct(host), onStarted);
 
     public static void Open(Godot.Node screen, GameHost host, int act, Action onStarted)
     {

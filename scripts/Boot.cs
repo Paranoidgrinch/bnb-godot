@@ -334,6 +334,11 @@ public partial class Boot : Control
             NewRunPanel.Open(this, (_, _) => { });
             _ = CaptureThenQuit("user://smoke-newrun.png");
         }
+        // THE TRIALS ENTRY (`--smoke-trials`): the menu with its one "Trials" button, the sheet it opens, and the sheet
+        // after another act's tab is pressed. Pictures, plus a line saying which tabs there are and that a tab
+        // really changes the act listed.
+        if (userArgs.Contains("--smoke-trials") && !DisplayServer.GetName().Contains("headless"))
+            _ = SmokeTrials(host);
         // The character screen "New run ▸" opens, and — with `--ask` — the tutorial question it puts the first time a
         // character is taken. Pictures: what this screen has to get right is that a locked card says how it opens.
         if (userArgs.Contains("--smoke-characters") && !DisplayServer.GetName().Contains("headless"))
@@ -960,6 +965,35 @@ public partial class Boot : Control
         GetTree().Quit();
     }
 
+    private async System.Threading.Tasks.Task SmokeTrials(GameHost host)
+    {
+        async System.Threading.Tasks.Task Shot(string file)
+        {
+            for (var i = 0; i < 4; i++)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            GetViewport().GetTexture().GetImage().SavePng(file);
+        }
+        await Shot("user://smoke-trials-menu.png");
+        var menuTrials = FindChildren("TrialButton*", nameof(Button), owned: false).Count;
+        var entry = FindChild("TrialsButton", recursive: true, owned: false) as Button;
+        entry?.EmitSignal(BaseButton.SignalName.Pressed);
+        await Shot("user://smoke-trials-sheet.png");
+        var tabs = FindChildren("TrialAct?", nameof(Button), owned: false).Cast<Button>().ToList();
+        string Listed() => string.Join(",", FindChildren("TrialEncounter_*", nameof(Button), owned: false).Take(2).Select(n => n.Name.ToString()));
+        var before = Listed();
+        var other = tabs.FirstOrDefault(t => !t.ButtonPressed);
+        if (other is not null)
+            other.ButtonPressed = true;   // as a click does: the group lets the others go
+        await Shot("user://smoke-trials-other.png");
+        var after = Listed();
+        var lit = tabs.Where(t => t.ButtonPressed).Select(t => t.Text).ToList();
+        var ok = entry is not null && menuTrials == 0 && tabs.Count == TrialPanel.Acts(host).Count
+            && (other is null || (before != after && lit.Count == 1 && lit[0] == other.Text));
+        GD.Print($"smoke-trials: one Trials entry={entry is not null}, per-act menu buttons={menuTrials}, "
+            + $"tabs={string.Join(" ", tabs.Select(t => t.Text))}, switched to {other?.Text ?? "—"}: {before} → {after} · {(ok ? "ok" : "FAIL")}");
+        GetTree().Quit(ok ? 0 : 1);
+    }
+
     private async System.Threading.Tasks.Task CaptureThenQuit(string file)
     {
         for (var i = 0; i < 4; i++)
@@ -1145,17 +1179,17 @@ public partial class Boot : Control
 
         // THE ENCOUNTER TRIALS (GameHost.StartTrial): every fight of an act in turn, the Lieutenant mended after each —
         // a balance instrument played by hand, one save slot per act. A later act opens on the deck an average run
-        // would bring to its door. One entry per act (user, 2026-11-05): it asks whether to walk the full act or one
-        // of its fights on its own, and offers to continue either (TrialPanel). An act with a trial in the game
-        // document shows up here by itself.
-        foreach (var act in Enumerable.Range(1, 5).Where(host.HasTrial))
+        // would bring to its door. ONE entry for all of them (user, 2026-11-17; one per act made the menu
+        // unreadable): TrialPanel carries a tab per act, asks whether to walk the full act or one of its fights on
+        // its own, and offers to continue either. An act with a trial in the game document shows up there by itself.
+        // ⚠ Trials stand outside the progression: whatever the player owns, they play the full pool.
+        if (TrialPanel.Acts(host).Count > 0)
         {
-            var numeral = TrialPanel.Numeral(act);
-            var trial = new Button { Text = $"Encounter trial (Act {numeral})", Name = $"TrialButton{act}", CustomMinimumSize = new Vector2(160, 44) };
-            trial.TooltipText = $"The full Act {numeral} trial, or one of its fights on its own, as the Lieutenant. "
+            var trials = new Button { Text = "Trials", Name = "TrialsButton", CustomMinimumSize = new Vector2(160, 44) };
+            trials.TooltipText = "The encounter trials, act by act, as the Lieutenant: the full act or one fight on its own. "
                 + "Every fight is written down for the balance.";
-            trial.Pressed += () => TrialPanel.Open(this, host, act, GoToSession);
-            actions.AddChild(trial);
+            trials.Pressed += () => TrialPanel.Open(this, host, GoToSession);
+            actions.AddChild(trials);
         }
 
         // THE ARCHIVE IS A MAIN-MENU ITEM, not a thing inside Settings. It is not a preference — it is the
