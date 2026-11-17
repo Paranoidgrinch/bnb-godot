@@ -71,6 +71,15 @@ public partial class MusicDirector : Godot.Node
     private static readonly HashSet<Track> Resumable =
         [Track.ActOne, Track.ActTwo, Track.ActThree, Track.ActFour, Track.ActFive];
 
+    // WHERE A TRACK IS ENTERED the first time it plays. The title theme spends its first 26 seconds building
+    // from near silence (10-15 dB under its body), so a fresh start of the game sat in a long hush; it is
+    // entered at 19 s instead, where it rises into the first full swell (sample B, user 2026-11-17). The loop still runs from 0, so the intro is heard on
+    // the second pass. Measured per second (RMS) from the file; a track not listed starts at its beginning.
+    private static readonly Dictionary<Track, float> Entry = new()
+    {
+        [Track.Title] = 19f,
+    };
+
     private readonly Dictionary<Track, float> _resume = [];
     private readonly Dictionary<Track, AudioStream?> _streams = [];
     private AudioStreamPlayer _a = null!;
@@ -196,14 +205,15 @@ public partial class MusicDirector : Godot.Node
         var incoming = Idle;
         incoming.Stream = stream;
         incoming.VolumeDb = -60f;
-        var from = Resumable.Contains(track) ? _resume.GetValueOrDefault(track) : 0f;
+        var resuming = Resumable.Contains(track) && _resume.ContainsKey(track);
+        var from = resuming ? _resume[track] : Entry.GetValueOrDefault(track);
         incoming.Play(from);
 
         Crossfade(incoming, Live);
         _bIsCurrent = !_bIsCurrent;
         var previous = Current;
         Current = track;
-        LastAction = $"{previous} → {track}" + (from > 0.01f ? $" (resumed at {from:0.0}s)" : "");
+        LastAction = $"{previous} → {track}" + (from <= 0.01f ? "" : resuming ? $" (resumed at {from:0.0}s)" : $" (entered at {from:0.0}s)");
     }
 
     private void Crossfade(AudioStreamPlayer incoming, AudioStreamPlayer outgoing)
