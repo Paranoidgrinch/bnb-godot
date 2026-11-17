@@ -363,6 +363,10 @@ public partial class Boot : Control
         // really changes the act listed.
         if (userArgs.Contains("--smoke-trials") && !DisplayServer.GetName().Contains("headless"))
             _ = SmokeTrials(host);
+        // THE SHELLS (`--smoke-shells`): the payout rule, the first win opening the box, a streak and its end, the
+        // box and the modifier tab, on a profile put back as it was afterwards.
+        if (userArgs.Contains("--smoke-shells") && !DisplayServer.GetName().Contains("headless"))
+            _ = SmokeShells(host);
         // The character screen "New run ▸" opens, and — with `--ask` — the tutorial question it puts the first time a
         // character is taken. Pictures: what this screen has to get right is that a locked card says how it opens.
         if (userArgs.Contains("--smoke-characters") && !DisplayServer.GetName().Contains("headless"))
@@ -989,6 +993,156 @@ public partial class Boot : Control
         GetTree().Quit();
     }
 
+    private async System.Threading.Tasks.Task SmokeShells(GameHost host)
+    {
+        async System.Threading.Tasks.Task Shot(string file)
+        {
+            for (var i = 0; i < 4; i++)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            GetViewport().GetTexture().GetImage().SavePng(file);
+        }
+        string[] files = ["user://metastate.json", "user://shell-statement.json"];
+        var backup = files.ToDictionary(f => f, f => Godot.FileAccess.FileExists(f) ? Godot.FileAccess.GetFileAsString(f) : null);
+        var lines = new List<string>();
+        var ok = true;
+        void Check(bool passed, string what)
+        {
+            lines.Add($"  {(passed ? "ok  " : "FAIL")} {what}");
+            ok &= passed;
+        }
+        try
+        {
+            var meta = host.Meta;
+            foreach (var flag in meta.Flags.Where(f => f.StartsWith("bnb.shells", StringComparison.Ordinal) || f.StartsWith("bnb.mod.", StringComparison.Ordinal)).ToList())
+                meta.ClearFlag(flag);
+            foreach (var counter in meta.Counters.Keys.Where(c => c.StartsWith("bnb.shells", StringComparison.Ordinal)).ToList())
+                meta.SetCounter(counter, 0);
+            host.SaveMeta(meta);
+            Godot.DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath("user://shell-statement.json"));
+
+            RunModifier M(string id) => Shells.Find(id)!;
+            Check(Shells.Payout([], 0).Total == 1, "a plain win pays 1");
+            Check(Shells.Payout([M("overtime"), M("statute_of_limitations"), M("spite_filing"), M("strict_filing"), M("inherited_debt")], 0).Total == 6,
+                "all five bad ones: 1 + 6, capped at 6");
+            Check(Shells.Payout([M("second_opinion"), M("signing_bonus")], 0).Total == 0, "two good ones: never below 0");
+            Check(Shells.Payout([M("overtime")], 2).Total == 5, "third win in a row with Overtime: 1 + 2 + 2 = 5");
+            Check(Shells.Payout([M("overtime"), M("statute_of_limitations"), M("spite_filing"), M("strict_filing"), M("inherited_debt")], 3).Total == 9,
+                "the streak comes on top of the cap");
+
+            SafeDepositPanel.Open(this, host);
+            await Shot("user://smoke-shells-sealed.png");
+            Check(!Shells.IsOpen(host.Meta) && (FindChild("ShellBalance", true, false) as Label)?.Text == "Sealed", "the box is sealed before the first win");
+            GetNodeOrNull(SafeDepositPanel.OverlayName)?.Free();
+            NewRunPanel.Open(this, (_, _) => { }, null, host, "lieutenant");
+            await Shot("user://smoke-shells-newrun-sealed.png");
+            Check(FindChild("ModifierSwitches", true, false) is null, "no modifier switches before the first win");
+            GetNodeOrNull(NewRunPanel.OverlayName)?.Free();
+
+            var first = Shells.Book(host, "lieutenant", "The Lieutenant", true, []);
+            Check(first?.Total == 1 && Shells.IsOpen(host.Meta) && Shells.Balance(host.Meta) == 1 && Shells.Streak(host.Meta, "lieutenant") == 1,
+                "the first win pays 1 shell and opens the box");
+            var second = Shells.Book(host, "lieutenant", "The Lieutenant", true, []);
+            Check(second?.Total == 2 && Shells.Balance(host.Meta) == 3 && Shells.Streak(host.Meta, "lieutenant") == 2, "the second win in a row pays 2");
+            Shells.Book(host, "lieutenant", "The Lieutenant", false, []);
+            Check(Shells.Balance(host.Meta) == 3 && Shells.Streak(host.Meta, "lieutenant") == 0, "a loss pays nothing and ends the streak");
+            Shells.Book(host, "lieutenant", "The Lieutenant", true, []);
+            Check(Shells.Balance(host.Meta) == 4 && Shells.Streak(host.Meta, "lieutenant") == 1, "the next win starts a new streak");
+
+            var ready = Shells.Catalog.Where(m => Shells.IsReady(host.Blueprint, m)).ToList();
+            var unready = Shells.Catalog.FirstOrDefault(m => !Shells.IsReady(host.Blueprint, m));
+            if (unready is not null)
+                Check(!Shells.Buy(host, unready) && Shells.Balance(host.Meta) == 4, $"{unready.Name} is not built and cannot be bought");
+            if (ready.FirstOrDefault(m => m.Price <= Shells.Balance(host.Meta)) is { } buyable)
+            {
+                Check(Shells.Buy(host, buyable) && Shells.Owns(host.Meta, buyable) && Shells.Balance(host.Meta) == 4 - buyable.Price,
+                    $"{buyable.Name} bought for {buyable.Price}");
+                Shells.Choose(host, buyable, true);
+                Shells.Arm(host, daily: false);
+                var armed = Shells.ForRun(host.Blueprint, host.Meta);
+                Check(armed.Characters.All(c => c.Start.StartingRelics.Contains(buyable.RelicId)), $"an armed run starts with {buyable.RelicId}");
+                Shells.Disarm(host);
+                Check(ReferenceEquals(Shells.ForRun(host.Blueprint, host.Meta), host.Blueprint), "disarmed, the next run is untouched");
+                Shells.Arm(host, daily: true);
+                Check(ReferenceEquals(Shells.ForRun(host.Blueprint, host.Meta), host.Blueprint), "today's run plays without modifiers");
+                Shells.Disarm(host);
+            }
+            lines.Add($"  ({ready.Count} of {Shells.Catalog.Count} modifiers built)");
+
+            // A real run with every built modifier switched on: what each does to the start and the first fight.
+            meta = host.Meta;
+            meta.SetCounter(Shells.BalanceCounter, 100);
+            host.SaveMeta(meta);
+            foreach (var modifier in ready)
+            {
+                Shells.Buy(host, modifier);
+                Shells.Choose(host, modifier, true);
+            }
+            Shells.Arm(host, daily: false);
+            var plainHealth = host.Blueprint.Characters.First(c => c.Id == "lieutenant").Start.MaxHealth;
+            host.StartNewRun(seed: 4242, "lieutenant");
+            var run = host.Play?.Session?.Run;
+            Check(run is not null && Shells.OfRun(run).Count == ready.Count, $"the run carries its {ready.Count} modifier(s) as run flags");
+            Check(!Shells.Chosen(host.Meta, host.Blueprint).Any(m => host.Meta.HasFlag("bnb.mod.run." + m.Id)), "the profile let go of them after the start");
+            if (run is not null)
+            {
+                var relics = run.Relics.Select(r => r.Definition.Id.Value).ToList();
+                Check(ready.All(m => relics.Contains(m.RelicId)), $"the run wears {string.Join(", ", ready.Select(m => m.RelicId))}");
+                if (ready.Any(m => m.Id == "glass_seal"))
+                    Check(run.Health.Max == plainHealth - plainHealth / 2 && run.Health.Current == run.Health.Max,
+                        $"Glass Seal: max HP {plainHealth} → {run.Health.Max}");
+                if (ready.Any(m => m.Id == "inherited_debt"))
+                    Check(run.Deck.Count(c => c.DefinitionId.value == "tomb_curse") == 2, "Inherited Debt: two curses in the deck");
+                if (ready.Any(m => m.Id == "signing_bonus"))
+                    Check(relics.Count(id => !id.StartsWith("mod_", StringComparison.Ordinal)) > host.Blueprint.Characters.First(c => c.Id == "lieutenant").Start.StartingRelics.Count,
+                        $"Signing Bonus: an extra relic ({string.Join(", ", relics.Where(id => !id.StartsWith("mod_", StringComparison.Ordinal)))})");
+                if (ready.Any(m => m.Id == "overtime") && host.Play is { } play)
+                {
+                    var strength = -1;
+                    for (var step = 0; step < 400 && strength < 0; step++)
+                    {
+                        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                        var session = play.Session!;
+                        if (play.CombatDriver?.Current is { IsHeroTurn: true } fight)
+                            strength = fight.State.Combatants.Where(c => c.Id != fight.HeroId && c.IsAlive)
+                                .Select(c => c.Statuses.Where(st => st.DefinitionId.value == "strength").Sum(st => st.Stacks)).DefaultIfEmpty(0).Min();
+                        else if (session.IsAwaitingNodeChoice)
+                            session.PickNode((session.PendingNodeChoices.FirstOrDefault(n => n.Payload is RogueDeck.Run.EncounterRef) ?? session.PendingNodeChoices[0]).Id.Value);
+                        else if (session.IsAwaitingInterlude)
+                            session.Continue();
+                        else if (session.IsAwaitingChoice)
+                            session.Pick(session.PendingChoices[0].Id);
+                        else if (session.IsAwaitingEntities)
+                            session.PickEntities([0]);
+                    }
+                    Check(strength == 1, $"Overtime: every enemy of the first Act I fight has 1 Strength (weakest has {strength})");
+                }
+            }
+            host.AbandonRunInMemory();
+            await Shot("user://smoke-shells-run.png");
+
+            SafeDepositPanel.Open(this, host);
+            await Shot("user://smoke-shells-box.png");
+            GetNodeOrNull(SafeDepositPanel.OverlayName)?.Free();
+            NewRunPanel.Open(this, (_, _) => { }, null, host, "lieutenant");
+            await Shot("user://smoke-shells-newrun.png");
+            Check(FindChild("ModifierPayout", true, false) is Label { Text.Length: > 0 } || ready.Count == 0, "the run sheet shows the payout");
+            GetNodeOrNull(NewRunPanel.OverlayName)?.Free();
+        }
+        finally
+        {
+            foreach (var (file, text) in backup)
+            {
+                if (text is null)
+                    Godot.DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(file));
+                else
+                    using (var f = Godot.FileAccess.Open(file, Godot.FileAccess.ModeFlags.Write))
+                        f?.StoreString(text);
+            }
+        }
+        GD.Print("smoke-shells:\n" + string.Join("\n", lines) + $"\nsmoke-shells: {(ok ? "PASS" : "FAIL")}");
+        GetTree().Quit(ok ? 0 : 1);
+    }
+
     private async System.Threading.Tasks.Task SmokeTrials(GameHost host)
     {
         async System.Threading.Tasks.Task Shot(string file)
@@ -1207,6 +1361,14 @@ public partial class Boot : Control
         // unreadable): TrialPanel carries a tab per act, asks whether to walk the full act or one of its fights on
         // its own, and offers to continue either. An act with a trial in the game document shows up there by itself.
         // ⚠ Trials stand outside the progression: whatever the player owns, they play the full pool.
+        // THE SAFE DEPOSIT BOX: the player's own box between runs — shells, statement, run modifiers (Shells).
+        var box = new Button { Text = "Safe Deposit Box", Name = "SafeDepositButton", CustomMinimumSize = new Vector2(180, 44) };
+        box.TooltipText = Shells.IsOpen(host.Meta)
+            ? $"{Shells.Balance(host.Meta)} shell(s). Buy run modifiers with them."
+            : "Sealed until your first won run.";
+        box.Pressed += () => SafeDepositPanel.Open(this, host);
+        actions.AddChild(box);
+
         if (TrialPanel.Acts(host).Count > 0)
         {
             var trials = new Button { Text = "Trials", Name = "TrialsButton", CustomMinimumSize = new Vector2(160, 44) };
@@ -1334,9 +1496,10 @@ public partial class Boot : Control
     private void OpenNewRun(GameHost host, string character, int? seed = null) =>
         NewRunPanel.Open(this, (generator, chosen) =>
         {
-            host.StartNewRun(seed: chosen ?? RunSeeds.Random(), character, mapGenerator: generator);
+            host.StartNewRun(seed: chosen ?? RunSeeds.Random(), character, mapGenerator: generator,
+                modifiers: true, daily: chosen == RunSeeds.Daily(DateTime.UtcNow));
             GoToSession();
-        }, seed);
+        }, seed, host, character);
 
     // WHO ARE YOU — asked once per machine (PlayerIdentity). Modal on purpose: the name goes on every run this
     // machine records, and a run started before it was given would be a run nobody played.

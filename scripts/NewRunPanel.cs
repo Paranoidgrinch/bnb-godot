@@ -24,12 +24,17 @@ public partial class NewRunPanel : PanelContainer
     private readonly int? _presetSeed;
     private string _choice = RunPreferences.MapGenerator;
     private LineEdit _seed = null!;
+    private readonly GameHost? _host;
+    private readonly string? _character;
+    private Label? _payout;
 
-    public NewRunPanel(Action<string, int?> onBegin, Action onCancel, int? presetSeed = null)
+    public NewRunPanel(Action<string, int?> onBegin, Action onCancel, int? presetSeed = null, GameHost? host = null, string? character = null)
     {
         _onBegin = onBegin;
         _onCancel = onCancel;
         _presetSeed = presetSeed;
+        _host = host;
+        _character = character;
     }
 
     public override void _Ready()
@@ -57,6 +62,8 @@ public partial class NewRunPanel : PanelContainer
         _choice = MapGenerators.Strategic;
 
         column.AddChild(SeedRow());
+        if (_host is not null && _character is not null)
+            column.AddChild(ModifierBox(_host, _character));
 
         var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
         actions.AddThemeConstantOverride("separation", 10);
@@ -122,10 +129,92 @@ public partial class NewRunPanel : PanelContainer
         return box;
     }
 
+    // THE MODIFIER TAB (Shells): every modifier bought, with its switch, and what a win of this run would pay.
+    // Closed until the first won run; today's run plays without modifiers.
+    private Control ModifierBox(GameHost host, string character)
+    {
+        var box = new VBoxContainer { Name = "ModifierBox" };
+        box.AddThemeConstantOverride("separation", 4);
+        var heading = new Label { Text = "Modifiers" };
+        heading.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
+        box.AddChild(heading);
+        var meta = host.Meta;
+        if (!Shells.IsOpen(meta))
+        {
+            box.AddChild(Muted("Modifiers open with your first won run: it pays your first shell."));
+            return box;
+        }
+        var owned = Shells.Catalog.Where(m => Shells.Owns(meta, m) && Shells.IsReady(host.Blueprint, m)).ToList();
+        if (owned.Count == 0)
+            box.AddChild(Muted("You own no modifiers yet. Buy them with shells in the Safe Deposit Box."));
+        var grid = new GridContainer { Columns = 2, Name = "ModifierSwitches" };
+        grid.AddThemeConstantOverride("h_separation", 16);
+        foreach (var modifier in owned)
+        {
+            var toggle = new CheckButton
+            {
+                Text = $"{modifier.Name}  ({ValueText(modifier.Value)})",
+                Name = $"Modifier_{modifier.Id}",
+                ButtonPressed = Shells.IsChosen(meta, modifier),
+                TooltipText = modifier.Rule,
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            };
+            toggle.Toggled += on =>
+            {
+                Shells.Choose(host, modifier, on);
+                ShowPayout();
+            };
+            grid.AddChild(toggle);
+        }
+        box.AddChild(grid);
+        _payout = new Label { Name = "ModifierPayout", AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        _payout.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
+        box.AddChild(_payout);
+        _seed.TextChanged += _ => ShowPayout();
+        ShowPayout();
+        return box;
+    }
+
+    private void ShowPayout()
+    {
+        if (_payout is null || _host is null || _character is null)
+            return;
+        var meta = _host.Meta;
+        if (RunSeeds.Parse(_seed.Text) == RunSeeds.Daily(DateTime.UtcNow))
+        {
+            _payout.Text = "Today's run is the same for everybody: it is played without modifiers. A win pays 1 shell.";
+            return;
+        }
+        var streak = Shells.Streak(meta, _character);
+        var payout = Shells.Payout(Shells.Chosen(meta, _host.Blueprint), streak);
+        var line = $"A win pays {payout.Total} shell{(payout.Total == 1 ? "" : "s")}";
+        if (payout.Capped != payout.Base + payout.Modifiers)
+            line += $" (capped at {Shells.Cap})";
+        if (streak > 0)
+            line += $" · streak: {streak} win{(streak == 1 ? "" : "s")} in a row, +{payout.Streak} included";
+        _payout.Text = line + ".";
+    }
+
+    public static string ValueText(int value) => value switch
+    {
+        > 0 => $"+{value} shell{(value == 1 ? "" : "s")}",
+        < 0 => $"−{-value} shell{(value == -1 ? "" : "s")}",
+        _ => "±0",
+    };
+
+    private static Label Muted(string text)
+    {
+        var label = new Label { Text = text, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        label.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+        label.AddThemeFontSizeOverride("font_size", 13);
+        return label;
+    }
+
     public const string OverlayName = "NewRunOverlay";
 
     // The dimmed sheet, the same one BugReportPanel hangs on. `onBegin` is handed the chosen generator.
-    public static void Open(Godot.Node screen, Action<string, int?> onBegin, int? presetSeed = null)
+    public static void Open(Godot.Node screen, Action<string, int?> onBegin, int? presetSeed = null, GameHost? host = null,
+        string? character = null)
     {
         if (screen.GetNodeOrNull(OverlayName) is not null)
             return;
@@ -145,7 +234,7 @@ public partial class NewRunPanel : PanelContainer
                 onBegin(generator, seed);
             },
             () => screen.GetNodeOrNull(OverlayName)?.QueueFree(),
-            presetSeed)
+            presetSeed, host, character)
         { Name = nameof(NewRunPanel) });
         veil.AddChild(center);
         screen.AddChild(veil);

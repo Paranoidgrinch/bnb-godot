@@ -313,7 +313,10 @@ public partial class GameHost : Godot.Node
     // `--count-unlocks` lets a probe check the unlocks on purpose.
     public bool IsProbe { get; private set; }
 
-    public void StartNewRun(int seed, string? characterId = null, int? health = null, string? mapGenerator = null)
+    // `modifiers`: a run started from the menu plays with the run modifiers the player chose (Shells); `daily`
+    // marks today's run, which plays without them.
+    public void StartNewRun(int seed, string? characterId = null, int? health = null, string? mapGenerator = null,
+        bool modifiers = false, bool daily = false)
     {
         var args = OS.GetCmdlineUserArgs();
         IsProbe = (health is not null || args.Any(a => a.StartsWith("--sim", System.StringComparison.Ordinal)
@@ -327,9 +330,18 @@ public partial class GameHost : Godot.Node
         var generator = mapGenerator ?? RunPreferences.MapGenerator;
         // The profile as the run starts on it, read BEFORE the run does — unlocks become run flags, so a replay
         // needs exactly the profile this run saw.
+        if (modifiers && !IsProbe)
+        {
+            // A new run over a run still saved gives that one up: its streak ends.
+            if (HasSave && RunSaveJson.FromJson(Godot.FileAccess.GetFileAsString(SavePath)) is { Result: RunResult.Ongoing } given)
+                Shells.Abandoned(this, given.CharacterId ?? Blueprint.Characters.FirstOrDefault()?.Id ?? "");
+            Shells.Arm(this, daily);
+        }
         var meta = Meta;
-        Play.Start(health is { } hp ? WithHealth(Blueprint, hp) : Blueprint, seed, interactive: true, characterId,
+        var blueprint = Shells.ForRun(Blueprint, meta);
+        Play.Start(health is { } hp ? WithHealth(blueprint, hp) : blueprint, seed, interactive: true, characterId,
             generator);
+        Shells.Disarm(this);
         if (Play.Error is null && health is null)
             RunLog.Begin(Play, seed, characterId, generator, meta, ContentHash);
         EmitChanged();
@@ -428,6 +440,8 @@ public partial class GameHost : Godot.Node
 
     public void AbandonRun()
     {
+        if (Play?.Session is { IsComplete: false } open && !IsTutorial && !IsMultiplayer && !IsProbe && !IsTrial)
+            Shells.Abandoned(this, open.Run.CharacterId ?? Blueprint.Characters.FirstOrDefault()?.Id ?? "");
         RunLog.Abandon();
         Play?.Dispose();
         Play = null;
@@ -453,6 +467,7 @@ public partial class GameHost : Godot.Node
             RunHistory.Observe(Play, RunLog.Current);
             RunLog.Observe(this);
             CharacterUnlocks.Observe(this);
+            Shells.Observe(this);
         }
         // A table's run is the host's to send when it ends (RunLog.BeginTable).
         if (IsMultiplayer)
