@@ -261,6 +261,30 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
+        // `--smoke-trial-random [--trial-act=N]`: the full trial with its starting rewards drawn at random. It
+        // passes when every stop before the first fight is answered and the walk waits in front of that fight,
+        // the deck and the relics grown past the Lieutenant's own start.
+        if (userArgs.Contains("--smoke-trial-random"))
+        {
+            var act = int.TryParse(userArgs.FirstOrDefault(a => a.StartsWith("--trial-act=", StringComparison.Ordinal))?["--trial-act=".Length..], out var a) ? a : 2;
+            host.StartTrial(act);
+            var startDeck = host.Play?.Session?.Run.Deck.Count ?? 0;
+            var startRelics = host.Play?.Session?.Run.Relics.Count ?? 0;
+            host.StartTrial(act, randomStart: true);
+            var session = host.Play?.Session;
+            var nodes = session?.Run.Map.Nodes ?? [];
+            var stops = nodes.TakeWhile(n => n.Payload is EventRef).Count();
+            var deck = session?.Run.Deck.Count ?? 0;
+            var relics = session?.Run.Relics.Count ?? 0;
+            var waiting = session is { IsComplete: false, Error: null } && host.Play?.CombatDriver?.Current is null
+                && (session.IsAwaitingInterlude || session.IsAwaitingNodeChoice) && session.Run.Position == stops - 1;
+            var ok = waiting && deck > startDeck && relics > startRelics;
+            GD.Print($"smoke-trial-random: act {act}, {stops} stops before the first fight, stands at {session?.Run.Position}, "
+                + $"interlude={session?.IsAwaitingInterlude}, error={session?.Error ?? host.Play?.Error ?? "none"} · deck {startDeck} → {deck}, "
+                + $"relics {startRelics} → {relics} · {(ok ? "PASS" : "FAIL")}");
+            GetTree().Quit(ok ? 0 : 1);
+            return;
+        }
         // The encounter trial, walked by its probe (SessionTrial.SmokeTrial).
         if (userArgs.Contains("--smoke-trial"))
         {

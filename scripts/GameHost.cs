@@ -217,7 +217,9 @@ public partial class GameHost : Godot.Node
     }
 
     // `encounter`: one fight of the act on its own, after the packages before its stage; null walks the whole act.
-    public void StartTrial(int act = 1, string? encounter = null)
+    // `randomStart`: every reward stop before the walk's first fight is answered at random (user, 2026-11-17) —
+    // a later act's catch-up is ten stops and more, and a trial is often about the fights, not the drafting.
+    public void StartTrial(int act = 1, string? encounter = null, bool randomStart = false)
     {
         IsTutorial = false;
         IsMultiplayer = false;
@@ -235,7 +237,54 @@ public partial class GameHost : Godot.Node
             using var which = Godot.FileAccess.Open(TrialLog.EncounterOfSavePath(act), Godot.FileAccess.ModeFlags.Write);
             which?.StoreString(encounter);
         }
+        if (randomStart && Play.Error is null)
+        {
+            RandomizeStart(Play, new Random(RunSeeds.Random()));
+            AutoSave();
+        }
         EmitChanged();
+    }
+
+    // Answer every stop before the walk's first fight with a random pick, and stop at the interlude in front of
+    // that fight: the player meets the first fight with a deck they can look at first. A pick that may be
+    // skipped is never skipped. Returns how many answers it gave.
+    public static int RandomizeStart(RunPlayback play, Random random)
+    {
+        if (play.Session is not { } session)
+            return 0;
+        var nodes = session.Run.Map.Nodes;
+        var stops = nodes.TakeWhile(n => n.Payload is RogueDeck.Run.EventRef).Count();
+        int Here()
+        {
+            var run = session.Run;
+            if (run.CurrentNodeId is { } id)
+                return nodes.ToList().FindIndex(n => n.Id == id);
+            return run.Position;
+        }
+        var answers = 0;
+        for (var guard = 0; guard < 2000 && !session.IsComplete && session.Error is null && play.CombatDriver?.Current is null; guard++)
+        {
+            if (session.IsAwaitingInterlude)
+            {
+                if (Here() + 1 >= stops)
+                    break;
+                session.Continue();
+            }
+            else if (session.IsAwaitingNodeChoice)
+            {
+                if (session.PendingNodeChoices[0].Payload is not RogueDeck.Run.EventRef)
+                    break;
+                session.PickNode(session.PendingNodeChoices[0].Id.Value);
+            }
+            else if (session.IsAwaitingChoice && Here() < stops)
+                session.Pick(session.PendingChoices[random.Next(session.PendingChoices.Count)].Id);
+            else if (session.PendingEntities is { } ask && Here() < stops)
+                session.PickEntities([.. Enumerable.Range(0, ask.Displays.Count).OrderBy(_ => random.Next()).Take(ask.Count)]);
+            else
+                break;
+            answers++;
+        }
+        return answers;
     }
 
     // Take the trial up again: from its own save, or — `retry` — from the first turn of the fight it was lost in.

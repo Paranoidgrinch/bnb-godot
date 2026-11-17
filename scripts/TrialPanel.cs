@@ -92,6 +92,8 @@ public partial class TrialPanel : PanelContainer
     // continued, else the first.
     private static int? _lastAct;
 
+    public static bool RandomStart { get; set; }
+
     public static int DefaultAct(GameHost host)
     {
         var acts = Acts(host);
@@ -121,11 +123,27 @@ public partial class TrialPanel : PanelContainer
     {
         var numeral = Numeral(_act);
 
+        // From Act II on, a walk opens on the catch-up of every earlier act: a dozen stops of picks. The switch
+        // lets them be drawn at random instead (user, 2026-11-17). It holds for the session, for every act.
+        if (_act >= 2)
+        {
+            var random = new CheckButton
+            {
+                Text = "Random starting rewards",
+                Name = "TrialRandomStart",
+                ButtonPressed = RandomStart,
+                TooltipText = "Every reward before the first fight is picked at random: cards, relics, improvements and removals. "
+                    + "The rewards between the stages stay yours to choose.",
+            };
+            random.Toggled += on => RandomStart = on;
+            column.AddChild(random);
+        }
+
         // (a) The full act, as it always was.
         var full = new Button { Text = "Full act trial", Name = "FullTrialButton", CustomMinimumSize = new Vector2(0, 40) };
         full.TooltipText = $"Every Act {numeral} fight in stage order as the Lieutenant, healed after each, rewards between the stages. "
             + "Every fight is written down for the balance.";
-        full.Pressed += () => Begin(() => _host.StartTrial(_act));
+        full.Pressed += () => Begin(() => _host.StartTrial(_act, randomStart: RandomStart && _act >= 2));
         column.AddChild(full);
         if (_host.HasTrialSave(_act))
         {
@@ -181,7 +199,7 @@ public partial class TrialPanel : PanelContainer
                     CustomMinimumSize = new Vector2(0, 34),
                     TooltipText = $"{single.Encounter} — {(packages == 0 ? "no rewards first" : $"{packages} reward package(s) first")}",
                 };
-                fight.Pressed += () => Begin(() => _host.StartTrial(_act, single.Encounter));
+                fight.Pressed += () => Begin(() => _host.StartTrial(_act, single.Encounter, RandomStart && _act >= 2));
                 list.AddChild(fight);
             }
         }
