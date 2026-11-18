@@ -158,6 +158,8 @@ public partial class SessionScreen
         panel.QueueFree();
         var saved = false;
         var retried = 0;
+        // The room a trial's fight is fought in: shown, like any fight's (a trial stands on no map node).
+        var pictured = false;
         for (var step = 0; step < 6000 && Lines().Length < 2; step++)
         {
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -176,17 +178,18 @@ public partial class SessionScreen
             }
             SmokeTrialStep(host, session, play);
             Rebuild();
+            pictured |= _combatRoot.Visible && _actPicture is { Visible: true, Texture: not null };
         }
         var lines = Lines();
         var records = lines.Select(l => System.Text.Json.Nodes.JsonNode.Parse(l)!).ToList();
         var marked = records.Count(r => (string?)r["mode"] == "encounter" && (string?)r["encounter"] == encounter && (int?)r["act"] == act);
         var changed = untouched.Where((path, i) => Stamp(path) != stamps[i]).ToList();
-        var ok = sheet && lines.Length == 2 && marked == 2 && retried == 1 && saved && changed.Count == 0 && host.IsTrialEncounter;
+        var ok = sheet && lines.Length == 2 && marked == 2 && retried == 1 && saved && changed.Count == 0 && host.IsTrialEncounter && pictured;
         GD.Print($"smoke-trial-encounter: act {act} {encounter} after {packages} package(s) · sheet lists {listed} of "
             + $"{host.TrialSingles(act).Count} fights{(sheet ? "" : " (WRONG)")} · logged {lines.Length} fights "
             + $"({records.Count(r => (bool?)r["won"] == true)} won, {marked} marked encounter), retried {retried}, own slot saved={saved}, "
             + $"untouched: {(changed.Count == 0 ? "all" : "WRITTEN " + string.Join(", ", changed))} "
-            + $"· deck {Session?.Run.Deck.Count} · {(ok ? "PASS" : "FAIL")}");
+            + $"· deck {Session?.Run.Deck.Count} · background {(pictured ? "shown" : "NOT SHOWN")} · {(ok ? "PASS" : "FAIL")}");
         GetTree().Quit(ok ? 0 : 1);
     }
 }

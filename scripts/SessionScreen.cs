@@ -2751,8 +2751,12 @@ public partial class SessionScreen : Control
     // it without changing.
     private static string? PictureForRoom(InteractiveRunSession session)
     {
+        // A trial walks a fixed line of rooms and stands on no map node: there the room is the walk's position.
+        var nodes = session.Run.Map.Nodes;
         var here = session.Run.CurrentNodeId?.Value;
-        var node = here is null ? null : session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == here);
+        var node = here is not null ? nodes.FirstOrDefault(n => n.Id.Value == here)
+            : session.Run.Position >= 0 && session.Run.Position < nodes.Count ? nodes[session.Run.Position]
+            : null;
         return node?.Payload is EncounterRef fight
             ? GameHost.Instance.Blueprint.Presentation.Encounters.GetValueOrDefault(fight.Id.Value)?.Art
             : null;
