@@ -15,6 +15,9 @@ public partial class SafeDepositPanel : PanelContainer
     private readonly GameHost _host;
     private readonly Action _onClose;
     private VBoxContainer _body = null!;
+    private static string _tab = "drawers";
+
+    public static string Tab { get => _tab; set => _tab = value; }
 
     public SafeDepositPanel(GameHost host, Action onClose)
     {
@@ -39,6 +42,29 @@ public partial class SafeDepositPanel : PanelContainer
         title.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
         column.AddChild(title);
 
+        // Two compartments: the drawers (the card progression) and the shells (the run modifiers).
+        var tabs = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center, Name = "SafeDepositTabs" };
+        tabs.AddThemeConstantOverride("separation", 6);
+        var group = new ButtonGroup();
+        foreach (var (id, label) in new[] { ("drawers", "Drawers"), ("shells", "Shell compartment") })
+        {
+            var tab = new Button
+            {
+                Text = label, Name = $"SafeDepositTab_{id}", ToggleMode = true, ButtonGroup = group,
+                ButtonPressed = _tab == id, CustomMinimumSize = new Vector2(180, 34),
+            };
+            var chosen = id;
+            tab.Toggled += on =>
+            {
+                if (!on || _tab == chosen)
+                    return;
+                _tab = chosen;
+                Refill();
+            };
+            tabs.AddChild(tab);
+        }
+        column.AddChild(tabs);
+
         _body = new VBoxContainer { Name = "SafeDepositBody" };
         column.AddChild(_body);
         Fill();
@@ -61,6 +87,121 @@ public partial class SafeDepositPanel : PanelContainer
     }
 
     private void Fill()
+    {
+        if (_tab == "drawers")
+            FillDrawers();
+        else
+            FillShells();
+    }
+
+    // ── the drawers: one folder per level, sealed until it is opened here ──
+    private void FillDrawers()
+    {
+        var meta = _host.Meta;
+        var definitions = CardProgression.All(_host.Blueprint).ToList();
+        if (definitions.Count == 0)
+        {
+            _body.AddChild(Muted("No drawers yet."));
+            return;
+        }
+        foreach (var definition in definitions)
+        {
+            var hero = _host.Blueprint.Characters.FirstOrDefault(c => c.Id == definition.Character)?.Start.HeroName ?? definition.Character;
+            var xp = CardProgression.Xp(meta, definition.Character);
+            var level = CardProgression.LevelOf(definition, xp);
+            var (into, needed) = CardProgression.Progress(definition, xp);
+            var cards = CardProgression.OwnedCards(meta, definition);
+            var relics = CardProgression.OwnedRelics(meta, definition);
+            var head = new HBoxContainer();
+            head.AddThemeConstantOverride("separation", 16);
+            head.AddChild(Heading($"{hero} · level {level} of {definition.MaxLevel}"));
+            var bar = new ProgressBar
+            {
+                Name = $"XpBar_{definition.Character}", MinValue = 0, MaxValue = Math.Max(needed, 1), Value = needed == 0 ? 1 : into,
+                ShowPercentage = false, CustomMinimumSize = new Vector2(220, 18), SizeFlagsVertical = SizeFlags.ShrinkCenter,
+            };
+            var fill = new StyleBoxFlat { BgColor = MoonvineTheme.Accent };
+            fill.SetCornerRadiusAll(4);
+            var track = new StyleBoxFlat { BgColor = new Color(0, 0, 0, 0.45f) };
+            track.SetCornerRadiusAll(4);
+            bar.AddThemeStyleboxOverride("fill", fill);
+            bar.AddThemeStyleboxOverride("background", track);
+            head.AddChild(bar);
+            head.AddChild(Soft(needed == 0 ? "every folder earned" : $"{into} / {needed} XP to level {level + 1}"));
+            _body.AddChild(head);
+            _body.AddChild(Muted($"Register: {cards.Count} of {definition.AllCards.Count()} cards, {relics.Count} of {definition.AllRelics.Count()} relics. "
+                + $"XP per run: {definition.Xp.Room} a room, {definition.Xp.Elite} an elite, {definition.Xp.Boss} a boss, {definition.Xp.Win} for the win. "
+                + "Opened cards and relics can turn up from the next run on."));
+
+            var scroll = new ScrollContainer
+            {
+                CustomMinimumSize = new Vector2(0, 430), HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+                Name = $"Drawers_{definition.Character}",
+            };
+            var grid = new GridContainer { Columns = 3, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+            grid.AddThemeConstantOverride("h_separation", 8);
+            grid.AddThemeConstantOverride("v_separation", 8);
+            scroll.AddChild(grid);
+            _body.AddChild(scroll);
+            foreach (var booster in definition.Boosters)
+                grid.AddChild(Drawer(meta, definition, booster));
+        }
+    }
+
+    private Control Drawer(RogueDeck.Run.MetaState meta, ProgressionDefinition definition, ProgressionBooster booster)
+    {
+        var earned = CardProgression.IsEarned(meta, definition, booster);
+        var opened = CardProgression.IsOpened(meta, definition, booster);
+        var card = new PanelContainer { CustomMinimumSize = new Vector2(300, 0), SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        var style = new StyleBoxFlat
+        {
+            BgColor = opened ? new Color(0, 0, 0, 0.25f) : earned ? new Color(0.45f, 0.08f, 0.08f, 0.55f) : new Color(0, 0, 0, 0.45f),
+            ContentMarginLeft = 10, ContentMarginRight = 10, ContentMarginTop = 6, ContentMarginBottom = 8,
+            BorderColor = earned && !opened ? MoonvineTheme.Accent : new Color(0, 0, 0, 0),
+        };
+        style.SetBorderWidthAll(earned && !opened ? 2 : 0);
+        style.SetCornerRadiusAll(6);
+        card.AddThemeStyleboxOverride("panel", style);
+        var column = new VBoxContainer();
+        column.AddThemeConstantOverride("separation", 3);
+        card.AddChild(column);
+        var title = new Label { Text = $"Drawer {booster.Level} · {booster.Name}" };
+        title.AddThemeColorOverride("font_color", earned ? MoonvineTheme.Accent : MoonvineTheme.TextMuted);
+        column.AddChild(title);
+        if (opened)
+        {
+            var names = booster.Cards.Select(CardName).Concat(booster.Relics.Select(r => RelicName(r) + " (relic)"));
+            var list = new Label { Text = string.Join(" · ", names), AutowrapMode = TextServer.AutowrapMode.WordSmart };
+            list.AddThemeFontSizeOverride("font_size", 13);
+            list.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
+            column.AddChild(list);
+        }
+        else if (earned)
+        {
+            column.AddChild(Soft($"A sealed folder: {booster.Cards.Count} cards{(booster.Relics.Count > 0 ? $", {booster.Relics.Count} relic{(booster.Relics.Count == 1 ? "" : "s")}" : "")}."));
+            var seal = new Button { Text = "Break the seal", Name = $"OpenBooster_{definition.Character}_{booster.Level}" };
+            seal.Pressed += () =>
+            {
+                if (CardProgression.Open(_host, definition, booster))
+                    Refill();
+            };
+            column.AddChild(seal);
+        }
+        else
+        {
+            column.AddChild(Muted($"Locked until level {booster.Level}."));
+        }
+        return card;
+    }
+
+    private string CardName(string id) =>
+        _host.Blueprint.Cards.FirstOrDefault(c => c.Id == id)?.NameKey ?? id;
+
+    private string RelicName(string id) =>
+        _host.Blueprint.Relics.FirstOrDefault(r => r.Id == id)?.DisplayName ?? id;
+
+    // ── the shell compartment and the modifier register ──
+    private void FillShells()
     {
         var meta = _host.Meta;
         var open = Shells.IsOpen(meta);

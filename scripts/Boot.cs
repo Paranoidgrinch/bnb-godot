@@ -367,6 +367,10 @@ public partial class Boot : Control
         // box and the modifier tab, on a profile put back as it was afterwards.
         if (userArgs.Contains("--smoke-shells") && !DisplayServer.GetName().Contains("headless"))
             _ = SmokeShells(host);
+        // THE CARD PROGRESSION (`--smoke-progression`): XP and levels, a booster opened, a normal run held to the
+        // cards owned while a trial plays the full pool, and the drawers — on a profile put back afterwards.
+        if (userArgs.Contains("--smoke-progression") && !DisplayServer.GetName().Contains("headless"))
+            _ = SmokeProgression(host);
         // The character screen "New run ▸" opens, and — with `--ask` — the tutorial question it puts the first time a
         // character is taken. Pictures: what this screen has to get right is that a locked card says how it opens.
         if (userArgs.Contains("--smoke-characters") && !DisplayServer.GetName().Contains("headless"))
@@ -1029,6 +1033,7 @@ public partial class Boot : Control
             Check(Shells.Payout([M("overtime"), M("statute_of_limitations"), M("spite_filing"), M("strict_filing"), M("inherited_debt")], 3).Total == 9,
                 "the streak comes on top of the cap");
 
+            SafeDepositPanel.Tab = "shells";
             SafeDepositPanel.Open(this, host);
             await Shot("user://smoke-shells-sealed.png");
             Check(!Shells.IsOpen(host.Meta) && (FindChild("ShellBalance", true, false) as Label)?.Text == "Sealed", "the box is sealed before the first win");
@@ -1140,6 +1145,102 @@ public partial class Boot : Control
             }
         }
         GD.Print("smoke-shells:\n" + string.Join("\n", lines) + $"\nsmoke-shells: {(ok ? "PASS" : "FAIL")}");
+        GetTree().Quit(ok ? 0 : 1);
+    }
+
+    private async System.Threading.Tasks.Task SmokeProgression(GameHost host)
+    {
+        async System.Threading.Tasks.Task Shot(string file)
+        {
+            for (var i = 0; i < 4; i++)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            GetViewport().GetTexture().GetImage().SavePng(file);
+        }
+        string[] files = ["user://metastate.json", "user://shell-statement.json"];
+        var backup = files.ToDictionary(f => f, f => Godot.FileAccess.FileExists(f) ? Godot.FileAccess.GetFileAsString(f) : null);
+        var lines = new List<string>();
+        var ok = true;
+        void Check(bool passed, string what)
+        {
+            lines.Add($"  {(passed ? "ok  " : "FAIL")} {what}");
+            ok &= passed;
+        }
+        try
+        {
+            var lt = CardProgression.For(host.Blueprint, "lieutenant");
+            Check(lt is { StartCards.Count: 30, Boosters.Count: 12 }, "the game document carries the Lieutenant's progression");
+            if (lt is null)
+                throw new InvalidOperationException("no progression");
+            var meta = host.Meta;
+            foreach (var flag in meta.Flags.Where(f => f.StartsWith("bnb.booster.", StringComparison.Ordinal) || f.StartsWith(CardProgression.LockPrefix, StringComparison.Ordinal)).ToList())
+                meta.ClearFlag(flag);
+            meta.SetCounter("bnb.xp.lieutenant", 0);
+            host.SaveMeta(meta);
+
+            Check(CardProgression.LevelOf(lt, 0) == 1 && CardProgression.LevelOf(lt, 29) == 1 && CardProgression.LevelOf(lt, 30) == 2
+                && CardProgression.LevelOf(lt, 1350) == 13, "levels: 30 XP for level 2, 1350 for level 13");
+            Check(CardProgression.Locked(host.Meta, lt).Count == 50 + 9, "a fresh profile owns the start: 50 cards and 9 relics are locked");
+
+            // A lost Act I run: 14 rooms, 1 elite, no boss.
+            var gain = CardProgression.Book(host, "lieutenant", 14, 1, 0, won: false);
+            Check(gain is { Total: 17, LevelBefore: 1, LevelAfter: 1 }, $"a lost run pays its progress ({gain?.Total} XP)");
+            gain = CardProgression.Book(host, "lieutenant", 16, 2, 1, won: false);
+            Check(gain is { Total: 32, LevelAfter: 2 } && CardProgression.Xp(host.Meta, "lieutenant") == 49, "the next run reaches level 2");
+            var first = lt.Boosters[0];
+            Check(CardProgression.IsEarned(host.Meta, lt, first) && !CardProgression.IsOpened(host.Meta, lt, first)
+                && !CardProgression.IsEarned(host.Meta, lt, lt.Boosters[1]), "drawer 2 is earned and still sealed, drawer 3 is not");
+
+            // A normal run is held to the start set while drawer 2 is sealed.
+            CardProgression.Arm(host, "lieutenant", daily: false);
+            host.StartNewRun(seed: 777, "lieutenant");
+            CardProgression.Disarm(host);
+            var run = host.Play?.Session?.Run;
+            var sealedCard = first.Cards[0];
+            var startCard = lt.StartCards[0];
+            Check(run is not null && !RogueDeck.Run.CharacterContent.Allows(run, sealedCard) && RogueDeck.Run.CharacterContent.Allows(run, startCard),
+                $"the run never offers {sealedCard} and does offer {startCard}");
+            Check(!host.Meta.Flags.Any(f => f.StartsWith(CardProgression.LockPrefix, StringComparison.Ordinal)), "the profile let go of the locks after the start");
+            host.AbandonRunInMemory();
+
+            // A trial plays the full pool.
+            host.StartTrial(1);
+            var trial = host.Play?.Session?.Run;
+            Check(trial is not null && RogueDeck.Run.CharacterContent.Allows(trial, sealedCard), "a trial offers every card");
+            host.AbandonRunInMemory();
+
+            Check(CardProgression.Open(host, lt, first) && CardProgression.OwnedCards(host.Meta, lt).Contains(sealedCard), "breaking the seal of drawer 2 owns its cards");
+            Check(!CardProgression.Open(host, lt, lt.Boosters[1]), "drawer 3 cannot be opened before level 3");
+            CardProgression.Arm(host, "lieutenant", daily: false);
+            host.StartNewRun(seed: 778, "lieutenant");
+            CardProgression.Disarm(host);
+            run = host.Play?.Session?.Run;
+            Check(run is not null && RogueDeck.Run.CharacterContent.Allows(run, sealedCard), $"the next run offers {sealedCard}");
+            host.AbandonRunInMemory();
+            CardProgression.Arm(host, "lieutenant", daily: true);
+            Check(!host.Meta.Flags.Any(f => f.StartsWith(CardProgression.LockPrefix, StringComparison.Ordinal)), "today's run plays the full pool");
+            CardProgression.Disarm(host);
+
+            meta = host.Meta;
+            meta.SetCounter("bnb.xp.lieutenant", 200);
+            host.SaveMeta(meta);
+            SafeDepositPanel.Tab = "drawers";
+            SafeDepositPanel.Open(this, host);
+            await Shot("user://smoke-progression-drawers.png");
+            Check(FindChild($"OpenBooster_lieutenant_{lt.Boosters[1].Level}", true, false) is Button, "the box offers to break the next earned seal");
+            GetNodeOrNull(SafeDepositPanel.OverlayName)?.Free();
+        }
+        finally
+        {
+            foreach (var (file, text) in backup)
+            {
+                if (text is null)
+                    Godot.DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(file));
+                else
+                    using (var f = Godot.FileAccess.Open(file, Godot.FileAccess.ModeFlags.Write))
+                        f?.StoreString(text);
+            }
+        }
+        GD.Print("smoke-progression:\n" + string.Join("\n", lines) + $"\nsmoke-progression: {(ok ? "PASS" : "FAIL")}");
         GetTree().Quit(ok ? 0 : 1);
     }
 

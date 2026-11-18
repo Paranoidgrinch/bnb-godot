@@ -336,12 +336,14 @@ public partial class GameHost : Godot.Node
             if (HasSave && RunSaveJson.FromJson(Godot.FileAccess.GetFileAsString(SavePath)) is { Result: RunResult.Ongoing } given)
                 Shells.Abandoned(this, given.CharacterId ?? Blueprint.Characters.FirstOrDefault()?.Id ?? "");
             Shells.Arm(this, daily);
+            CardProgression.Arm(this, characterId ?? Blueprint.Characters.FirstOrDefault()?.Id, daily);
         }
         var meta = Meta;
         var blueprint = Shells.ForRun(Blueprint, meta);
         Play.Start(health is { } hp ? WithHealth(blueprint, hp) : blueprint, seed, interactive: true, characterId,
             generator);
         Shells.Disarm(this);
+        CardProgression.Disarm(this);
         if (Play.Error is null && health is null)
             RunLog.Begin(Play, seed, characterId, generator, meta, ContentHash);
         EmitChanged();
@@ -468,6 +470,7 @@ public partial class GameHost : Godot.Node
             RunLog.Observe(this);
             CharacterUnlocks.Observe(this);
             Shells.Observe(this);
+            CardProgression.Observe(this);
         }
         // A table's run is the host's to send when it ends (RunLog.BeginTable).
         if (IsMultiplayer)

@@ -3392,7 +3392,10 @@ public partial class SessionScreen : Control
         var oneClick = entities.Count == 1 && entities.Intent == RunChoiceIntent.Keep && !IsImprovement(entities)
             && entities.Purpose.StartsWith("reward", StringComparison.Ordinal)
             // …and a relic the same way (playtest feedback 2, C2): a boss's three are a pick like its cards.
-            && Enumerable.Range(0, entities.Displays.Count).All(i => entities.ArtAt(i) is { Kind: EntityArt.Card or EntityArt.Relic });
+            && Enumerable.Range(0, entities.Displays.Count).All(i => entities.ArtAt(i) is { Kind: EntityArt.Card or EntityArt.Relic }
+                // …and a sealed envelope or a "draw anew" (run modifiers Sealed Envelopes, Second Opinion), which
+                // are a card pick too, only one without a face.
+                || entities.Displays[i] is RunEntityLabeler.FaceDownName or RunEntityLabeler.RedrawName);
         var relics = oneClick && entities.ArtAt(0) is { Kind: EntityArt.Relic };
         if (oneClick && GoldJustWon(session.Run) is { } gold && gold > 0)
         {

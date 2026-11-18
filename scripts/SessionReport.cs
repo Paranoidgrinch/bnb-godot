@@ -89,6 +89,18 @@ public partial class SessionScreen
         Field("Deck on file", $"{run.Deck.Count} cards · {run.Deck.Count(c => c.UpgradeLevel > 0)} improved");
         Field("Relics in custody", run.Relics.Count == 0 ? "none"
             : string.Join(", ", run.Relics.Select(r => r.Definition.DisplayName)));
+        // What the run earned between runs (CardProgression, Shells): the XP of the progress made, and for a win
+        // the shells. Not for a probe's run, which books nothing.
+        if (!GameHost.Instance.IsProbe && !GameHost.Instance.IsMultiplayer)
+        {
+            if (CardProgression.LastGain is { } gain)
+                Field("Experience", $"+{gain.Total} XP"
+                    + (gain.LevelAfter > gain.LevelBefore
+                        ? $" · level {gain.LevelAfter}: a sealed folder waits in the Safe Deposit Box"
+                        : ""), gain.LevelAfter > gain.LevelBefore ? MoonvineTheme.Accent : null);
+            if (victory && Shells.LastPayout is { } payout)
+                Field("Shells", $"+{payout.Total}" + (payout.Streak > 0 ? $" (streak bonus +{payout.Streak})" : ""), MoonvineTheme.Accent);
+        }
         form.AddChild(fields);
         form.AddChild(new HSeparator());
 
