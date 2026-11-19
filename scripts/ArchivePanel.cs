@@ -597,7 +597,7 @@ public partial class ArchivePanel : PanelContainer
             erase.AddThemeColorOverride("font_color", MoonvineTheme.Harm);
             erase.Pressed += () =>
             {
-                Archive.Reset();
+                ProfileReset.EraseAll(GameHost.Instance);
                 _confirmingReset = false;
                 _picked = null;
                 Draw();

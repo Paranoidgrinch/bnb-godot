@@ -1556,7 +1556,46 @@ public partial class Boot : Control
         credits.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
         credits.Pressed += OpenCredits;
         aside.AddChild(credits);
+
+        // RESET PROFILE (user, 2026-11-19): the whole game back to zero, see ProfileReset. Quiet like the two
+        // beside it, and asked twice: nothing brings an erased profile back.
+        var reset = new Button
+        {
+            Text = "Reset profile",
+            Name = "ResetProfileButton",
+            Flat = true,
+            CustomMinimumSize = new Vector2(0, 32),
+            TooltipText = "Start the game from zero: unlocks, levels, cards, shells, archive and history.",
+        };
+        reset.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+        reset.Pressed += () => ConfirmProfileReset(host);
+        aside.AddChild(reset);
         root.AddChild(aside);
+    }
+
+    private void ConfirmProfileReset(GameHost host)
+    {
+        var dialog = new ConfirmationDialog
+        {
+            Title = "Reset profile",
+            DialogText = "This erases everything you have earned: unlocked characters, levels and sealed folders, "
+                + "owned cards and relics, shells and modifiers, the archive, the recipe book, the run history and "
+                + "the run in progress.\n\nSettings and your player name stay. It cannot be undone.",
+            OkButtonText = "Erase everything",
+            CancelButtonText = "Keep it",
+            DialogAutowrap = true,
+            MinSize = new Vector2I(520, 0),
+        };
+        dialog.GetOkButton().AddThemeColorOverride("font_color", MoonvineTheme.Harm);
+        dialog.Confirmed += () =>
+        {
+            ProfileReset.EraseAll(host);
+            Rebuild();
+        };
+        dialog.Canceled += dialog.QueueFree;
+        dialog.Confirmed += dialog.QueueFree;
+        AddChild(dialog);
+        dialog.PopupCentered();
     }
 
     private static Label MutedLabel(string text)
