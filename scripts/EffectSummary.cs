@@ -14,8 +14,17 @@ namespace BnbGodot;
 // program) is left out.
 public static class EffectSummary
 {
-    public static string Of(EventChoice choice, RunPlayback? play)
+    // `eventId` and `situation` say where the choice stands. With them the line also reads what FOLLOWS the choice
+    // (playtest 2026-11-19: "bei vielen events ist nicht klar was die folgen sind"): a gamble's outcomes with their
+    // odds, and the effects of a follow-up page whose only button is Continue. And a hand-written line from the
+    // content (Presentation.Game.Extra["event-outcomes"], keyed event/situation/choice) replaces the read one
+    // wherever the effects cannot say it themselves.
+    public static string Of(EventChoice choice, RunPlayback? play, string? eventId = null, EventSituation? situation = null)
     {
+        if (eventId is not null && situation is not null
+            && Authored().GetValueOrDefault($"{eventId}/{situation.Id}/{choice.Id}") is { Length: > 0 } written)
+            return written;
+
         var parts = new List<string>();
         foreach (var cost in choice.Costs ?? [])
             foreach (var pay in cost.Pay)
@@ -24,7 +33,56 @@ public static class EffectSummary
         foreach (var effect in choice.Effects)
             if (Describe(effect, play, paying: false) is { } said)
                 parts.Add(said);
-        return string.Join(" · ", parts.Distinct());
+
+        var script = eventId is null ? null : GameHost.Instance.Blueprint.Events.GetValueOrDefault(eventId);
+        if (script is not null && choice.Outcomes is { Count: > 0 } outcomes)
+        {
+            var total = Math.Max(1, outcomes.Sum(o => o.Weight));
+            parts.Add(string.Join(" · ", outcomes.Select(o =>
+            {
+                var said = script.Situations.GetValueOrDefault(o.SituationId) is { } page ? Following(page, play) : null;
+                return $"{(int)Math.Round(100.0 * o.Weight / total)} %: {(string.IsNullOrEmpty(said) ? "nothing" : said)}";
+            })));
+        }
+        else if (script is not null && choice.NextSituationId is { } next
+                 && script.Situations.GetValueOrDefault(next) is { } page && Following(page, play) is { Length: > 0 } then)
+            parts.Add(then);
+        // The same thing twice ("Deny two things": two removals) is said once with its count, not swallowed.
+        return string.Join(" · ", parts.GroupBy(p => p).Select(g => g.Count() > 1 ? $"{g.Key} (×{g.Count()})" : g.Key));
+    }
+
+    // A follow-up page with one button (Continue): what pressing it does. A page with a real choice says nothing
+    // here — its own choices will be described when the player stands at it.
+    private static string? Following(EventSituation page, RunPlayback? play)
+    {
+        if (page.Choices.Count != 1)
+            return null;
+        var said = page.Choices[0].Effects.Select(e => Describe(e, play, paying: false)).OfType<string>().Distinct().ToList();
+        return said.Count == 0 ? null : string.Join(" · ", said);
+    }
+
+    // The event the run stands in, by its node: what a live screen passes as `eventId`.
+    public static string? EventAt(RunState run) =>
+        run.CurrentNodeId is { } here && run.Map.Nodes.FirstOrDefault(n => n.Id == here)?.Payload is EventRef door
+            ? door.Id.Value
+            : null;
+
+    private static Dictionary<string, string>? _authored;
+
+    private static Dictionary<string, string> Authored()
+    {
+        if (_authored is not null)
+            return _authored;
+        _authored = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (GameHost.Instance.Blueprint.Presentation.Game?.Extra.GetValueOrDefault("event-outcomes") is { Length: > 0 } json)
+            try
+            {
+                _authored = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? _authored;
+            }
+            catch (System.Text.Json.JsonException)
+            {
+            }
+        return _authored;
     }
 
     private static string? Describe(IRunEffectRequest effect, RunPlayback? play, bool paying)
@@ -66,6 +124,10 @@ public static class EffectSummary
                 return Reward(reward);
             case InstallNextCombatOpeningRunEffect opening:
                 return Opening(opening);
+            // A condition (a relic that changes a campfire's heal): what happens in the ordinary case.
+            case ConditionalRunEffect conditional
+                when conditional.WhenFalse.Select(e => Describe(e, play, paying)).OfType<string>().ToList() is { Count: > 0 } usual:
+                return string.Join(" · ", usual);
             case ConditionalRunEffect:
             case ForEachCardRunEffect:
                 return "Something else happens";
@@ -105,6 +167,12 @@ public static class EffectSummary
         return null;
     }
 
+    // " (Exhaust. Discard another card.)" — what a card the event slips into your fights does.
+    private static string CardText(string id) =>
+        GameHost.Instance.Blueprint.Cards.FirstOrDefault(c => c.Id == id)?.DescriptionKey is { Length: > 0 } text
+            ? $" ({text.TrimEnd('.')})"
+            : "";
+
     private static string CardName(string id) =>
         GameHost.Instance.Blueprint.Cards.FirstOrDefault(c => c.Id == id)?.NameKey is { Length: > 0 } name
             ? name
@@ -142,7 +210,16 @@ public static class EffectSummary
         "\"TargetSelector\":\\{\"kind\":\"sel\\.([A-Za-z]+)\"[^}]*\\}\\},\"StatusDefinitionId\":\\{\"value\":\"([^\"]+)\"\\}(?:,\"Stacks\":\\{\"kind\":\"const\",\"value\":\\{\"Value\":(\\d+)\\})?",
         RegexOptions.Compiled);
 
-    private static string Opening(InstallNextCombatOpeningRunEffect opening)
+    private static readonly Regex GainedEnergy = new(
+        "\"node\\.gainResource\",\"value\":\\{[^}]*\\}\\},\"ResourceId\":\\{\"value\":\"standard\\.energy\"\\},\"Amount\":\\{\"kind\":\"const\",\"value\":\\{\"Value\":(\\d+)\\}",
+        RegexOptions.Compiled);
+    private static readonly Regex DrewCards = new(
+        "\"node\\.drawCards\",\"value\":\\{[^}]*\\}\\},\"Count\":\\{\"kind\":\"const\",\"value\":\\{\"Value\":(\\d+)\\}",
+        RegexOptions.Compiled);
+    private static readonly Regex CreatedCard = new(
+        "\"CardDefinitionId\":\\{\"value\":\"([^\"]+)\"\\},\"ToZone\":\"([A-Za-z]+)\"", RegexOptions.Compiled);
+
+    private static string? Opening(InstallNextCombatOpeningRunEffect opening)
     {
         string json;
         try
@@ -153,12 +230,16 @@ public static class EffectSummary
         {
             return opening.Combats > 1 ? $"Something happens in your next {opening.Combats} fights" : "Something happens in your next fight";
         }
+        var blueprint = GameHost.Instance.Blueprint;
         var said = AppliedStatus.Matches(json)
+            .Where(m => blueprint.Presentation.Statuses.GetValueOrDefault(m.Groups[2].Value)?.Tags.Contains("log_only") != true)
             .Select(m =>
             {
                 var id = m.Groups[2].Value;
-                var name = GameHost.Instance.Blueprint.Statuses.FirstOrDefault(s => s.Id == id)?.NameKey is { Length: > 0 } n
-                    ? n : id;
+                var status = blueprint.Statuses.FirstOrDefault(s => s.Id == id);
+                var name = status?.NameKey is { Length: > 0 } n ? n : id;
+                // WHAT IT DOES, not only what it is called: a name alone told the player nothing (playtest 2026-11-19).
+                var does = status?.DescriptionKey is { Length: > 0 } d ? $" ({d.TrimEnd('.')})" : "";
                 var stacks = m.Groups[3].Success && m.Groups[3].Value != "1" && m.Groups[3].Value != "0"
                     ? $" {m.Groups[3].Value}" : "";
                 var who = m.Groups[1].Value switch
@@ -166,13 +247,22 @@ public static class EffectSummary
                     "source" or "self" => "you",
                     "allEnemies" or "enemies" => "every enemy",
                     "randomEnemy" => "a random enemy",
+                    "iterationTarget" => "every enemy",
                     _ => "",
                 };
-                return who.Length > 0 ? $"{name}{stacks} on {who}" : $"{name}{stacks}";
+                return who.Length > 0 ? $"{name}{stacks} on {who}{does}" : $"{name}{stacks}{does}";
             })
+            .Concat(GainedEnergy.Matches(json).Select(m => $"+{m.Groups[1].Value} Energy on turn 1"))
+            .Concat(DrewCards.Matches(json).Select(m => $"draw {m.Groups[1].Value} more card{(m.Groups[1].Value == "1" ? "" : "s")} on turn 1"))
+            .Concat(CreatedCard.Matches(json).Select(m =>
+                (m.Groups[2].Value == "Hand" ? $"{CardName(m.Groups[1].Value)} in your hand" : $"{CardName(m.Groups[1].Value)} shuffled into your draw pile")
+                + CardText(m.Groups[1].Value)))
             .Distinct()
             .ToList();
         var fights = opening.Combats > 1 ? $"next {opening.Combats} fights" : "next fight";
+        // Only the engine's bookkeeping (a log-only marker): nothing the player would notice, so nothing is said.
+        if (said.Count == 0 && AppliedStatus.IsMatch(json))
+            return null;
         return said.Count == 0
             ? $"Something happens in your {fights}"
             : $"{char.ToUpperInvariant(fights[0])}{fights[1..]}: {string.Join(", ", said)}";

@@ -309,7 +309,7 @@ public partial class SessionScreen : Control
                 foreach (var choice in situation.Choices)
                 {
                     total++;
-                    var plain = EffectSummary.Of(choice, Play);
+                    var plain = EffectSummary.Of(choice, Play, id, situation);
                     if (plain.Length == 0) silent++;
                     if (plain.Contains("Something", StringComparison.Ordinal)) shrug++;
                     if (OS.GetCmdlineUserArgs().Contains("--all") || plain.Contains("Something", StringComparison.Ordinal))
@@ -3107,7 +3107,7 @@ public partial class SessionScreen : Control
             // hands over are ONE block, tight, and the next branch starts a new one.
             // …AND SAYS WHAT IT DOES. The button keeps the game's voice; under it, in plain words, what taking it
             // changes — read off the branch's own effects (EffectSummary), so it cannot drift from what happens.
-            var plain = EffectSummary.Of(choice, Play);
+            var plain = EffectSummary.Of(choice, Play, EffectSummary.EventAt(session.Run), situation);
             var block = offer is null && plain.Length == 0 ? null : new VBoxContainer();
             block?.AddThemeConstantOverride("separation", 2);
 
@@ -3343,12 +3343,13 @@ public partial class SessionScreen : Control
         && session.Run.Map.Nodes.FirstOrDefault(n => n.Id.Value == id.Value) is { } node
         && MapView.Role(node) == MapNodeTags.Treasure;
 
-    private static string Say(string key) => key switch
+    internal static string Say(string key) => key switch
     {
         "event.shop" => "The shop",
         "event.shop.leave" => "Leave",
         "event.shop.reroll" => "Restock the shelves",
         "event.shop.remove-card" => "Have a card struck from your deck",
+        "event.shop.lantern-remove-card" => "Inventory Lantern Glass: strike a card from your deck",
         // The shop's four shelves (BnB_Run_Systems_Master §4.1). Each is named for what stands on it, because
         // "3 General cards and 4 Character cards" is a promise the player can only see kept if the headings
         // say which is which.
