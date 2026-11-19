@@ -75,6 +75,7 @@ public partial class GameHost : Godot.Node
     // `characterId`: who is learning — a character with a tutorial of its own (the Hedge Witch) walks that one.
     public void StartTutorial(string? characterId = null)
     {
+        RunDiagnosticsLog.Stop();
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
         IsTutorial = true;
@@ -95,6 +96,7 @@ public partial class GameHost : Godot.Node
         IsTrial = false;
         IsTutorial = false;
         IsMultiplayer = true;
+        RunDiagnosticsLog.Stop();
         Play?.Dispose();
         var profile = new MemoryMetaStore();
         profile.Save(MetaState.FromSnapshot(meta));
@@ -110,6 +112,7 @@ public partial class GameHost : Godot.Node
         IsTrial = false;
         IsTutorial = false;
         IsMultiplayer = true;
+        RunDiagnosticsLog.Stop();
         Play?.Dispose();
         var profile = new MemoryMetaStore();
         profile.Save(MetaState.FromSnapshot(meta));
@@ -135,6 +138,7 @@ public partial class GameHost : Godot.Node
         IsTrial = false;
         IsTutorial = false;
         IsMultiplayer = false;
+        RunDiagnosticsLog.Stop();
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
         Play.Start((Blueprint with { Tutorial = new RunTutorial(map, start) }).ForTutorial(), seed: 7, interactive: true);
@@ -227,6 +231,7 @@ public partial class GameHost : Godot.Node
         IsTrial = true;
         TrialAct = act;
         TrialEncounter = encounter;
+        RunDiagnosticsLog.Stop();
         Play?.Dispose();
         Play = TrialPlayback();
         Play.Start(TrialBlueprint(act, encounter), RunSeeds.Random(), interactive: true, TrialCharacter);
@@ -302,6 +307,7 @@ public partial class GameHost : Godot.Node
         IsTrial = true;
         TrialAct = act;
         TrialEncounter = encounter;
+        RunDiagnosticsLog.Stop();
         Play?.Dispose();
         Play = TrialPlayback();
         Play.Resume(TrialBlueprint(act, encounter), save, interactive: true);
@@ -325,6 +331,7 @@ public partial class GameHost : Godot.Node
         IsTrial = false;
         IsTutorial = false;
         IsMultiplayer = false;
+        RunDiagnosticsLog.Stop();
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
         var generator = mapGenerator ?? RunPreferences.MapGenerator;
@@ -346,6 +353,8 @@ public partial class GameHost : Godot.Node
         CardProgression.Disarm(this);
         if (Play.Error is null && health is null)
             RunLog.Begin(Play, seed, characterId, generator, meta, ContentHash);
+        if (Play.Error is null)
+            RunDiagnosticsLog.Begin(Play, seed, characterId, IsProbe);
         EmitChanged();
     }
 
@@ -423,11 +432,15 @@ public partial class GameHost : Godot.Node
         IsTrial = false;
         IsTutorial = false;
         IsMultiplayer = false;
+        RunDiagnosticsLog.Stop();
         Play?.Dispose();
         Play = new RunPlayback(OnPlayChanged, _metaStore);
         Play.Resume(Blueprint, save, interactive: true);
         if (Play.Error is null)
+        {
             RunLog.Resume(Play, save.RandomSeed);
+            RunDiagnosticsLog.Resume(Play, save.RandomSeed, save.CharacterId);
+        }
         EmitChanged();
         return Play.Error is null;
     }
@@ -436,6 +449,7 @@ public partial class GameHost : Godot.Node
     // look at it.
     public void AbandonRunInMemory()
     {
+        RunDiagnosticsLog.Stop();
         Play?.Dispose();
         Play = null;
     }
@@ -445,6 +459,7 @@ public partial class GameHost : Godot.Node
         if (Play?.Session is { IsComplete: false } open && !IsTutorial && !IsMultiplayer && !IsProbe && !IsTrial)
             Shells.Abandoned(this, open.Run.CharacterId ?? Blueprint.Characters.FirstOrDefault()?.Id ?? "");
         RunLog.Abandon();
+        RunDiagnosticsLog.Stop();
         Play?.Dispose();
         Play = null;
         EmitChanged();
