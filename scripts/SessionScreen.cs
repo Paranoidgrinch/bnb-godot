@@ -6367,6 +6367,56 @@ public partial class SessionScreen : Control
     private static bool IsLogOnly(string status) =>
         GameHost.Instance.Blueprint.Presentation.Statuses.GetValueOrDefault(status)?.Tags.Contains("log_only") == true;
 
+    // WHAT AN EVENT LEFT ON YOU (user, 2026-11-20: "viele event effekte die auf dem charakter liegen gehen total
+    // unter"). The content tags them (`event_marker`); they are drawn as one block of their own under the hero, one
+    // line each with its plain one-line rule on hover, instead of as chips lost among the fight's own. (The rule
+    // written out under each name did not fit the hero's column: two markers already ran out of it.)
+    private static bool IsEventMarker(string status) =>
+        GameHost.Instance.Blueprint.Presentation.Statuses.GetValueOrDefault(status)?.Tags.Contains("event_marker") == true;
+
+    private Control EventBlock(ICombatView combat, CombatantState owner, IReadOnlyList<StatusInstance> markers)
+    {
+        var registry = combat.State.DefinitionRegistry;
+        var plate = new PanelContainer { MouseFilter = MouseFilterEnum.Pass, Name = "EventMarkers" };
+        var box = MoonvineTheme.Panel(MoonvineTheme.BgRaised, MoonvineTheme.Accent, radius: 5);
+        box.BorderWidthTop = box.BorderWidthBottom = box.BorderWidthRight = 1;
+        box.BorderWidthLeft = 4;
+        box.ContentMarginLeft = 8;
+        box.ContentMarginRight = 6;
+        box.ContentMarginTop = box.ContentMarginBottom = 3;
+        plate.AddThemeStyleboxOverride("panel", box);
+        var lines = new VBoxContainer { MouseFilter = MouseFilterEnum.Pass };
+        lines.AddThemeConstantOverride("separation", 2);
+        var head = new Label { Text = "FROM EVENTS", MouseFilter = MouseFilterEnum.Pass };
+        head.AddThemeFontSizeOverride("font_size", 9);
+        head.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
+        lines.AddChild(head);
+        foreach (var status in markers)
+        {
+            StatusDefinition? definition = null;
+            registry?.TryGetStatus(status.DefinitionId, out definition);
+            var hover = Glossary.Explain(StatusTooltip(status, definition), definition?.DescriptionKey);
+            var (name, magnitude) = StatusParts(status, definition, owner);
+            var title = new Label
+            {
+                Text = magnitude.Length > 0 && magnitude != "1" ? $"{name} {magnitude}" : name,
+                MouseFilter = MouseFilterEnum.Pass,
+                TooltipText = hover,
+            };
+            title.AddThemeFontSizeOverride("font_size", 12);
+            title.AddThemeColorOverride("font_color", MoonvineTheme.Text);
+            title.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+            lines.AddChild(title);
+            var key = $"{owner.Id.value}/{status.DefinitionId.value}";
+            var now = StatusText(status, definition);
+            if (_chipsSeen.TryGetValue(key, out var before) ? before != now : _chipsSeenAny)
+                Flare(plate);
+            _chipsNow[key] = now;
+        }
+        plate.AddChild(lines);
+        return plate;
+    }
+
     private static bool IsMechanic(StatusInstance status, StatusDefinition? definition)
     {
         if (_commonStatuses is null)
@@ -6490,15 +6540,18 @@ public partial class SessionScreen : Control
             // A rule of the fight has its own badge above the chips.
             .Where(s => !OnAPlate(combatant, s))
             .ToList();
+        // What an event left has its own block (EventBlock).
+        var markers = shown.Where(s => IsEventMarker(s.DefinitionId.value)).ToList();
+        shown = shown.Where(s => !IsEventMarker(s.DefinitionId.value)).ToList();
         var rules = _ruled.Where(r => r.Owner.Id == combatant.Id).ToList();
-        if (shown.Count == 0 && rules.Count == 0)
+        if (shown.Count == 0 && rules.Count == 0 && markers.Count == 0)
             return null;
 
         var flow = new HFlowContainer { Alignment = FlowContainer.AlignmentMode.Center, Name = "StatusChips" };
         flow.AddThemeConstantOverride("h_separation", 4);
         flow.AddThemeConstantOverride("v_separation", 4);
         Control result = flow;
-        if (rules.Count > 0)
+        if (rules.Count > 0 || markers.Count > 0)
         {
             var stack = new VBoxContainer { MouseFilter = MouseFilterEnum.Pass };
             stack.AddThemeConstantOverride("separation", 3);
@@ -6509,6 +6562,8 @@ public partial class SessionScreen : Control
                     badge.Name = "FightRules";   // the tutorial points here
                 stack.AddChild(badge);
             }
+            if (markers.Count > 0)
+                stack.AddChild(EventBlock(combat, combatant, markers));
             if (shown.Count > 0)
                 stack.AddChild(flow);
             result = stack;
