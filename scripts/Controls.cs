@@ -56,7 +56,7 @@ public static class Controls
         new(EndTurn, "End turn", Key.E),
         new(ViewDraw, "Look at the draw pile", Key.A),
         new(ViewDiscard, "Look at the discard pile", Key.S),
-        new(ViewExhaust, "Look at the discard pile and the exhausted cards", Key.X),
+        new(ViewExhaust, "Look at the exhausted cards", Key.X),
         new(Inventory, "Open the inventory (relics, cards, consumables)", Key.I),
         new(Map, "Show the map", Key.M),
         new(Log, "Show the run's log", Key.L),

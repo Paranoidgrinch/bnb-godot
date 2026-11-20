@@ -75,7 +75,7 @@ public partial class SessionScreen
         // The exhausted cards are a section of the discard view now, so its key opens that view.
         foreach (var (action, pile) in new[]
         {
-            (Controls.ViewDraw, Pile.Draw), (Controls.ViewDiscard, Pile.Discard), (Controls.ViewExhaust, Pile.Discard),
+            (Controls.ViewDraw, Pile.Draw), (Controls.ViewDiscard, Pile.Discard), (Controls.ViewExhaust, Pile.Exhaust),
         })
             if (@event.IsActionPressed(action))
             {

@@ -49,16 +49,14 @@ public partial class SessionScreen
         {
             Pile.Deck => ("Your deck", DeckSections()),
             Pile.Draw => ("Draw pile", DrawSections(combat!)),
-            // THE EXHAUSTED CARDS ARE A SECTION OF THIS VIEW (user, 2026-09-28): their own button under the hand is
-            // gone, and "where did that card go" is asked of the discard pile first.
-            Pile.Discard => ("Discard pile", [
-                .. ZoneSections(combat!, CardZone.DiscardPile, "most recent last"),
-                .. ZoneSections(combat!, CardZone.ExhaustPile, "Exhausted — gone for the rest of this fight"),
+            Pile.Discard => ("Discard pile", ZoneSections(combat!, CardZone.DiscardPile, "most recent last")),
+            // The exhausted cards have their own stack beside the discard pile again (user, 2026-11-20).
+            _ => ("Exhausted", [
+                .. ZoneSections(combat!, CardZone.ExhaustPile, "gone for the rest of this fight"),
                 // Cards an enemy holds (the Warden of Sealed Volumes), shown only while it holds any.
                 .. (combat!.State.GetCardZones(combat.HeroId).GetCardsInZone(CardZone.BanishedPile).Count > 0
                     ? ZoneSections(combat, CardZone.BanishedPile, "Sealed — held by an enemy until you free them")
                     : [])]),
-            _ => ("Exhausted", ZoneSections(combat!, CardZone.ExhaustPile, "gone for the rest of this fight")),
         };
         var layer = CardOverlay(title, sections);
         layer.SetMeta("pile", (int)pile);
@@ -182,16 +180,44 @@ public partial class SessionScreen
         return layer;
     }
 
-    // ── THE DISCARD PILE, IN THE RIGHT-HAND CORNER (user, 2026-09-28) ─────────────────────────────────────
-    // The mirror of the draw pile: a small stack of backs with its count under it, and the picture is the
-    // button — it opens the discard pile, with the exhausted cards as a section of their own.
+    // ── THE DISCARD AND EXHAUST PILES, IN THE RIGHT-HAND CORNER (user, 2026-09-28; split 2026-11-20) ────────
+    // The mirror of the draw pile: small stacks of backs with their counts under them, and each picture is the
+    // button that opens it. ⚠ TWO STACKS, NOT ONE CAPTION (user, 2026-11-20): "Discard 7 · Exhausted 3" under a
+    // single pile ran past both of its edges and could not be read. The discard pile keeps the corner; the
+    // exhausted cards stand beside it, dimmed, with the cards an enemy has sealed away counted over them.
     private const string DiscardPileName = "DiscardPile";
-    private Control? _discardHolder;
+    private const string ExhaustPileName = "ExhaustPile";
+    private const int PileGap = 10;   // the air between the two stacks
+    // What the hand keeps clear on the right: both stacks, the air between them and the corner's own inset.
+    private static int RightPileBand => (int)(PileCorner + 2 * (PileW + 12) + PileGap + 12);
 
-    // Built ONCE per fight and updated afterwards, like the draw pile.
-    private readonly List<Control> _discardStills = [];
-    private Control? _discardTop;
-    private Label? _discardCount;
+    private sealed class PileStack
+    {
+        public Control? Holder;
+        public readonly List<Control> Stills = [];
+        public Control? Top;
+        public Label? Count;
+        public Label? Over;
+    }
+
+    private readonly PileStack _discardStack = new();
+    private readonly PileStack _exhaustStack = new();
+    private Control? _discardHolder => _discardStack.Holder;
+    private Control? _exhaustHolder => _exhaustStack.Holder;
+
+    private void ForgetRightPiles()
+    {
+        foreach (var stack in new[] { _discardStack, _exhaustStack })
+        {
+            if (stack.Holder is { } holder && IsInstanceValid(holder))
+                holder.QueueFree();
+            stack.Holder = null;
+            stack.Stills.Clear();
+            stack.Top = null;
+            stack.Count = null;
+            stack.Over = null;
+        }
+    }
 
     private void BuildDiscardPile(ICombatView combat)
     {
@@ -200,69 +226,98 @@ public partial class SessionScreen
         var exhausted = zones.GetCardsInZone(CardZone.ExhaustPile).Count;
         var sealedAway = zones.GetCardsInZone(CardZone.BanishedPile).Count;
 
+        BuildRightPile(_discardStack, DiscardPileName, slot: 0, dimmed: false,
+            "Discard pile — click to see the cards you have played and discarded.", Pile.Discard,
+            discarded, $"Discard {discarded}", null);
+        BuildRightPile(_exhaustStack, ExhaustPileName, slot: 1, dimmed: true,
+            "Exhausted — click to see the cards gone for the rest of this fight.", Pile.Exhaust,
+            exhausted, $"Exhausted {exhausted}", sealedAway > 0 ? $"Sealed {sealedAway}" : null);
+    }
+
+    // `slot` counts stacks from the corner leftward.
+    private void BuildRightPile(PileStack stack, string name, int slot, bool dimmed, string tooltip, Pile opens,
+        int count, string caption, string? over)
+    {
         const int lift = 3;
-        const int caption = 22;
+        const int band = 22;
         const int lean = 4 * lift;
-        var footprint = new Vector2(PileW + lean, PileH + lean + caption);
+        var footprint = new Vector2(PileW + lean, PileH + lean + band);
 
-        if (_discardHolder is null || !IsInstanceValid(_discardHolder))
+        if (stack.Holder is null || !IsInstanceValid(stack.Holder))
         {
-            var holder = new Control { Name = DiscardPileName, CustomMinimumSize = footprint, Size = footprint };
+            var holder = new Control { Name = name, CustomMinimumSize = footprint, Size = footprint };
             holder.SetAnchorsPreset(LayoutPreset.BottomRight);
-            holder.Position = new Vector2(-PileCorner - footprint.X, -footprint.Y - PileCorner);
+            holder.Position = new Vector2(-PileCorner - footprint.X - slot * (footprint.X + PileGap), -footprint.Y - PileCorner);
             _combatRoot.AddChild(holder);
-            _discardHolder = holder;
+            stack.Holder = holder;
 
-            _discardStills.Clear();
+            stack.Stills.Clear();
             for (var i = 0; i < 3; i++)
             {
                 var still = CardVisuals.Back(PileScale);
                 holder.AddChild(still);
-                _discardStills.Add(still);
+                stack.Stills.Add(still);
             }
-            var top = CardVisuals.Back(PileScale);
-            holder.AddChild(top);
-            _discardTop = top;
+            stack.Top = CardVisuals.Back(PileScale);
+            holder.AddChild(stack.Top);
+            if (dimmed)
+                foreach (var back in stack.Stills.Append(stack.Top))
+                    back.Modulate = new Color(0.55f, 0.52f, 0.5f);
 
-            _discardCount = new Label
+            // The caption may run a little past the stack's own width ("Exhausted 12"), never into its neighbour.
+            stack.Count = new Label
             {
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 1f, AnchorBottom = 1f,
-                OffsetLeft = -40f, OffsetRight = 0f, OffsetTop = -caption, OffsetBottom = 0f,
+                OffsetLeft = -PileGap / 2f, OffsetRight = PileGap / 2f, OffsetTop = -band, OffsetBottom = 0f,
             };
-            _discardCount.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
-            holder.AddChild(_discardCount);
+            stack.Count.AddThemeColorOverride("font_color", MoonvineTheme.Accent);
+            holder.AddChild(stack.Count);
+
+            stack.Over = new Label
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                AnchorLeft = 0f, AnchorRight = 1f, AnchorTop = 0f, AnchorBottom = 0f,
+                OffsetLeft = -PileGap / 2f, OffsetRight = PileGap / 2f, OffsetTop = -band, OffsetBottom = 0f,
+            };
+            stack.Over.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+            holder.AddChild(stack.Over);
 
             var hit = new Button
             {
                 Flat = true,
-                TooltipText = "Discard pile — click to see what you have played, and what is exhausted.",
+                TooltipText = tooltip,
                 MouseDefaultCursorShape = CursorShape.PointingHand,
             };
             foreach (var style in new[] { "normal", "hover", "pressed", "focus" })
                 hit.AddThemeStyleboxOverride(style, new StyleBoxEmpty());
             hit.SetAnchorsPreset(LayoutPreset.FullRect);
-            hit.Pressed += () => TogglePile(Pile.Discard);
+            hit.Pressed += () => TogglePile(opens);
             holder.AddChild(hit);
         }
 
         // Leaning up and to the LEFT, the draw pile's lean turned round, so the two corners face each other. The
-        // stack grows from the bottom as cards are discarded.
-        var backing = Math.Min(discarded > 0 ? discarded - 1 : 0, 3);
-        for (var i = 0; i < _discardStills.Count; i++)
+        // stack grows from the bottom as cards arrive.
+        var backing = Math.Min(count > 0 ? count - 1 : 0, 3);
+        for (var i = 0; i < stack.Stills.Count; i++)
         {
-            _discardStills[i].Visible = i < backing;
-            _discardStills[i].Position = new Vector2(lean - i * lift, lean - i * lift);
+            stack.Stills[i].Visible = i < backing;
+            stack.Stills[i].Position = new Vector2(lean - i * lift, lean - i * lift);
         }
-        if (_discardTop is not null && IsInstanceValid(_discardTop))
+        if (stack.Top is not null && IsInstanceValid(stack.Top))
         {
-            _discardTop.Visible = discarded > 0;
-            _discardTop.Position = new Vector2(lean - backing * lift, lean - backing * lift);
+            stack.Top.Visible = count > 0;
+            stack.Top.Position = new Vector2(lean - backing * lift, lean - backing * lift);
         }
-        if (_discardCount is not null && IsInstanceValid(_discardCount))
-            _discardCount.Text = $"Discard {discarded}" + (exhausted > 0 ? $" · Exhausted {exhausted}" : "")
-                + (sealedAway > 0 ? $" · Sealed {sealedAway}" : "");
+        if (stack.Count is not null && IsInstanceValid(stack.Count))
+            stack.Count.Text = caption;
+        if (stack.Over is not null && IsInstanceValid(stack.Over))
+        {
+            stack.Over.Text = over ?? "";
+            stack.Over.Visible = over is not null;
+        }
     }
 
     // The draw pile's own picture is the button for it: a flat, see-through Button over the whole stack.
@@ -303,7 +358,13 @@ public partial class SessionScreen
             PlayArmedCardAt(null);
         }
         var report = new List<string>();
-        foreach (var pile in new[] { Pile.Draw, Pile.Discard, Pile.Deck })
+        // The board itself first, so the corner's captions can be read with no overlay over them.
+        if (!DisplayServer.GetName().Contains("headless"))
+        {
+            await ToSignal(GetTree().CreateTimer(0.8), SceneTreeTimer.SignalName.Timeout);
+            GetViewport().GetTexture().GetImage().SavePng("user://smoke-pile-board.png");
+        }
+        foreach (var pile in new[] { Pile.Draw, Pile.Discard, Pile.Exhaust, Pile.Deck })
         {
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             TogglePile(pile);
@@ -322,7 +383,7 @@ public partial class SessionScreen
         // ⚠ AND BY THE MOUSE, through the viewport — the way a player opens them. Calling TogglePile says the
         // viewer works; only a real click says the picture is not covered by something else that eats it (the
         // draw pile was, 2026-09-28, while every check above passed).
-        foreach (var (name, holder) in new[] { ("click-draw", _deckHolder), ("click-discard", _discardHolder) })
+        foreach (var (name, holder) in new[] { ("click-draw", _deckHolder), ("click-discard", _discardHolder), ("click-exhaust", _exhaustHolder) })
         {
             ClosePile();
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);

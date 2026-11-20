@@ -2857,7 +2857,7 @@ public partial class SessionScreen : Control
             // The piles are built ONCE per fight and updated in place; they are freed when the fight is. (They
             // had to be while the deck's back was a video, which restarted at 0.00 whenever it was rebuilt; a
             // still back does not care, but a pile that is not rebuilt on every click is still the cheaper one.)
-            if (inCombat && (child == _deckHolder || child == _discardHolder))
+            if (inCombat && (child == _deckHolder || child == _discardHolder || child == _exhaustHolder))
                 continue;
             child.QueueFree();
         }
@@ -2871,14 +2871,8 @@ public partial class SessionScreen : Control
             _deckStills.Clear();
             _deckCount = null;
         }
-        if (!inCombat && _discardHolder is { } staleDiscard)
-        {
-            staleDiscard.QueueFree();
-            _discardHolder = null;
-            _discardStills.Clear();
-            _discardTop = null;
-            _discardCount = null;
-        }
+        if (!inCombat)
+            ForgetRightPiles();
         _combatRoot.Visible = inCombat;
         _mainScroll.Visible = !inCombat;
         if (!inCombat)
@@ -4482,8 +4476,10 @@ public partial class SessionScreen : Control
         const int gap = 10;
         const int fanned = 3; // beyond this many, the row starts closing up
         var regionWidth = PaneWidth - PaneInset * 2;
+        // The draw pile's corner on the left, the discard and exhaust stacks on the right.
         var pileClear = DeckBand - PaneInset;
-        var available = Math.Max(HandW, regionWidth - pileClear * 2);
+        var rightClear = RightPileBand - PaneInset;
+        var available = Math.Max(HandW, regionWidth - pileClear - rightClear);
         var step = HandW + gap;
         if (cards.Count > fanned)
             step = Math.Min(HandW * 0.78f, Math.Max(40f, (available - HandW) / (cards.Count - 1)));
@@ -4506,7 +4502,8 @@ public partial class SessionScreen : Control
             AnchorTop = 1f, AnchorBottom = 1f, AnchorLeft = 0f, AnchorRight = 0f,
             OffsetTop = -(HandH + 8 + arc * middle + 12),
             OffsetBottom = 0f,
-            OffsetLeft = Math.Max(pileClear, (regionWidth - totalWidth) / 2f),
+            // Centred on the pane while it fits; a wide hand is held clear of both corners.
+            OffsetLeft = Math.Max(pileClear, Math.Min((regionWidth - totalWidth) / 2f, regionWidth - rightClear - totalWidth)),
         };
         inner.OffsetRight = inner.OffsetLeft + Math.Max(totalWidth, 1);
         region.AddChild(inner);
