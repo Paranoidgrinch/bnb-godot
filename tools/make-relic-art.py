@@ -8,16 +8,22 @@ The plate is square, 512 x 512, because the shelf draws a relic as a small squar
 hover). Nothing written on a placeholder survives that reduction, and it does not have to: the shelf already
 prints the slot code itself while a slot is empty. What a placeholder proves is that the right FILE reached
 the right slot, which is read at the size the hover gives it.
+
+The plate is transparent: the tile draws one ground under every relic, and a placeholder sits on it exactly
+as a finished picture does, so the shelf does not show two kinds of square.
 """
 import argparse
 
-from placeholder_art import DIM, FONT_BOLD, FONT_MONO, INK, arguments, block, document, plate, relic_slots, run
+from PIL import Image, ImageDraw
+
+from placeholder_art import DIM, FONT_BOLD, FONT_MONO, INK, arguments, block, document, relic_slots, run
 
 SIZE = (512, 512)
 
 
 def paint(code, name):
-    image, draw = plate(SIZE)
+    image = Image.new("RGBA", SIZE, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
     y = block(draw, f"{code}.png", top=46, width=SIZE[0], path=FONT_MONO, size=26, fill=DIM, margin=30)
     y = block(draw, name, top=y + 30, width=SIZE[0], path=FONT_BOLD, size=56, fill=INK, margin=36)
     block(draw, "PLACEHOLDER", top=max(y + 36, SIZE[1] - 104), width=SIZE[0], path=FONT_BOLD, size=42,

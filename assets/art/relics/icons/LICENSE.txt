@@ -4,14 +4,12 @@ src/, chosen by the user on 2026-11-22.
 Licence of the game-icons.net and OpenGameArt sources: CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/).
 game-icons.net: https://game-icons.net (repository github.com/game-icons/icons).
 OpenGameArt: "700+ RPG Icons" by Lorc, https://opengameart.org/content/700-rpg-icons.
-own-*.svg were drawn for this game and carry no third-party rights.
 
 Changes: each silhouette is scaled into a margin and inked pale parchment on transparency (recoloured); one is
 inked red. Three pictures put two sources together or add a Roman numeral (make_combos.py, marked below).
 
   a_ring_put_back                    Returned Ring                  "diamond-ring" by delapouite  https://game-icons.net/1x1/delapouite/diamond-ring.html
   alms_basin                         Alms Basin                     "berries-bowl" by delapouite  https://game-icons.net/1x1/delapouite/berries-bowl.html
-  appraisers_chalk                   Appraiser's Chalk              drawn for this game (own-chalk.svg)
   apprentices_whetstone              Apprentice's Whetstone         "stone-block" by lorc  https://game-icons.net/1x1/lorc/stone-block.html
   ash_pan                            Ash Pan                        "saucepan" by caro-asercion  https://game-icons.net/1x1/caro-asercion/saucepan.html
   ashen_wax_knife                    Ashen Wax Knife                "scalpel" by lorc  https://game-icons.net/1x1/lorc/scalpel.html
@@ -82,7 +80,7 @@ inked red. Three pictures put two sources together or add a Roman numeral (make_
   lt_relic_worn_epaulette            Order of the Day               "scroll-unfurled" by lorc  https://game-icons.net/1x1/lorc/scroll-unfurled.html
   mended_thread                      Mended Silk                    "yarn" by delapouite  https://game-icons.net/1x1/delapouite/yarn.html
   merchant_punchcard                 Stale Loaf                     "bread" by delapouite  https://game-icons.net/1x1/delapouite/bread.html
-  obsolete_boundary_cord             Boundary Cord                  "measure-tape" by delapouite  https://game-icons.net/1x1/delapouite/measure-tape.html
+  obsolete_boundary_cord             Boundary Cord                  "crime-scene-tape" by delapouite  https://game-icons.net/1x1/delapouite/crime-scene-tape.html
   oilcloth_wrap                      Oilcloth Wrap                  "blanket" by delapouite  https://game-icons.net/1x1/delapouite/blanket.html
   overseers_linen_shears             Linen Shears                   "shears" by delapouite  https://game-icons.net/1x1/delapouite/shears.html
   pawnbrokers_loupe                  Pawnbroker's Loupe             "spyglass" by lorc  https://game-icons.net/1x1/lorc/spyglass.html
@@ -113,6 +111,5 @@ inked red. Three pictures put two sources together or add a Roman numeral (make_
   twin_ember_brazier                 Twin-Ember Brazier             "fire-shrine" by delapouite  https://game-icons.net/1x1/delapouite/fire-shrine.html
   twin_lock_chest_key                Twin-Lock Chest Key            "skeleton-key" by lorc  https://game-icons.net/1x1/lorc/skeleton-key.html
   warranty_tag                       Pawned Wedding Ring            "ring-box" by delapouite  https://game-icons.net/1x1/delapouite/ring-box.html
-  witchmarket_purse                  Iron Thimble                   drawn for this game (own-thimble.svg)
   withheld_hourglass                 Withheld Hourglass             "empty-hourglass" by lorc  https://game-icons.net/1x1/lorc/empty-hourglass.html
   witness_slate                      Witness Slate                  "wax-tablet" by delapouite  https://game-icons.net/1x1/delapouite/wax-tablet.html

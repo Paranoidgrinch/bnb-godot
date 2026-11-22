@@ -171,21 +171,21 @@ public static class MoonvineTheme
     // ⚠ THE POOL IS THE FIRST THING READ AND THE OBJECT THE SECOND. That is the canon's whole point about a
     // shelf, and it is why the frame is the pool and never the rarity: a relic is not "rare", it was WON
     // somewhere, and where it was won is the only thing 69 squares in a column can still say at 46 px.
-    public static readonly Color BossGround = new("1c0d2c"); // the canon's dark purple, run near-black at the user's call
     public static readonly Color Slate = new("6f7480");      // the quiet frame the canon asks for around an ordinary relic
     public static readonly Color GoldDim = new("a8861d");    // antique gold ONE STEP DOWN, so an elite frame is not a button
 
     // A pool's frame: the ground it sits on, the line around it, how heavy that line is, and whether it is
     // doubled. Boss is the only doubled one — with gold now the UI accent, gold alone no longer says "boss",
-    // so the rank has to be carried by the weight of the frame and the purple under it.
+    // so the rank has to be carried by the weight of the frame. The ground is the same under every relic (the
+    // user's call, 2026-11-22: the pictures are one set, so they sit on one ground; the line says the pool).
     public readonly record struct PoolFrame(Color Ground, Color Edge, int Width, bool Doubled);
 
     public static PoolFrame RelicFrame(string? pool) => pool switch
     {
         "shop" => new PoolFrame(BgRaised, Copper, 1, false),
         "event" => new PoolFrame(BgRaised, Arcane, 1, false),
-        "boss" => new PoolFrame(BossGround, Accent, 2, true),
-        "elite" or "mimic" => new PoolFrame(BossGround, GoldDim, 1, false),
+        "boss" => new PoolFrame(BgRaised, Accent, 2, true),
+        "elite" or "mimic" => new PoolFrame(BgRaised, GoldDim, 1, false),
         // "normal", and anything a later document invents: the quiet frame, which is the right answer for a
         // pool nobody has drawn yet — it says "a relic" without claiming a rank it may not have.
         _ => new PoolFrame(BgRaised, Slate, 1, false),

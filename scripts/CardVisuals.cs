@@ -402,7 +402,7 @@ public static class CardVisuals
         if (frame.Doubled)
         {
             var second = new Panel { MouseFilter = Control.MouseFilterEnum.Ignore };
-            // 0.8, not half: at 0.55 over the purple the second rail came out a dark gap rather than a
+            // 0.8, not half: at 0.55 over the dark ground the second rail came out a dark gap rather than a
             // rail. Where it lands is the point — a dim gold a shade off `GoldDim`, so the Boss frame reads
             // as the Elite frame with a brighter line added around it, which is what the canon says it is.
             var inner = MoonvineTheme.Panel(new Color(0, 0, 0, 0), new Color(frame.Edge, 0.8f), radius: 2);

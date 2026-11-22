@@ -4,7 +4,7 @@
     uvx --with cairosvg --with pillow python assets/art/relics/icons/make_relic_icons.py
 
 picks.tsv names, per relic id, its source in src/: a game-icons.net SVG (gi-<author>--<name>.svg), one of Lorc's
-"700+ RPG Icons" from OpenGameArt (oga-lorc-<n>.png), or a silhouette drawn for this game (own-*.svg), or
+"700+ RPG Icons" from OpenGameArt (oga-lorc-<n>.png), or
 a picture put together from game-icons.net sources by make_combos.py (combo-*.png). Every
 source is white on black; its brightness becomes the picture's opacity, inked in pale parchment so it reads on the
 tile's dark ground, with a margin so the frame never touches it. Writes ../<relic id>.png at 512 x 512. Licences:
