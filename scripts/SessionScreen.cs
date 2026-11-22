@@ -293,7 +293,7 @@ public partial class SessionScreen : Control
         var hero = combat.State.GetCombatant(combat.HeroId);
         var enemy = combat.State.Combatants.FirstOrDefault(c => c.IsAlive && c.Id != combat.HeroId);
         foreach (var card in combat.Hand.Take(2).ToList())
-            if (CanPay(hero, card.DefinitionId.value) && driver.Current is not null)
+            if (CanAfford(card) && driver.Current is not null)
                 driver.PlayCard(card.Id, enemy?.Id);
         if (driver.Current is not null)
             driver.EndTurn();
@@ -340,7 +340,7 @@ public partial class SessionScreen : Control
                     break;
                 var hero = fight.State.GetCombatant(fight.HeroId);
                 var card = fight.Hand.FirstOrDefault(c =>
-                    !c.DefinitionId.value.Contains("red_tape") && CanPay(hero, c.DefinitionId.value));
+                    !c.DefinitionId.value.Contains("red_tape") && CanAfford(c));
                 var target = fight.State.Combatants
                     .FirstOrDefault(c => c.Id != fight.HeroId && c.IsAlive
                         && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
@@ -611,7 +611,7 @@ public partial class SessionScreen : Control
                             !c.DefinitionId.value.Contains("red_tape")
                             && !c.DefinitionId.value.Contains("unsigned_form")
                             && !refused.Contains(c.Id) && !barren.Contains(c.DefinitionId.value)
-                            && CanPay(hero, c.DefinitionId.value)
+                            && CanAfford(c)
                             && EffectiveCost(hero, c.DefinitionId.value) <= room)
                         .OrderBy(c => measure > 0 && EffectiveCost(hero, c.DefinitionId.value) == room ? 0 : 1)
                         .ThenBy(c => measure > 0 ? EffectiveCost(hero, c.DefinitionId.value) : 0)
@@ -894,7 +894,7 @@ public partial class SessionScreen : Control
                     var playable = fight.Hand.FirstOrDefault(c =>
                         !c.DefinitionId.value.Contains("red_tape")
                         && !c.DefinitionId.value.Contains("unsigned_form")
-                        && CanPay(hand, c.DefinitionId.value));
+                        && CanAfford(c));
                     if (playable is null)
                         break;
                     driver.PlayCard(playable.Id, fight.State.Combatants
@@ -1471,7 +1471,7 @@ public partial class SessionScreen : Control
                             !c.DefinitionId.value.Contains("red_tape")
                             && !c.DefinitionId.value.Contains("unsigned_form")
                             && !refused.Contains(c.Id) && !barren.Contains(c.DefinitionId.value)
-                            && CanPay(hero, c.DefinitionId.value)
+                            && CanAfford(c)
                             && EffectiveCost(hero, c.DefinitionId.value) <= room)
                         .OrderBy(c => measure > 0 && EffectiveCost(hero, c.DefinitionId.value) == room ? 0 : 1)
                         .ThenBy(c => measure > 0 ? EffectiveCost(hero, c.DefinitionId.value) : 0)
@@ -1618,7 +1618,7 @@ public partial class SessionScreen : Control
                     break;
                 var hero = combat.State.GetCombatant(combat.HeroId);
                 var card = combat.Hand.FirstOrDefault(c =>
-                    !c.DefinitionId.value.Contains("red_tape") && CanPay(hero, c.DefinitionId.value));
+                    !c.DefinitionId.value.Contains("red_tape") && CanAfford(c));
                 var target = combat.State.Combatants
                     .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
                 if (card is not null)
@@ -2140,7 +2140,7 @@ public partial class SessionScreen : Control
                 {
                     var hero = combat.State.GetCombatant(combat.HeroId);
                     var card = combat.Hand.FirstOrDefault(c =>
-                        !c.DefinitionId.value.Contains("red_tape") && CanPay(hero, c.DefinitionId.value));
+                        !c.DefinitionId.value.Contains("red_tape") && CanAfford(c));
                     var target = combat.State.Combatants
                         .FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive && c.TeamId == StandardCombatIds.EnemyTeam)?.Id;
                     if (card is not null)
@@ -2212,7 +2212,7 @@ public partial class SessionScreen : Control
             var before = watch.ElapsedMilliseconds;
             var hero = live.State.GetCombatant(live.HeroId);
             var card = live.Hand.FirstOrDefault(c =>
-                !c.DefinitionId.value.Contains("red_tape") && CanPay(hero, c.DefinitionId.value));
+                !c.DefinitionId.value.Contains("red_tape") && CanAfford(c));
             if (card is not null && live.IsHeroTurn)
             {
                 var target = live.State.Combatants
@@ -2267,7 +2267,7 @@ public partial class SessionScreen : Control
                     var hero = combat.State.GetCombatant(combat.HeroId);
                     var playable = combat.Hand.FirstOrDefault(c =>
                         !c.DefinitionId.value.Contains("red_tape") && !c.DefinitionId.value.Contains("unsigned_form")
-                        && CanPay(hero, c.DefinitionId.value));
+                        && CanAfford(c));
                     if (playable is not null)
                     {
                         var target = combat.State.Combatants
@@ -2442,7 +2442,7 @@ public partial class SessionScreen : Control
         var hero = combat.State.GetCombatant(combat.HeroId);
         var enemy = combat.State.Combatants.First(c => c.Id != combat.HeroId);
         var hpBefore = enemy.Health.Current;
-        _armedCard = combat.Hand.FirstOrDefault(c => CanPay(hero, c.DefinitionId.value))?.Id;
+        _armedCard = combat.Hand.FirstOrDefault(c => CanAfford(c))?.Id;
         if (_armedCard is not null)
             PlayArmedCardAt(null);
 
@@ -4058,33 +4058,49 @@ public partial class SessionScreen : Control
         // of its OWN, so a long decree scrolls inside its own panel instead of eating the arena's height.
         var arenaTop = PaneInset + HeadlineBand + 8;
 
-        // THE RELICS STAND OVER THE HERO, as small tiles in rows of fifteen. They used to be a shelf in the
-        // sidebar and, in a fight, a list of rules under the hero's body; the player asked for the pictures,
-        // together, where a relic that fires can be SEEN firing (playtest 2026-09-26). The band grows by a row
-        // per fifteen relics and pushes the arena down by exactly that much.
+        // THE RELICS STAND OVER THE HERO, in ONE row of tiles (user, 2026-11-22: "100% groesser … keine 2te reihe …
+        // sondern scrollen … die mit dem leuchtenden rahmen als erstes ganz links"). They used to be a shelf in the
+        // sidebar and, in a fight, a list of rules under the hero's body; the player asked for the pictures, together,
+        // where a relic that fires can be SEEN firing (playtest 2026-09-26). The row ends just over the arena and
+        // takes its height from the margin above it, so the arena never moves; what does not fit scrolls sideways
+        // (mouse wheel over the row). The relics always in effect — the steadily glowing frames — stand first.
         _relicTiles.Clear();
         if (session.Run.Relics.Count > 0)
         {
-            var rows = (session.Run.Relics.Count + CombatRelicsPerRow - 1) / CombatRelicsPerRow;
-            var height = rows * (CombatRelicTile + 3);
-            // The band ENDS where it always did (just over the arena) and grows up into the pane's top margin; only
-            // what does not fit there pushes the arena down.
+            var height = CombatRelicTile + 2;
             var top = Math.Max(2, arenaTop - 4 - height);
-            var band = TopRegion(top, height, right: PaneInset);
-            var grid = new GridContainer
+            // From the pane's left edge to just short of the round's heading in the middle.
+            var band = TopRegion(top, height, right: Math.Max(PaneInset, (int)(PaneWidth / 2f) + 60));
+            var scroll = new ScrollContainer
             {
-                Name = RelicGridName,
-                Columns = Math.Min(CombatRelicsPerRow, session.Run.Relics.Count),
+                HorizontalScrollMode = ScrollContainer.ScrollMode.ShowNever,
+                VerticalScrollMode = ScrollContainer.ScrollMode.Disabled,
+                MouseFilter = MouseFilterEnum.Pass,
             };
-            grid.AddThemeConstantOverride("h_separation", 3);
-            grid.AddThemeConstantOverride("v_separation", 3);
-            foreach (var relic in session.Run.Relics)
+            scroll.SetAnchorsPreset(LayoutPreset.FullRect);
+            var row = new HBoxContainer { Name = RelicGridName, MouseFilter = MouseFilterEnum.Pass };
+            row.AddThemeConstantOverride("separation", 3);
+            var steady = session.Run.Relics.Where(relic => AlwaysInEffect(relic.Id.Value, hero)).ToList();
+            foreach (var relic in steady.Concat(session.Run.Relics.Except(steady)))
             {
                 var tile = RelicTile(relic, CombatRelicTile);
+                // Pass, not Stop: the hover still shows its rules, and the wheel reaches the row to scroll it.
+                tile.MouseFilter = MouseFilterEnum.Pass;
                 _relicTiles[relic.Id.Value] = tile;
-                grid.AddChild(tile);
+                row.AddChild(tile);
             }
-            band.AddChild(grid);
+            scroll.AddChild(row);
+            // A wheel over the row moves it sideways: there is nothing for it to move up or down.
+            scroll.GuiInput += input =>
+            {
+                if (input is InputEventMouseButton { Pressed: true } wheel
+                    && wheel.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
+                {
+                    scroll.ScrollHorizontal += (wheel.ButtonIndex == MouseButton.WheelDown ? 1 : -1) * (CombatRelicTile + 3);
+                    scroll.AcceptEvent();
+                }
+            };
+            band.AddChild(scroll);
             arenaTop = Math.Max(arenaTop, top + height + 4);
             LightRelics(combat, hero);
         }
@@ -4647,17 +4663,13 @@ public partial class SessionScreen : Control
 
     private const int HeroColumn = 200;
     private const int AllyColumn = 150;
-    // HOW BIG A RELIC STANDS OVER THE HERO. `--relic-scale 1.5` / `2` tries a bigger tile (user, 2026-11-22: "etwa doppelt so
-    // gross … der benoetigte platz sollte von darueber kommen"): the row stays as wide as fifteen small tiles, so a
-    // bigger tile fits fewer to a row, and the band grows UPWARD into the margin over it rather than down into the arena.
+    // HOW BIG A RELIC STANDS OVER THE HERO: twice the old 24 (user, 2026-11-22: "die relikte sollten schon 100% groesser
+    // sein"). `--relic-scale S` tries another size against the old 24.
     private static readonly float RelicScale =
         OS.GetCmdlineUserArgs().SkipWhile(a => a != "--relic-scale").Skip(1).FirstOrDefault() is { } given
         && float.TryParse(given, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var scale)
-            ? Math.Clamp(scale, 0.5f, 3f) : 1f;
+            ? Math.Clamp(scale, 0.5f, 3f) : 2f;
     private static readonly int CombatRelicTile = (int)Math.Round(24 * RelicScale);
-    // From the pane's left edge to just short of the round's heading in the middle.
-    private const int CombatRelicsRowWidth = 560;
-    private static int CombatRelicsPerRow => Math.Max(1, CombatRelicsRowWidth / (CombatRelicTile + 3));
     // The relic tiles of the fight on screen, by relic id — what a relic that fires lights up.
     private readonly Dictionary<string, Control> _relicTiles = new(StringComparer.Ordinal);
     private const int NarrowestColumn = 110;
@@ -5152,11 +5164,10 @@ public partial class SessionScreen : Control
         // the free first ingredient could not be chosen, because every card in hand was dimmed as unaffordable.
         // A price written on THIS copy (the Overseer's linen, Inanna's claim) is not in the definition the
         // purse is checked against; the engine's own play check already prices the copy, so it is trusted.
+        // The engine prices the copy itself (CanAfford): a price written on it, Burdened, a False Signature's
+        // discount, Held Energy — everything the printed cost leaves out (user, 2026-11-22).
         var delta = card.GetMarkCounter(RogueDeck.Core.Combat.StandardCombatIds.CardCostDeltaCounter);
-        // Burdened (Act IV) puts 1 Energy on every card: a copy the surcharge prices past what is left is not playable.
-        var burdenedPastReach = hero.Statuses.Any(st => st.DefinitionId.value == BurdenedStatus)
-            && EnergyCost(definition) + delta + 1 > (hero.Resources.TryGetValue(StandardCombatIds.EnergyResource, out var energy) ? energy.Current : 0);
-        var affordable = chosenNotPlayed || ((delta < 0 || CanPay(hero, definition)) && combat.CanPlay(card.Id) && !burdenedPastReach);
+        var affordable = chosenNotPlayed || (combat.CanAfford(card.Id) && combat.CanPlay(card.Id));
         var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definition);
         var rules = RulesFor(definition, presentation);
 
@@ -5506,7 +5517,7 @@ public partial class SessionScreen : Control
         Rebuild();
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-        GD.Print($"smoke-relicsize: worn={session.Run.Relics.Count} tile={CombatRelicTile} perRow={CombatRelicsPerRow}");
+        GD.Print($"smoke-relicsize: worn={session.Run.Relics.Count} tile={CombatRelicTile} steady first={_relicTiles.Keys.FirstOrDefault()}");
         await CaptureThenQuit($"smoke-relics-{RelicScale:0.0}.png");
     }
 
@@ -6048,7 +6059,9 @@ public partial class SessionScreen : Control
             .Where(cost => cost.ResourceId == StandardCombatIds.EnergyResource)
             .Sum(cost => cost.Amount);
 
-    private bool CanPay(CombatantState payer, string definitionId) => RunBot.CanPay(Play!, payer, definitionId);
+    // Whether this copy can be paid for now: its live price (discounts, surcharges, a price on the copy) against
+    // Energy and Held Energy — the engine's own answer, so the hand never greys out a card the engine would take.
+    private bool CanAfford(CardInstance card) => Play?.Seat?.Current?.CanAfford(card.Id) ?? false;
 
     private string ResourcePoolsLine(CombatantState combatant)
     {
@@ -6697,8 +6710,6 @@ public partial class SessionScreen : Control
                 counts[owner] = counts.GetValueOrDefault(owner) + times;
         }
 
-        var statuses = GameHost.Instance.Blueprint.Statuses;
-        var carried = hero.Statuses.Select(s => s.DefinitionId.value).ToHashSet(StringComparer.Ordinal);
         foreach (var (relic, tile) in _relicTiles)
         {
             var now = counts.GetValueOrDefault(relic);
@@ -6706,11 +6717,19 @@ public partial class SessionScreen : Control
                 Flare(tile);
             _relicFired[relic] = now;
 
-            var own = statuses.Where(s => (s.Id == relic || s.Id.StartsWith(relic + "_", StringComparison.Ordinal))
-                && carried.Contains(s.Id)).ToList();
-            if (own.Count > 0 && own.All(s => s.Triggers.Count == 0) && own.Any(s => s.PassiveModifiers.Count > 0))
+            if (AlwaysInEffect(relic, hero))
                 Glow(tile);
         }
+    }
+
+    // A relic whose status only bends numbers (a passive modifier, no trigger) is acting the whole fight: its frame
+    // glows steadily, and it stands first in the row.
+    private static bool AlwaysInEffect(string relic, CombatantState hero)
+    {
+        var carried = hero.Statuses.Select(s => s.DefinitionId.value).ToHashSet(StringComparer.Ordinal);
+        var own = GameHost.Instance.Blueprint.Statuses.Where(s => (s.Id == relic || s.Id.StartsWith(relic + "_", StringComparison.Ordinal))
+            && carried.Contains(s.Id)).ToList();
+        return own.Count > 0 && own.All(s => s.Triggers.Count == 0) && own.Any(s => s.PassiveModifiers.Count > 0);
     }
 
     private static void Glow(Control tile)
