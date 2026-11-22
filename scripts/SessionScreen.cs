@@ -199,6 +199,8 @@ public partial class SessionScreen : Control
             _ = SmokeEffects();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-piles"))
             _ = SmokePiles();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-relicsize"))
+            _ = SmokeRelicSize();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-keys"))
             _ = SmokeKeys();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-preview"))
@@ -4064,7 +4066,11 @@ public partial class SessionScreen : Control
         if (session.Run.Relics.Count > 0)
         {
             var rows = (session.Run.Relics.Count + CombatRelicsPerRow - 1) / CombatRelicsPerRow;
-            var band = TopRegion(PaneInset, rows * (CombatRelicTile + 3), right: PaneInset);
+            var height = rows * (CombatRelicTile + 3);
+            // The band ENDS where it always did (just over the arena) and grows up into the pane's top margin; only
+            // what does not fit there pushes the arena down.
+            var top = Math.Max(2, arenaTop - 4 - height);
+            var band = TopRegion(top, height, right: PaneInset);
             var grid = new GridContainer
             {
                 Name = RelicGridName,
@@ -4079,7 +4085,7 @@ public partial class SessionScreen : Control
                 grid.AddChild(tile);
             }
             band.AddChild(grid);
-            arenaTop = Math.Max(arenaTop, PaneInset + rows * (CombatRelicTile + 3) + 8);
+            arenaTop = Math.Max(arenaTop, top + height + 4);
             LightRelics(combat, hero);
         }
 
@@ -4641,8 +4647,17 @@ public partial class SessionScreen : Control
 
     private const int HeroColumn = 200;
     private const int AllyColumn = 150;
-    private const int CombatRelicTile = 24;
-    private const int CombatRelicsPerRow = 15;
+    // HOW BIG A RELIC STANDS OVER THE HERO. `--relic-scale 1.5` / `2` tries a bigger tile (user, 2026-11-22: "etwa doppelt so
+    // gross … der benoetigte platz sollte von darueber kommen"): the row stays as wide as fifteen small tiles, so a
+    // bigger tile fits fewer to a row, and the band grows UPWARD into the margin over it rather than down into the arena.
+    private static readonly float RelicScale =
+        OS.GetCmdlineUserArgs().SkipWhile(a => a != "--relic-scale").Skip(1).FirstOrDefault() is { } given
+        && float.TryParse(given, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var scale)
+            ? Math.Clamp(scale, 0.5f, 3f) : 1f;
+    private static readonly int CombatRelicTile = (int)Math.Round(24 * RelicScale);
+    // From the pane's left edge to just short of the round's heading in the middle.
+    private const int CombatRelicsRowWidth = 560;
+    private static int CombatRelicsPerRow => Math.Max(1, CombatRelicsRowWidth / (CombatRelicTile + 3));
     // The relic tiles of the fight on screen, by relic id — what a relic that fires lights up.
     private readonly Dictionary<string, Control> _relicTiles = new(StringComparer.Ordinal);
     private const int NarrowestColumn = 110;
@@ -5471,6 +5486,28 @@ public partial class SessionScreen : Control
             ? "smoke-quit: save, quit, and carry on — the run came back to a screen that can be played"
             : "smoke-quit: FAILED — the run did not come back to a screen that can be played");
         GetTree().Quit(landed && Boot.ResumeVerdict ? 0 : 1);
+    }
+
+    // `--smoke-relicsize [--shelf N] [--relic-scale S]`: the first fight with N relics worn over the hero, photographed,
+    // to judge a relic tile size (and that the arena under it did not move).
+    private async System.Threading.Tasks.Task SmokeRelicSize()
+    {
+        var combat = WalkToFirstFight();
+        if (combat is null || Session is not { } session)
+        {
+            GD.Print("smoke-relicsize: no fight reached");
+            GetTree().Quit(1);
+            return;
+        }
+        var wanted = SimArg("--shelf", 12);
+        foreach (var relic in GameHost.Instance.Blueprint.Relics
+                     .Where(r => session.Run.Relics.All(w => w.Id.Value != r.Id)).Take(Math.Max(0, wanted - session.Run.Relics.Count)))
+            session.Run.AddRelic(new RogueDeck.Run.RelicInstance(session.Run.Content.GetRelic(new RogueDeck.Run.RelicId(relic.Id))));
+        Rebuild();
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        GD.Print($"smoke-relicsize: worn={session.Run.Relics.Count} tile={CombatRelicTile} perRow={CombatRelicsPerRow}");
+        await CaptureThenQuit($"smoke-relics-{RelicScale:0.0}.png");
     }
 
     private async System.Threading.Tasks.Task SmokeShelf()
