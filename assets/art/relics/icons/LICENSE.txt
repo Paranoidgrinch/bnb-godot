@@ -59,7 +59,7 @@ inked red. Three pictures put two sources together or add a Roman numeral (make_
   lamp_thiefs_wick                   Stolen Wick                    "candle-light" by lorc  https://game-icons.net/1x1/lorc/candle-light.html
   lead_counterweight                 Lead Counterweight             "weight" by delapouite  https://game-icons.net/1x1/delapouite/weight.html
   levy_stamp                         Levy Stamp                     "stamper" by delapouite  https://game-icons.net/1x1/delapouite/stamper.html
-  libation_bowl                      Libation Bowl                  "pouring-chalice" by lorc  https://game-icons.net/1x1/lorc/pouring-chalice.html
+  libation_bowl                      Libation Bowl                  "chalice-drops" by lorc  https://game-icons.net/1x1/lorc/chalice-drops.html
   line_between_the_volumes           Volume Clasps                  "belt-buckles" by lorc  https://game-icons.net/1x1/lorc/belt-buckles.html
   lt_relic_badge_chain               Badge Chain                    "star-medal" by delapouite  https://game-icons.net/1x1/delapouite/star-medal.html
   lt_relic_brandy_flask              Brandy Flask                   "booze" by delapouite  https://game-icons.net/1x1/delapouite/booze.html
