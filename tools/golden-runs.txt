@@ -1,5 +1,5 @@
 # THE GOLDEN RUN SET — what these runs did, so that making them faster can be proved harmless.
-# Recorded 2026-11-22T10:51:55+01:00 by tools/golden.sh --record. Re-record ONLY when a change to the GAME
+# Recorded 2026-11-22T16:02:02+01:00 by tools/golden.sh --record. Re-record ONLY when a change to the GAME
 # is intended, and say in the commit which lines moved and why.
 # 'seconds=' is stripped: the clock is meant to change. Timings at the bottom are informational.
 #
@@ -71,37 +71,37 @@ witch-mortal seed102   sim-fitness: policy=random seed=102 maps=v0.0.1 deepestAc
 witch-mortal seed102   sim-result: seed=102 maps=v0.0.1 result=Defeat acts=2 rooms=28 fights=19 hp=0/400 problems=0 error=none stopped because the run finished
 #
 # ── how long it took when recorded (informational, never compared) ──
-#time apprentice-immortal seed1     98.2 s
-#time apprentice-immortal seed2     89.7 s
-#time apprentice-immortal seed3     35.3 s
-#time apprentice-immortal seed4     129.0 s
-#time apprentice-mortal seed101   41.6 s
-#time apprentice-mortal seed102   26.4 s
-#time immortal seed1     186.2 s
-#time immortal seed10    63.7 s
-#time immortal seed11    60.9 s
-#time immortal seed12    81.2 s
-#time immortal seed2     67.3 s
-#time immortal seed3     54.6 s
-#time immortal seed4     57.7 s
-#time immortal seed5     69.0 s
-#time immortal seed6     69.0 s
-#time immortal seed7     44.2 s
-#time immortal seed8     70.7 s
-#time immortal seed9     72.9 s
-#time lieutenant-immortal seed1     74.4 s
-#time lieutenant-immortal seed2     73.5 s
-#time lieutenant-immortal seed3     67.2 s
-#time lieutenant-immortal seed4     72.6 s
-#time lieutenant-mortal seed101   27.1 s
-#time lieutenant-mortal seed102   20.0 s
-#time mortal seed101   32.8 s
-#time mortal seed102   24.6 s
-#time mortal seed103   19.3 s
-#time witch-immortal seed1     65.9 s
-#time witch-immortal seed2     65.5 s
-#time witch-immortal seed3     57.2 s
-#time witch-immortal seed4     71.9 s
-#time witch-mortal seed101   41.6 s
-#time witch-mortal seed102   27.2 s
-# total run-seconds 2058.4 (wall clock depends on --jobs)
+#time apprentice-immortal seed1     103.7 s
+#time apprentice-immortal seed2     94.8 s
+#time apprentice-immortal seed3     37.3 s
+#time apprentice-immortal seed4     134.7 s
+#time apprentice-mortal seed101   43.3 s
+#time apprentice-mortal seed102   27.8 s
+#time immortal seed1     186.8 s
+#time immortal seed10    65.2 s
+#time immortal seed11    62.7 s
+#time immortal seed12    82.4 s
+#time immortal seed2     66.0 s
+#time immortal seed3     52.3 s
+#time immortal seed4     54.3 s
+#time immortal seed5     67.5 s
+#time immortal seed6     67.3 s
+#time immortal seed7     44.5 s
+#time immortal seed8     73.2 s
+#time immortal seed9     75.7 s
+#time lieutenant-immortal seed1     77.6 s
+#time lieutenant-immortal seed2     76.3 s
+#time lieutenant-immortal seed3     71.4 s
+#time lieutenant-immortal seed4     74.7 s
+#time lieutenant-mortal seed101   28.3 s
+#time lieutenant-mortal seed102   20.9 s
+#time mortal seed101   34.1 s
+#time mortal seed102   25.3 s
+#time mortal seed103   19.6 s
+#time witch-immortal seed1     67.6 s
+#time witch-immortal seed2     66.6 s
+#time witch-immortal seed3     59.5 s
+#time witch-immortal seed4     73.5 s
+#time witch-mortal seed101   43.5 s
+#time witch-mortal seed102   28.7 s
+# total run-seconds 2107.1 (wall clock depends on --jobs)
