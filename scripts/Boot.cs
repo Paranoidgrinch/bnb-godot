@@ -1227,7 +1227,57 @@ public partial class Boot : Control
             SafeDepositPanel.Open(this, host);
             await Shot("user://smoke-progression-drawers.png");
             Check(FindChild($"OpenBooster_lieutenant_{lt.Boosters[1].Level}", true, false) is Button, "the box offers to break the next earned seal");
+
+            // BREAKING A SEAL opens the folder on its own screen and turns the cards one by one (BoosterOpening).
+            if (FindChild($"OpenBooster_lieutenant_{lt.Boosters[1].Level}", true, false) is Button seal)
+            {
+                seal.EmitSignal(BaseButton.SignalName.Pressed);
+                await ToSignal(GetTree().CreateTimer(1.35), SceneTreeTimer.SignalName.Timeout);
+                await Shot("user://smoke-progression-booster-turning.png");
+                var opening = GetTree().Root.FindChild(BoosterOpening.OverlayName, true, false);
+                Check(opening is not null, "breaking the seal opens the folder on a screen of its own");
+                var waited = 0.0;
+                while (opening?.FindChild("BoosterDone", true, false) is Button { Disabled: true } && waited < 12)
+                {
+                    await ToSignal(GetTree().CreateTimer(0.25), SceneTreeTimer.SignalName.Timeout);
+                    waited += 0.25;
+                }
+                await ToSignal(GetTree().CreateTimer(0.5), SceneTreeTimer.SignalName.Timeout);
+                await Shot("user://smoke-progression-booster-open.png");
+                Check(opening?.FindChild("BoosterDone", true, false) is Button { Disabled: false } done && done.GetParent() is not null,
+                    $"every card is turned and the folder can be filed ({waited:0.0} s)");
+                (opening?.FindChild("BoosterDone", true, false) as Button)?.EmitSignal(BaseButton.SignalName.Pressed);
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                Check(GetTree().Root.FindChild(BoosterOpening.OverlayName, true, false) is null
+                    && CardProgression.IsOpened(host.Meta, lt, lt.Boosters[1]), "filing it closes the screen; the drawer stays opened");
+            }
             GetNodeOrNull(SafeDepositPanel.OverlayName)?.Free();
+
+            // THE RUN'S XP AS A BAR: 170 XP into the profile, then a run that pays 49 and crosses into level 5.
+            meta = host.Meta;
+            meta.SetCounter("bnb.xp.lieutenant", 170);
+            host.SaveMeta(meta);
+            var paid = CardProgression.Book(host, "lieutenant", 20, 3, 2, won: false)!;
+            var sheet = new PanelContainer { Name = "XpProbeSheet", CustomMinimumSize = new Vector2(760, 0) };
+            sheet.AddThemeStyleboxOverride("panel", MoonvineTheme.WoodPanel(rim: true));
+            var pad = new MarginContainer();
+            foreach (var side in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })
+                pad.AddThemeConstantOverride(side, 26);
+            sheet.AddChild(pad);
+            pad.AddChild(new ExperienceBar(lt, paid, CardProgression.Xp(host.Meta, "lieutenant")));
+            var holder = new CenterContainer { Name = "XpProbe" };
+            holder.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+            holder.AddChild(sheet);
+            AddChild(holder);
+            await ToSignal(GetTree().CreateTimer(0.5), SceneTreeTimer.SignalName.Timeout);
+            await Shot("user://smoke-progression-xp-filling.png");
+            await ToSignal(GetTree().CreateTimer(2.0), SceneTreeTimer.SignalName.Timeout);
+            await Shot("user://smoke-progression-xp.png");
+            var news = holder.FindChild("XpNews", true, false) as Label;
+            Check(paid.LevelAfter > paid.LevelBefore && news?.Text.Contains($"Level {paid.LevelAfter}") == true,
+                $"the bar crosses level {paid.LevelBefore} → {paid.LevelAfter} and says so ({paid.Total} XP)");
+            holder.Free();
         }
         finally
         {

@@ -180,10 +180,16 @@ public partial class SafeDepositPanel : PanelContainer
         {
             column.AddChild(Soft($"A sealed folder: {booster.Cards.Count} cards{(booster.Relics.Count > 0 ? $", {booster.Relics.Count} relic{(booster.Relics.Count == 1 ? "" : "s")}" : "")}."));
             var seal = new Button { Text = "Break the seal", Name = $"OpenBooster_{definition.Character}_{booster.Level}" };
+            // Breaking the seal opens the folder on a screen of its own, card by card (BoosterOpening); the box
+            // shows the drawer opened when that screen is closed.
             seal.Pressed += () =>
             {
                 if (CardProgression.Open(_host, definition, booster))
-                    Refill();
+                    BoosterOpening.Show(Screen(), _host, definition, booster, () =>
+                    {
+                        if (IsInstanceValid(this))
+                            Refill();
+                    });
             };
             column.AddChild(seal);
         }
@@ -192,6 +198,15 @@ public partial class SafeDepositPanel : PanelContainer
             column.AddChild(Muted($"Locked until level {booster.Level}."));
         }
         return card;
+    }
+
+    // The screen the box was opened on: the parent of its veil, which fills the window.
+    private Control Screen()
+    {
+        Node node = this;
+        while (node.GetParent() is { } parent && node.Name != OverlayName)
+            node = parent;
+        return node.GetParent() as Control ?? (Control)node;
     }
 
     private string CardName(string id) =>

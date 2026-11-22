@@ -93,15 +93,21 @@ public partial class SessionScreen
         // the shells. Not for a probe's run, which books nothing.
         if (!GameHost.Instance.IsProbe && !GameHost.Instance.IsMultiplayer)
         {
-            if (CardProgression.LastGain is { } gain)
-                Field("Experience", $"+{gain.Total} XP"
-                    + (gain.LevelAfter > gain.LevelBefore
-                        ? $" · level {gain.LevelAfter}: a sealed folder waits in the Safe Deposit Box"
-                        : ""), gain.LevelAfter > gain.LevelBefore ? MoonvineTheme.Accent : null);
             if (victory && Shells.LastPayout is { } payout)
                 Field("Shells", $"+{payout.Total}" + (payout.Streak > 0 ? $" (streak bonus +{payout.Streak})" : ""), MoonvineTheme.Accent);
         }
         form.AddChild(fields);
+        // WHAT THE RUN PAID, as the level bar filling up — not a bare "+43 XP" (user, 2026-11-22).
+        if (!GameHost.Instance.IsProbe && !GameHost.Instance.IsMultiplayer && CardProgression.LastGain is { } gained
+            && CardProgression.For(GameHost.Instance.Blueprint, run.CharacterId ?? "") is { } progression)
+        {
+            form.AddChild(new HSeparator());
+            var experience = new Label { Text = "Experience" };
+            experience.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
+            form.AddChild(experience);
+            form.AddChild(new ExperienceBar(progression, gained,
+                CardProgression.Xp(GameHost.Instance.Meta, progression.Character)));
+        }
         form.AddChild(new HSeparator());
 
         var remark = new Label
