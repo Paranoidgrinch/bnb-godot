@@ -2620,12 +2620,10 @@ public partial class SessionScreen : Control
             HorizontalScrollMode = ScrollContainer.ScrollMode.Auto,
         };
         var map = new MapView(session.Run.Map, session.Run) { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
-        var mount = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        mount.AddThemeStyleboxOverride("panel", MoonvineTheme.StoneFrame(padH: 14, padV: 12));
+        // no surround, as on the map screen: the drawn plan has an edge of its own
         var centre = new CenterContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         centre.AddChild(map);
-        mount.AddChild(centre);
-        scroll.AddChild(mount);
+        scroll.AddChild(centre);
         column.AddChild(scroll);
         column.AddChild(MapLegend());
 
@@ -3796,9 +3794,12 @@ public partial class SessionScreen : Control
 
     private void RenderNodeFork(InteractiveRunSession session)
     {
-        ActHeading(session);
-        Title("Choose your path");
-        Muted("Pick a highlighted room to travel to.");
+        Gauntlet(session);
+        // The map says which act this is in its own title cartouche; the screen says only what to do, once and
+        // large, over the middle of the map (the user's call, 2026-11-22: no lintel, no room count, no hint line).
+        var heading = new Label { Text = "Choose your path", HorizontalAlignment = HorizontalAlignment.Center };
+        heading.AddThemeFontSizeOverride("font_size", 30);
+        _main.AddChild(heading);
         // What the between-rooms screen used to offer, now that there is no between-rooms screen — and shown as
         // the object it is, on the same tile the sidebar wears it on. "Use standard.scheduled_the_collapse" was
         // the last raw id left anywhere the player is asked to choose something.
@@ -3821,7 +3822,7 @@ public partial class SessionScreen : Control
 
     private void RenderInterlude(InteractiveRunSession session)
     {
-        ActHeading(session);
+        Gauntlet(session);
         Title("Between rooms");
         foreach (var consumable in session.Run.Consumables.Where(c => c.UseEffects.Count > 0))
         {
@@ -3839,30 +3840,12 @@ public partial class SessionScreen : Control
         AddMap(null, null);
     }
 
-    // Which act this is, and how far through it the run stands. Without this the player crosses from the city
-    // into the archives and is never told — the map simply becomes a different map.
-    private void ActHeading(InteractiveRunSession session)
+    private void Gauntlet(InteractiveRunSession session)
     {
-        var run = session.Run;
-        var acts = GameHost.Instance.Blueprint.Acts;
-        var name = acts is not null && run.ActIndex < acts.Count
-            ? acts[run.ActIndex].NameKey ?? acts[run.ActIndex].Id
-            : null;
-        if (name is not null)
-        {
-            // A heading is an OBJECT on the page, not a band across it: shrink to what it says, and sit where
-            // the label it replaced sat.
-            var heading = Lintel.Make(run.ActNumber, name);
-            heading.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
-            _main.AddChild(heading);
-        }
-        if (run.Map.Nodes.Count > 0)
-            Muted($"Room {run.VisitedNodes.Count} of about {LongestRoute(run.Map)}");
-
         // A GAUNTLET SAYS WHO IS COMING. Act V draws three gods of six and the design requires that the three
         // and their order are visible from the beginning of the act — an act with no rooms to read ahead has
         // nothing else to tell the player what it is going to be.
-        if (RollCall(run) is { Count: > 1 } gods)
+        if (RollCall(session.Run) is { Count: > 1 } gods)
             Muted($"{gods.Count} bosses, in this order: {string.Join("  ▸  ", gods)}");
     }
 
@@ -3883,18 +3866,6 @@ public partial class SessionScreen : Control
         ];
     }
 
-    // The most rooms any route through this act asks for — "about", because the routes differ.
-    private static int LongestRoute(RunMap map)
-    {
-        var depth = map.Nodes.ToDictionary(n => n.Id.Value, _ => 1);
-        for (var pass = 0; pass < map.Nodes.Count; pass++)
-            foreach (var edge in map.Edges)
-                if (depth.TryGetValue(edge.From.Value, out var from) && depth.TryGetValue(edge.To.Value, out var to)
-                    && to < from + 1)
-                    depth[edge.To.Value] = from + 1;
-        return depth.Count == 0 ? 0 : depth.Values.Max();
-    }
-
     // Drop the map graph into the main column: reachable ids are the clickable rooms (a fork), or null
     // for a read-only "you are here" overview (an interlude).
     //
@@ -3905,16 +3876,24 @@ public partial class SessionScreen : Control
         if (Session is not { } session)
             return;
         var map = new MapView(session.Run.Map, session.Run, reachable, onPick,
-            AtTable && NetSession.Instance.IsOnline ? VotesByNode() : null)
-        {
-            SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
-        };
-        // D8-5: the act's map hangs in a marble surround, the way the lintel above it is set in one. The rooms
-        // and the paths between them are NOT touched — that is the map rework's drawing (S1–S15) and this pass
-        // repaints what a thing is set in, never what it says.
-        var mount = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
-        mount.AddThemeStyleboxOverride("panel", MoonvineTheme.StoneFrame(padH: 14, padV: 12));
+            AtTable && NetSession.Instance.IsOnline ? VotesByNode() : null);
+        // The map is drawn as large as the column allows (up to MapMaxScale), with no surround: the drawn plan
+        // has an edge of its own. Scale is a transform, so the holder carries the scaled height for the layout.
+        var mount = new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill, MouseFilter = MouseFilterEnum.Pass };
         mount.AddChild(map);
+        void Fit()
+        {
+            var natural = map.GetCombinedMinimumSize();
+            if (natural.X <= 0 || mount.Size.X <= 0)
+                return;
+            var scale = Math.Min(MapMaxScale, mount.Size.X / natural.X);
+            map.Size = natural;
+            map.Scale = new Vector2(scale, scale);
+            map.Position = new Vector2(Mathf.Round((mount.Size.X - natural.X * scale) / 2), 0);
+            mount.CustomMinimumSize = new Vector2(0, Mathf.Ceil(natural.Y * scale));
+        }
+        mount.Resized += Fit;
+        map.MinimumSizeChanged += Fit;
         // The legend stands ABOVE the map: it is what the symbols mean, read before the map is, and under an
         // act's map it sat below the fold where nobody scrolled to it (playtest 2026-09-26).
         _main.AddChild(MapLegend());
@@ -3929,9 +3908,12 @@ public partial class SessionScreen : Control
         // a room that does not exist used to drop the player into the middle of the act.
         if (!IsInstanceValid(map) || map.CurrentRoomPosition == Vector2.Zero || _mainScroll.Size.Y <= 0)
             return;
-        var target = (int)(map.Position.Y + map.CurrentRoomPosition.Y - _mainScroll.Size.Y / 2);
+        var mount = map.GetParent<Control>();
+        var target = (int)(mount.Position.Y + map.Position.Y + map.CurrentRoomPosition.Y * map.Scale.Y - _mainScroll.Size.Y / 2);
         _mainScroll.ScrollVertical = Math.Max(0, target);
     }
+
+    private const float MapMaxScale = 1.6f;
 
     private static Control MapLegend()
     {

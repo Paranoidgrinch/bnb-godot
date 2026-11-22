@@ -106,7 +106,7 @@ public partial class MapView : Control
                 Disabled = !isReachable || _onPick is null,
                 TooltipText = who is null ? $"{Label(role)} — {Tooltip(role)}" : $"{who} — {Tooltip(role)}",
             };
-            if (_run.CurrentNodeId?.Value == node.Id.Value)
+            if (isReachable && _onPick is not null)
                 AddChild(Beacon(pos));
             Style(button, node, role, isReachable);
             if (isReachable && _onPick is { } pick)
@@ -254,14 +254,14 @@ public partial class MapView : Control
 
     // The token carries the room's colour in its ring; the button around it only says how the run stands to it.
     // Rooms that cannot be walked to now are faded, so the fork's open rooms are the bright ones; walked rooms
-    // are greyed; the room the run stands in wears a gold halo, and an open room a thin one until hovered.
+    // are greyed; the room the run stands in wears a black ring, and an open room a thin gold one until hovered.
     private void Style(Button button, RunNode node, string role, bool reachable)
     {
         var visited = _run.VisitedNodes.Any(n => n.Value == node.Id.Value);
         var current = _run.CurrentNodeId?.Value == node.Id.Value;
         var open = reachable && _onPick is not null;
 
-        StyleBox rest = current ? Halo(MoonvineTheme.AccentLight, 3)
+        StyleBox rest = current ? Halo(Colors.Black, 4)
             : open ? Halo(new Color(MoonvineTheme.Accent, 0.8f), 2)
             : new StyleBoxEmpty();
         foreach (var state in new[] { "normal", "pressed", "disabled", "focus" })
@@ -281,11 +281,11 @@ public partial class MapView : Control
         button.AddThemeFontSizeOverride("font_size", 9);
     }
 
-    // WHERE YOU ARE glows. On a full drawn plan the gold halo alone is one ring among many, and the eye loses
-    // its own room. Behind the token: an amber light that slowly brightens and dims, and a thin ring that drifts
-    // outward from the rim and fades, once per breath; the movement is what the eye finds. Amber rather than
-    // the theme's pale gold, which vanishes on the parchment. It sits under the button, so the token and its
-    // halo stay as they are.
+    // WHERE YOU CAN GO glows (the user's call, 2026-11-22; it used to mark where you are, which now wears a plain
+    // black ring). On a full drawn plan a thin halo is one ring among many and the eye loses the choice. Behind
+    // each open token: an amber light that slowly brightens and dims, and a thin ring that drifts outward from
+    // the rim and fades, once per breath; the movement is what the eye finds. Amber rather than the theme's pale
+    // gold, which vanishes on the parchment. It sits under the button, so the token and its halo stay as they are.
     private static readonly Color BeaconColor = new("f0a020");
     private const double BeaconBreath = 2.4; // seconds, one bright-dim cycle and one ring
 
@@ -300,7 +300,7 @@ public partial class MapView : Control
             Position = pos - new Vector2(Pad, Pad),
             Size = new Vector2(size, size),
             MouseFilter = MouseFilterEnum.Ignore,
-            Name = "CurrentRoomGlow",
+            Name = "OpenRoomGlow",
         };
         glow.Draw += () =>
         {
