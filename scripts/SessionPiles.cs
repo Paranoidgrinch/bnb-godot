@@ -352,7 +352,7 @@ public partial class SessionScreen
         for (var guard = 0; guard < 10 && combat.IsHeroTurn; guard++)
         {
             var hero = combat.State.GetCombatant(combat.HeroId);
-            var card = combat.Hand.FirstOrDefault(c => CanPay(hero, c.DefinitionId.value) && combat.CanPlay(c.Id));
+            var card = combat.Hand.FirstOrDefault(c => CanAfford(c) && combat.CanPlay(c.Id));
             if (card is null) break;
             _armedCard = card.Id;
             PlayArmedCardAt(null);

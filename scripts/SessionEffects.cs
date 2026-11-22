@@ -299,7 +299,7 @@ public partial class SessionScreen
             var hero = combat.State.GetCombatant(combat.HeroId);
             // A card that needs no target first: in a starting hand that is the block.
             if (!combat.IsHeroTurn || combat.Hand
-                    .Where(c => combat.CanPlay(c.Id) && CanPay(hero, c.DefinitionId.value))
+                    .Where(c => combat.CanPlay(c.Id) && CanAfford(c))
                     .OrderBy(c => NeedsTarget(c.DefinitionId.value)).FirstOrDefault() is not { } card)
                 break;
             var target = combat.State.Combatants

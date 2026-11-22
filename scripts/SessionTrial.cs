@@ -79,7 +79,7 @@ public partial class SessionScreen
                 var energy = hero.Resources.TryGetValue(RogueDeck.Core.Combat.StandardCombatIds.EnergyResource, out var pool) ? pool.Current : 0;
                 // …and never a card that lends against tomorrow and comes straight back (Nanshe's Take From Tomorrow,
                 // tagged `borrow`): first in hand and free, it would be played for ever.
-                var card = combat.Hand.FirstOrDefault(c => CanPay(hero, c.DefinitionId.value) && combat.CanPlay(c.Id)
+                var card = combat.Hand.FirstOrDefault(c => CanAfford(c) && combat.CanPlay(c.Id)
                     && (!burdened || EffectiveCost(hero, c.DefinitionId.value) <= energy)
                     // …and payable as the rules price it now: Enlil's No Word Shall Be Without Price puts 1 on a
                     // free card, and a refused card left first in hand would be tried for ever.

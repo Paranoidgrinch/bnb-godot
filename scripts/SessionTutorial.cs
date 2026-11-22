@@ -348,7 +348,7 @@ public partial class SessionScreen
                 {
                     var combat = driver.Current;
                     var hero = combat.State.GetCombatant(combat.HeroId);
-                    var card = combat.Hand.FirstOrDefault(c => CanPay(hero, c.DefinitionId.value));
+                    var card = combat.Hand.FirstOrDefault(c => CanAfford(c));
                     var target = combat.State.Combatants.FirstOrDefault(c => c.Id != combat.HeroId && c.IsAlive
                         && c.TeamId == RogueDeck.Core.Combat.StandardCombatIds.EnemyTeam)?.Id;
                     if (card is not null)

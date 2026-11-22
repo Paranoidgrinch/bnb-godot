@@ -208,7 +208,7 @@ public partial class SessionScreen
             {
                 var combat = driver.Current!;
                 var hero = combat.State.GetCombatant(combat.HeroId);
-                if (!combat.IsHeroTurn || combat.Hand.FirstOrDefault(c => combat.CanPlay(c.Id) && CanPay(hero, c.DefinitionId.value))
+                if (!combat.IsHeroTurn || combat.Hand.FirstOrDefault(c => combat.CanPlay(c.Id) && CanAfford(c))
                         is not { } card)
                     break;
                 var target = combat.State.Combatants

@@ -193,7 +193,7 @@ public partial class SessionScreen
         var fight = Play!.Seat!.Current!;
         var hero = fight.State.GetCombatant(fight.HeroId);
         var index = fight.Hand.ToList().FindIndex(c => NeedsTarget(c.DefinitionId.value)
-            && CanPay(hero, c.DefinitionId.value) && fight.CanPlay(c.Id));
+            && CanAfford(c) && fight.CanPlay(c.Id));
         if (index is >= 0 and < Controls.CardKeys)
         {
             var before = fight.Hand.Count;

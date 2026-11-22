@@ -55,7 +55,7 @@ public partial class SessionScreen
         ClearPreview();
         if (!GameplaySettings.DamageCalculator || !combat.IsHeroTurn || !combat.CanPlay(card)
             || combat.Hand.FirstOrDefault(c => c.Id.value == card.value) is not { } inHand
-            || !CanPay(combat.State.GetCombatant(combat.HeroId), inHand.DefinitionId.value))
+            || !combat.CanAfford(inHand.Id))
             return;
         // The same default target PlayArmedCardAt falls back to, so the preview is of the play that would happen.
         target ??= LivingEnemies(combat).FirstOrDefault();
@@ -240,7 +240,7 @@ public partial class SessionScreen
         var hero = combat.State.GetCombatant(combat.HeroId);
         // The first aimed card whose words promise damage, so the probe measures a NUMBER.
         var card = combat.Hand.FirstOrDefault(c => NeedsTarget(c.DefinitionId.value)
-            && CanPay(hero, c.DefinitionId.value) && combat.CanPlay(c.Id)
+            && CanAfford(c) && combat.CanPlay(c.Id)
             && GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(c.DefinitionId.value)?.FlavorText
                 is { } text && text.Contains("damage", StringComparison.OrdinalIgnoreCase));
         if (card is null)

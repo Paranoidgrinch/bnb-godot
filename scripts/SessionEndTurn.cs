@@ -48,7 +48,7 @@ public partial class SessionScreen
     private int PlayableCount(ICombatView combat)
     {
         var hero = combat.State.GetCombatant(combat.HeroId);
-        return combat.Hand.Count(card => combat.CanPlay(card.Id) && CanPay(hero, card.DefinitionId.value));
+        return combat.Hand.Count(card => combat.CanPlay(card.Id) && CanAfford(card));
     }
 
     private CanvasLayer EndTurnAsk(ICombatView combat, int playable)
