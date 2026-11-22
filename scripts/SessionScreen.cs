@@ -5511,9 +5511,11 @@ public partial class SessionScreen : Control
             return;
         }
         var wanted = SimArg("--shelf", 12);
-        foreach (var relic in GameHost.Instance.Blueprint.Relics
-                     .Where(r => session.Run.Relics.All(w => w.Id.Value != r.Id)).Take(Math.Max(0, wanted - session.Run.Relics.Count)))
-            session.Run.AddRelic(new RogueDeck.Run.RelicInstance(session.Run.Content.GetRelic(new RogueDeck.Run.RelicId(relic.Id))));
+        // `--relic-ids a,b,c` names them; otherwise the document's first ones.
+        var named = OS.GetCmdlineUserArgs().SkipWhile(a => a != "--relic-ids").Skip(1).FirstOrDefault()?.Split(',') ?? [];
+        var pool = named.Length > 0 ? named : GameHost.Instance.Blueprint.Relics.Select(r => r.Id).ToArray();
+        foreach (var id in pool.Where(id => session.Run.Relics.All(w => w.Id.Value != id)).Take(Math.Max(0, wanted - session.Run.Relics.Count)))
+            session.Run.AddRelic(new RogueDeck.Run.RelicInstance(session.Run.Content.GetRelic(new RogueDeck.Run.RelicId(id))));
         Rebuild();
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
