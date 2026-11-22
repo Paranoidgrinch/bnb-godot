@@ -91,11 +91,11 @@ public partial class CreditsPanel : PanelContainer
     [
         new("Map symbols", "Lorc and Delapouite — game-icons.net", By3, "https://game-icons.net",
             "eight silhouettes on the map's room tokens, and the shield beside a block number"),
-        new("Relic icons", "Lorc, Delapouite, Willdabeast, Caro Asercion and GeneralAce135 — game-icons.net", By3,
+        new("Relic icons", "Lorc, Delapouite, Willdabeast, Caro Asercion, GeneralAce135, Sbed and Lucas — game-icons.net", By3,
             "https://game-icons.net",
             "the relics' pictures, recoloured; assets/art/relics/icons/LICENSE.txt names each one"),
         new("700+ RPG Icons", "Lorc — OpenGameArt", By3, "https://opengameart.org/content/700-rpg-icons",
-            "nine of the Lieutenant's relic pictures, recoloured"),
+            "nine of the Lieutenant's relic pictures and Sekhmet's Claw, recoloured"),
     ];
 
     private static readonly Entry[] Maps =

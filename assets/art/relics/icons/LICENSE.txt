@@ -6,8 +6,10 @@ game-icons.net: https://game-icons.net (repository github.com/game-icons/icons).
 OpenGameArt: "700+ RPG Icons" by Lorc, https://opengameart.org/content/700-rpg-icons.
 own-*.svg were drawn for this game and carry no third-party rights.
 
-Changes: each silhouette is scaled into a margin and inked pale parchment on transparency (recoloured).
+Changes: each silhouette is scaled into a margin and inked pale parchment on transparency (recoloured); one is
+inked red. Three pictures put two sources together or add a Roman numeral (make_combos.py, marked below).
 
+  a_ring_put_back                    Returned Ring                  "diamond-ring" by delapouite  https://game-icons.net/1x1/delapouite/diamond-ring.html
   alms_basin                         Alms Basin                     "berries-bowl" by delapouite  https://game-icons.net/1x1/delapouite/berries-bowl.html
   appraisers_chalk                   Appraiser's Chalk              drawn for this game (own-chalk.svg)
   apprentices_whetstone              Apprentice's Whetstone         "stone-block" by lorc  https://game-icons.net/1x1/lorc/stone-block.html
@@ -18,26 +20,47 @@ Changes: each silhouette is scaled into a margin and inked pale parchment on tra
   binders_awl                        Binder's Awl                   "chisel" by delapouite  https://game-icons.net/1x1/delapouite/chisel.html
   blackthorn_brooch                  Blackthorn Brooch              "barbed-coil" by lorc  https://game-icons.net/1x1/lorc/barbed-coil.html
   blank_folio                        Blank Folio                    "book-cover" by delapouite  https://game-icons.net/1x1/delapouite/book-cover.html
+  blank_line_black_book              Black Book                     "book-cover" by lorc  https://game-icons.net/1x1/lorc/book-cover.html
   blood_price_token                  Blood-Price Token              "drop" by lorc  https://game-icons.net/1x1/lorc/drop.html
   blood_stamped_bond                 Blood-Stamped Bond             "stabbed-note" by delapouite  https://game-icons.net/1x1/delapouite/stabbed-note.html
   bounty_hook                        Bounty Hook                    "meat-hook" by lorc  https://game-icons.net/1x1/lorc/meat-hook.html
+  brass_bookmark                     Brass Bookmark                 "bookmarklet" by lorc  https://game-icons.net/1x1/lorc/bookmarklet.html
+  broken_granary_seal                Granary Seal                   "granary" by delapouite  https://game-icons.net/1x1/delapouite/granary.html
   bruise_cup                         Bruise Cup                     "pouring-chalice" by lorc  https://game-icons.net/1x1/lorc/pouring-chalice.html
+  carved_bone_buckle                 Carved Bone Buckle             "belt" by lucasms  https://game-icons.net/1x1/lucasms/belt.html
+  case_that_climbed                  Docket Clip                    "alligator-clip" by lorc  https://game-icons.net/1x1/lorc/alligator-clip.html
+  chair_of_the_ninth_hour            Waiting Chair                  "wooden-chair" by delapouite  https://game-icons.net/1x1/delapouite/wooden-chair.html
   charnel_ledger                     Charnel Ledger                 "black-book" by willdabeast  https://game-icons.net/1x1/willdabeast/black-book.html
+  coin_left_in_the_throat            Throat Coin                    "crown-coin" by lorc  https://game-icons.net/1x1/lorc/crown-coin.html
   conservators_thread                Conservator's Thread           "sewing-string" by delapouite  https://game-icons.net/1x1/delapouite/sewing-string.html
+  contempt_ledger_nail               Ledger Nail                    "coiled-nail" by delapouite  https://game-icons.net/1x1/delapouite/coiled-nail.html
   copper_receipt_roll                Glass Inkwell                  "mason-jar" by caro-asercion  https://game-icons.net/1x1/caro-asercion/mason-jar.html
   counterfeit_toll_writ              Counterfeit Toll Writ          "tied-scroll" by lorc  https://game-icons.net/1x1/lorc/tied-scroll.html
+  cracked_bell_lip                   Bell Shard                     "broken-pottery" by delapouite  https://game-icons.net/1x1/delapouite/broken-pottery.html
   crooked_display_case               Crooked Display Case           "trophies-shelf" by delapouite  https://game-icons.net/1x1/delapouite/trophies-shelf.html
+  cut_corvee_rope                    Cut Rope                       "knot" by delapouite  https://game-icons.net/1x1/delapouite/knot.html with "scissors" by lorc  https://game-icons.net/1x1/lorc/scissors.html (make_combos.py)
   debtors_signet                     Debtor's Signet                "power-ring" by delapouite  https://game-icons.net/1x1/delapouite/power-ring.html
+  decan_star_table_chip              Star Table                     "night-sky" by lorc  https://game-icons.net/1x1/lorc/night-sky.html
+  drawer_within_a_drawer             Nested Drawer                  "matryoshka-dolls" by delapouite  https://game-icons.net/1x1/delapouite/matryoshka-dolls.html
   ember_box                          Ember Box                      "furnace" by delapouite  https://game-icons.net/1x1/delapouite/furnace.html
   emergency_inkwell                  Emergency Inkwell              "quill-ink" by lorc  https://game-icons.net/1x1/lorc/quill-ink.html
   executioners_measure               Executioner's Measure          "measure-tape" by delapouite  https://game-icons.net/1x1/delapouite/measure-tape.html
   five_notch_bead                    Five-Notch Bead                "tally-mark-5" by delapouite  https://game-icons.net/1x1/delapouite/tally-mark-5.html
+  gate_chain_counterweight           Gate Weight                    "weight-crush" by sbed  https://game-icons.net/1x1/sbed/weight-crush.html, hung on "pulley-hook" by delapouite  https://game-icons.net/1x1/delapouite/pulley-hook.html (make_combos.py)
   grave_coin                         Grave Coin                     "token" by delapouite  https://game-icons.net/1x1/delapouite/token.html
+  head_of_the_line                   Notched Bark                   "half-log" by delapouite  https://game-icons.net/1x1/delapouite/half-log.html
+  heart_lighter_than_the_feather     Light Heart                    "heart-wings" by delapouite  https://game-icons.net/1x1/delapouite/heart-wings.html
+  hollow_wax_bead                    Hollow Wax Bead                "ring" by delapouite  https://game-icons.net/1x1/delapouite/ring.html
   indemnity_stamp                    Long-Form Ledger               "archive-register" by delapouite  https://game-icons.net/1x1/delapouite/archive-register.html
   index_bone                         Index Bone                     "crossed-bones" by lorc  https://game-icons.net/1x1/lorc/crossed-bones.html
+  inventory_lantern_glass            Lantern Glass                  "old-lantern" by delapouite  https://game-icons.net/1x1/delapouite/old-lantern.html
   iron_astrolabe                     Iron Astrolabe                 "astrolabe" by caro-asercion  https://game-icons.net/1x1/caro-asercion/astrolabe.html
   iron_prayer_bead                   Iron Prayer Bead               "prayer-beads" by delapouite  https://game-icons.net/1x1/delapouite/prayer-beads.html
+  lamp_thiefs_wick                   Stolen Wick                    "candle-light" by lorc  https://game-icons.net/1x1/lorc/candle-light.html
   lead_counterweight                 Lead Counterweight             "weight" by delapouite  https://game-icons.net/1x1/delapouite/weight.html
+  levy_stamp                         Levy Stamp                     "stamper" by delapouite  https://game-icons.net/1x1/delapouite/stamper.html
+  libation_bowl                      Libation Bowl                  "pouring-chalice" by lorc  https://game-icons.net/1x1/lorc/pouring-chalice.html
+  line_between_the_volumes           Volume Clasps                  "belt-buckles" by lorc  https://game-icons.net/1x1/lorc/belt-buckles.html
   lt_relic_badge_chain               Badge Chain                    "star-medal" by delapouite  https://game-icons.net/1x1/delapouite/star-medal.html
   lt_relic_brandy_flask              Brandy Flask                   "booze" by delapouite  https://game-icons.net/1x1/delapouite/booze.html
   lt_relic_chipped_buckler           Chipped Buckler                icon 1_32 of "700+ RPG Icons" by Lorc  https://opengameart.org/content/700-rpg-icons
@@ -57,21 +80,35 @@ Changes: each silhouette is scaled into a margin and inked pale parchment on tra
   lt_relic_torn_standard             Torn Standard                  icon 8_81 of "700+ RPG Icons" by Lorc  https://opengameart.org/content/700-rpg-icons
   lt_relic_warrant_cord              Warrant Cord                   "rope-coil" by delapouite  https://game-icons.net/1x1/delapouite/rope-coil.html
   lt_relic_worn_epaulette            Order of the Day               "scroll-unfurled" by lorc  https://game-icons.net/1x1/lorc/scroll-unfurled.html
+  mended_thread                      Mended Silk                    "yarn" by delapouite  https://game-icons.net/1x1/delapouite/yarn.html
   merchant_punchcard                 Stale Loaf                     "bread" by delapouite  https://game-icons.net/1x1/delapouite/bread.html
+  obsolete_boundary_cord             Boundary Cord                  "measure-tape" by delapouite  https://game-icons.net/1x1/delapouite/measure-tape.html
   oilcloth_wrap                      Oilcloth Wrap                  "blanket" by delapouite  https://game-icons.net/1x1/delapouite/blanket.html
+  overseers_linen_shears             Linen Shears                   "shears" by delapouite  https://game-icons.net/1x1/delapouite/shears.html
   pawnbrokers_loupe                  Pawnbroker's Loupe             "spyglass" by lorc  https://game-icons.net/1x1/lorc/spyglass.html
+  pre_approved_antler_tine           Antler Tine                    "stag-head" by lorc  https://game-icons.net/1x1/lorc/stag-head.html
+  processional_step_stone            Step Stone                     "stone-path" by delapouite  https://game-icons.net/1x1/delapouite/stone-path.html
   quiet_readers_cord                 Quiet Reader's Cord            "knot" by delapouite  https://game-icons.net/1x1/delapouite/knot.html
   rebinding_spindle                  Rebinding Spindle              "spinning-wheel" by caro-asercion  https://game-icons.net/1x1/caro-asercion/spinning-wheel.html
   redaction_knife                    Redaction Knife                "razor" by delapouite  https://game-icons.net/1x1/delapouite/razor.html
   remembrance_string                 Remembrance String             "bowen-knot" by delapouite  https://game-icons.net/1x1/delapouite/bowen-knot.html
+  riddles_third_answer               Riddle Tablet                  "stone-tablet" by lorc  https://game-icons.net/1x1/lorc/stone-tablet.html
   road_claim_token                   Road-Claim Token               "mountain-road" by delapouite  https://game-icons.net/1x1/delapouite/mountain-road.html
+  roller_pin_of_the_stacks           Stack Roller                   "dough-roller" by delapouite  https://game-icons.net/1x1/delapouite/dough-roller.html
   rootbound_walking_staff            Rootbound Walking Staff        "shepherds-crook" by generalace135  https://game-icons.net/1x1/generalace135/shepherds-crook.html
   rushlight                          Rushlight                      "candle-holder" by lorc  https://game-icons.net/1x1/lorc/candle-holder.html
+  sekhmets_claw                      Sekhmet's Claw                 icon 8_77 of "700+ RPG Icons" by Lorc  https://opengameart.org/content/700-rpg-icons
+  shutter_key_late_hour              Shutter Key                    "skeleton-key" by lorc  https://game-icons.net/1x1/lorc/skeleton-key.html, inked red
   sootglass_lens                     Sootglass Lens                 "microscope-lens" by lorc  https://game-icons.net/1x1/lorc/microscope-lens.html
+  strip_of_censoring_ink             Censor's Strip                 "bandage-roll" by lorc  https://game-icons.net/1x1/lorc/bandage-roll.html
   sun_warmed_waystone                Sun-Warmed Waystone            "menhir" by delapouite  https://game-icons.net/1x1/delapouite/menhir.html
   tarnished_bell                     Tarnished Bell                 "ringing-bell" by lorc  https://game-icons.net/1x1/lorc/ringing-bell.html
+  the_third_ending                   Third Obituary                 "tombstone" by lorc  https://game-icons.net/1x1/lorc/tombstone.html, a Roman III added (make_combos.py)
+  thorn_chosen_from_three            Three Thorns                   "triple-needle" by lorc  https://game-icons.net/1x1/lorc/triple-needle.html
   thorn_crowned_reliquary            Thorn-Crowned Reliquary        "star-altar" by delapouite  https://game-icons.net/1x1/delapouite/star-altar.html
+  thrice_struck_appointment          Appointment Card               "ticket" by delapouite  https://game-icons.net/1x1/delapouite/ticket.html
   tinder_pouch                       Tinder Pouch                   "powder-bag" by delapouite  https://game-icons.net/1x1/delapouite/powder-bag.html
+  toll_stone_wrong_bank              Toll Stone                     "rune-stone" by lorc  https://game-icons.net/1x1/lorc/rune-stone.html
   turnover_bell                      Turnover Bell                  "carillon" by lorc  https://game-icons.net/1x1/lorc/carillon.html
   twin_ember_brazier                 Twin-Ember Brazier             "fire-shrine" by delapouite  https://game-icons.net/1x1/delapouite/fire-shrine.html
   twin_lock_chest_key                Twin-Lock Chest Key            "skeleton-key" by lorc  https://game-icons.net/1x1/lorc/skeleton-key.html
