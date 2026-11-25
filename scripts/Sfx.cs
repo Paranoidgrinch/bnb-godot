@@ -3,7 +3,8 @@ using Godot;
 
 namespace BnbGodot;
 
-// THE FIGHT'S SOUNDS: a blow, block, a debuff, a buff, a body falling (assets/sfx/SOURCES.md). An autoload, like
+// THE FIGHT'S SOUNDS: a blow, block, a debuff, a buff, a death groan and the body falling, and the sting when a
+// fight is won (assets/sfx/SOURCES.md). An autoload, like
 // the music, so a sound that has started is not cut off by the redraw that follows it — a fight is redrawn
 // whole on every change. Every file was normalised to the same loudness, so nothing here sets a volume per
 // sound: the Effects slider (AudioSettings) is the one thing that does.
@@ -12,7 +13,7 @@ namespace BnbGodot;
 // System.Random of its own, never Godot's global one, which nothing in a run is allowed to share.
 public partial class Sfx : Node
 {
-    public enum Kind { Hit, Block, Debuff, Buff, Death }
+    public enum Kind { Hit, Block, Debuff, Buff, Death, Fall, Victory }
 
     private const int Voices = 10;
     private const double Spacing = 0.07; // the same kind twice in this time is one sound
@@ -31,7 +32,9 @@ public partial class Sfx : Node
     ];
     private const string Drain = "res://assets/sfx/debuff_energy_drain.ogg";
     private const string Spell = "res://assets/sfx/buff_spell3.wav";
-    private const string Fall = "res://assets/sfx/death_falling_body.wav";
+    private static readonly string[] Groans = Numbered("res://assets/sfx/groans/groan{0}.ogg", 4);
+    private const string Thud = "res://assets/sfx/death_falling_body.wav";
+    private const string Win = "res://assets/sfx/victory_win_brass.ogg";
 
     private readonly AudioStreamPlayer[] _voices = new AudioStreamPlayer[Voices];
     private readonly double[] _last = new double[Enum.GetValues<Kind>().Length];
@@ -75,7 +78,9 @@ public partial class Sfx : Node
             Kind.Block => Metal[Dice.Next(Metal.Length)],
             Kind.Debuff => Drain,
             Kind.Buff => Spell,
-            _ => Fall,
+            Kind.Death => Groans[Dice.Next(Groans.Length)],
+            Kind.Fall => Thud,
+            _ => Win,
         };
         if (GD.Load<AudioStream>(path) is not { } stream)
             return;

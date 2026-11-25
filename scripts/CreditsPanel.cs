@@ -13,9 +13,10 @@ namespace BnbGodot;
 // `Note` is the other half of the bargain: CC BY asks that modifications be indicated. The nine were faded in and
 // out so they can loop whole; the Act V theme was cut to a loop.
 //
-// The SOUND EFFECTS follow the same rule: three packs are CC0 and are credited anyway; "Spell 3" is CC BY
+// The SOUND EFFECTS follow the same rule: five packs are CC0 and are credited anyway; "Spell 3" is CC BY
 // 3.0 (Bart Kelsey) and "Falling body" CC BY-SA 3.0 (remaxim, from a recording by qubodup), and both of those
-// REQUIRE the line. The hits were converted from FLAC to Ogg and nothing else was done to any of them.
+// REQUIRE the line. The hits and the groans were converted to Ogg and the Win Jingle shortened; all were evened
+// out in loudness (assets/sfx/SOURCES.md), and nothing else was done to any of them.
 //
 // The UI FONT is Short Stack (Sorkin Type Co) made heavier as Moonvine Polter, under the SIL OFL 1.1, which
 // asks for no screen but is credited all the same; its licence ships as theme/font/OFL-polter.txt.
@@ -79,6 +80,10 @@ public partial class CreditsPanel : PanelContainer
             "https://opengameart.org/content/spell-3"),
         new("Falling body", "remaxim, based on a recording by qubodup", BySa3,
             "https://opengameart.org/content/falling-body"),
+        new("Monster Sound Effects Pack", "Ogrebane", Zero,
+            "https://opengameart.org/content/monster-sound-effects-pack", "four of them, converted to Ogg"),
+        new("Win Jingle", "Fupi", Zero,
+            "https://opengameart.org/content/win-jingle", "the brass version, shortened"),
     ];
 
     private static readonly Entry[] Fonts =
