@@ -3224,7 +3224,7 @@ public partial class SessionScreen : Control
                 AddShopRow(session, affordable, service.Id, Say(service.TextKey ?? service.Id), shelf.PriceOf(service));
 
             if (ShopHere() is { Reroll: { } reroll })
-                AddShopRow(session, affordable, ShopNodeResolver.RerollChoiceId, "Restock the shelves", reroll.Price);
+                AddShopRow(session, affordable, ShopNodeResolver.RerollChoiceId, "Restock the shelves", shelf.PriceOf(reroll));
 
             AddButton("Leave", () => AnswerChoice(session, ShopNodeResolver.LeaveChoiceId));
         });
