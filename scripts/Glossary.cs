@@ -22,6 +22,12 @@ public static class Glossary
 
     private static readonly Dictionary<string, IReadOnlyList<string>> Memo = new(StringComparer.Ordinal);
 
+    // A term's explanation by the NAME it is written under ("Seal Intact" ⇒ "Seal Intact — …"), for the hover
+    // over one highlighted word. Case-insensitive, because a sentence capitalises a term where it starts.
+    private static readonly Dictionary<string, string> ByName = new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly Dictionary<string, IReadOnlyList<(int At, int Length, string Name)>> SpanMemo = new(StringComparer.Ordinal);
+
     private static string _builtFor = "";
 
     public static void Build(RunBlueprint blueprint)
@@ -34,6 +40,8 @@ public static class Glossary
         ById.Clear();
         Terms.Clear();
         Memo.Clear();
+        ByName.Clear();
+        SpanMemo.Clear();
 
         foreach (var status in blueprint.Statuses)
         {
@@ -53,6 +61,8 @@ public static class Glossary
             Note(id, blueprint.Relics.FirstOrDefault(r => r.Id == id)?.DisplayName, entry.FlavorText);
 
         Terms.Sort((a, b) => b.Name.Length.CompareTo(a.Name.Length));
+        foreach (var (name, explanation) in Terms)
+            ByName.TryAdd(name, explanation);
     }
 
     private static void Note(string id, string? name, string? rules)
@@ -123,6 +133,44 @@ public static class Glossary
         return found;
     }
 
+    // What one highlighted word means: the explanation of the term written under that name, or null.
+    public static string? Term(string name) => ByName.GetValueOrDefault(name.Trim());
+
+    // WHERE the terms stand in a text: every occurrence of every term NamesIn finds, as character spans in
+    // reading order, none overlapping (a longer term claims its characters first). The card's clerk underlines
+    // these spans and the rich-text labels tint them; both must agree on what counts as a term.
+    public static IReadOnlyList<(int At, int Length, string Name)> Spans(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return [];
+        if (SpanMemo.TryGetValue(text, out var remembered))
+            return remembered;
+        var claimed = new bool[text.Length];
+        var spans = new List<(int At, int Length, string Name)>();
+        foreach (var name in NamesIn(text))
+        {
+            var from = 0;
+            while (from < text.Length)
+            {
+                var at = text.IndexOf(name, from, StringComparison.OrdinalIgnoreCase);
+                if (at < 0)
+                    break;
+                from = at + 1;
+                var end = at + name.Length;
+                if ((at > 0 && char.IsLetter(text[at - 1])) || (end < text.Length && char.IsLetter(text[end])))
+                    continue;
+                if (claimed[at] || claimed[end - 1])
+                    continue;
+                for (var k = at; k < end; k++)
+                    claimed[k] = true;
+                spans.Add((at, name.Length, name));
+            }
+        }
+        spans.Sort((a, b) => a.At.CompareTo(b.At));
+        SpanMemo[text] = spans;
+        return spans;
+    }
+
     // A whole-word match, so "Seal" is not found inside "Sealed" and "Doubt" not inside "Doubtful".
     private static bool Mentions(string text, string name)
     {
@@ -142,20 +190,16 @@ public static class Glossary
         return false;
     }
 
-    // One tooltip: what the thing itself says, then what the words in it mean.
+    // One tooltip. ⚠ SINCE 2026-11-25 A TOOLTIP THAT HAS WORDS OF ITS OWN DOES NOT SPELL OUT THE TERMS IN THEM
+    // (playtest: "the relic list writes every keyword out in full"). The tooltip tints each term it uses and
+    // explains a term only while the pointer is on that word (Tooltips, Keywords) — so `own` comes back as it
+    // is. Only a hover with nothing of its own to say (`own` empty: the words are on the button itself, which
+    // cannot tint a word) still lists what the words in `termsFrom` mean.
     public static string Explain(string? own, string? termsFrom = null)
     {
-        var lines = new List<string>();
         if (!string.IsNullOrWhiteSpace(own))
-            lines.Add(own!.Trim());
-        var terms = In(termsFrom ?? own);
-        if (terms.Count > 0)
-        {
-            if (lines.Count > 0)
-                lines.Add("");
-            lines.AddRange(terms);
-        }
-        return string.Join("\n", lines);
+            return own!.Trim();
+        return string.Join("\n", In(termsFrom));
     }
 
     private static string? Trimmed(string? value) =>

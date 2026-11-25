@@ -199,6 +199,8 @@ public partial class SessionScreen : Control
             _ = SmokeEffects();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-piles"))
             _ = SmokePiles();
+        else if (OS.GetCmdlineUserArgs().Contains("--smoke-keywords"))
+            _ = SmokeKeywords();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-relicsize"))
             _ = SmokeRelicSize();
         else if (OS.GetCmdlineUserArgs().Contains("--smoke-keys"))
@@ -3061,14 +3063,14 @@ public partial class SessionScreen : Control
         var prose = Say(situation.TextKey ?? situation.Id);
         // A TREASURE ROOM IS NOT AN EVENT. It is built as one (a chest with an Open and a Leave), and it looked like
         // one: the player read "events often just give a relic, with no risk" (playtest 3, E2). It says what it is.
+        // The prose's terms are tinted and explained under the pointer (Keywords) — no longer listed beneath it.
         if (InTreasureRoom(session))
         {
             Title("Treasure", MoonvineTheme.Signal);
-            Muted(prose);
+            _main.AddChild(Keywords.Text(prose, 16, MoonvineTheme.TextMuted));
         }
         else
-            Title(prose);
-        Explained(prose);
+            _main.AddChild(Keywords.Text(prose, 22, MoonvineTheme.Text));
 
         // AN EVENT THAT HANDS SOMETHING OVER SHOWS IT. A door that offers a card or a relic was asking the
         // player to take a sentence on trust — and an event's choices are authored with their effects right
@@ -3112,17 +3114,7 @@ public partial class SessionScreen : Control
                 continue;
             if (plain.Length > 0)
             {
-                var says = new Label
-                {
-                    Text = plain,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                    MouseFilter = MouseFilterEnum.Stop,
-                    TooltipText = Glossary.Explain(null, plain),
-                };
-                says.AddThemeFontSizeOverride("font_size", 13);
-                says.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
-                block.AddChild(says);
+                block.AddChild(Keywords.Text(plain, 13, MoonvineTheme.AccentLight, center: true));
             }
             if (offer is null)
             {
@@ -3272,8 +3264,9 @@ public partial class SessionScreen : Control
         string choiceId, string name, int price, string description = "", Control? icon = null)
     {
         var canBuy = affordable.ContainsKey(choiceId);
-        var hover = Glossary.Explain(canBuy ? null : "Not enough gold.", $"{name} {description}");
-        // On the whole row, so the rules line under the button explains its own words too.
+        // The row's hover is only what the row cannot say itself; the rules line explains its own terms, each
+        // under the pointer (Keywords).
+        var hover = canBuy ? "" : "Not enough gold.";
         var column = new VBoxContainer { TooltipText = hover, MouseFilter = MouseFilterEnum.Pass };
         column.AddThemeConstantOverride("separation", 0);
         var button = new Button { Text = $"{name}   —   {price} gold", Disabled = !canBuy };
@@ -3284,12 +3277,7 @@ public partial class SessionScreen : Control
         column.AddChild(button);
         if (!string.IsNullOrWhiteSpace(description))
         {
-            var text = MutedLabel(description);
-            text.HorizontalAlignment = HorizontalAlignment.Center;
-            text.AddThemeFontSizeOverride("font_size", 12);
-            text.MouseFilter = MouseFilterEnum.Stop;
-            text.TooltipText = hover;
-            column.AddChild(text);
+            column.AddChild(Keywords.Text(description, 12, MoonvineTheme.TextMuted, center: true));
         }
 
         // With a picture the row becomes tile-then-words; without one it is the column it always was.
@@ -3635,8 +3623,6 @@ public partial class SessionScreen : Control
         upgradeLevel = plusInName;
         var presentation = GameHost.Instance.Blueprint.Presentation.Cards.GetValueOrDefault(definitionId);
         var rules = RulesFor(definitionId, presentation);
-        var tooltip = string.Join("\n", new[] { CostLabel(definitionId), Glossary.Explain(rules) }
-            .Where(part => !string.IsNullOrWhiteSpace(part)));
         var face = CardVisuals.Face(
             new CardVisuals.CardFace(
                 Id: definitionId,
@@ -3646,7 +3632,7 @@ public partial class SessionScreen : Control
                 Cost: CostBadge(definitionId),
                 Rules: rules,
                 Rarity: presentation?.Rarity,
-                Tooltip: tooltip,
+                CostTip: CostLabel(definitionId),
                 Dimmed: dimmed,
                 Armed: selected),
             onClick);
@@ -3660,8 +3646,6 @@ public partial class SessionScreen : Control
         label.HorizontalAlignment = HorizontalAlignment.Center;
         label.CustomMinimumSize = new Vector2(CardVisuals.CardW, 0);
         label.AddThemeFontSizeOverride("font_size", 12);
-        label.MouseFilter = MouseFilterEnum.Stop;
-        label.TooltipText = tooltip;
         if (dimmed)
             label.AddThemeColorOverride("font_color", new Color(MoonvineTheme.TextMuted, 0.6f));
         column.AddChild(label);
@@ -3751,44 +3735,38 @@ public partial class SessionScreen : Control
     private static Control EntityOption(
         string name, string description, bool selected, Action onPressed, Control? icon = null)
     {
-        var panel = new PanelContainer
-        {
-            CustomMinimumSize = new Vector2(0, 0),
-            TooltipText = Glossary.Explain(null, $"{name} {description}"),
-        };
+        // ⚠ NO HOVER ON THE ROW (2026-11-25): the row prints the name and the rules; the terms in the rules are
+        // tinted and explain themselves under the pointer. The click overlay is laid FIRST, under the words, so
+        // the rules label can see which word the pointer is on — and passes a click on to the row.
+        var panel = new PanelContainer { CustomMinimumSize = new Vector2(0, 0) };
         panel.AddThemeStyleboxOverride("panel", MoonvineTheme.WoodPanel(rim: selected));
 
-        var column = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        var overlay = new Button { Flat = true };
+        overlay.SetAnchorsPreset(LayoutPreset.FullRect);
+        overlay.Pressed += () => onPressed();
+        panel.AddChild(overlay);
+
+        var column = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, MouseFilter = MouseFilterEnum.Ignore };
         column.AddThemeConstantOverride("separation", 2);
         var title = new Label { Text = (selected ? "✓ " : "") + name };
         title.AddThemeColorOverride("font_color", MoonvineTheme.Text);
         column.AddChild(title);
         if (!string.IsNullOrWhiteSpace(description))
-        {
-            var desc = new Label { Text = description, AutowrapMode = TextServer.AutowrapMode.WordSmart };
-            desc.AddThemeColorOverride("font_color", MoonvineTheme.TextMuted);
-            desc.AddThemeFontSizeOverride("font_size", 13);
-            column.AddChild(desc);
-        }
+            column.AddChild(Keywords.Text(description, 13, MoonvineTheme.TextMuted, onPressed));
         if (icon is null)
         {
             panel.AddChild(column);
         }
         else
         {
-            var row = new HBoxContainer();
+            var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
             row.AddThemeConstantOverride("separation", 8);
-            // The row's own click overlay lies OVER the tile, so the tile's hover never fires here — the panel's
-            // tooltip is what the player gets, and it already carries the name and the rules the row prints.
+            // The tile is a picture here: the row's words say what the tile's hover would.
+            icon.MouseFilter = MouseFilterEnum.Ignore;
             row.AddChild(icon);
             row.AddChild(column);
             panel.AddChild(row);
         }
-
-        var overlay = new Button { Flat = true };
-        overlay.SetAnchorsPreset(LayoutPreset.FullRect);
-        overlay.Pressed += () => onPressed();
-        panel.AddChild(overlay);
         return panel;
     }
 
@@ -5162,11 +5140,9 @@ public partial class SessionScreen : Control
             .Select(mark => CardMarks[mark.value])
             .ToList();
 
-        // The hover carries the PRICE as well as the explanation: the ring on the frame has room for a number
-        // and nothing else, so what the number is denominated in is said here.
+        // The stamp's hover carries the PRICE: the ring on the frame has room for a number and nothing else, so
+        // what the number is denominated in is said there.
         var hidden = card.HasMark(new TagId("queried_by_the_oracle"));
-        var tooltip = string.Join("\n", new[] { hidden ? null : CostLabel(definition), Glossary.Explain(rules) }
-            .Where(part => !string.IsNullOrWhiteSpace(part)));
 
         return CardVisuals.Face(
             new CardVisuals.CardFace(
@@ -5180,7 +5156,7 @@ public partial class SessionScreen : Control
                     : CostBadge(definition),
                 Rules: rules,
                 Rarity: presentation?.Rarity,
-                Tooltip: tooltip,
+                CostTip: hidden ? "" : CostLabel(definition),
                 Dimmed: !affordable,
                 Armed: highlighted,
                 Marks: marks),
@@ -5825,21 +5801,6 @@ public partial class SessionScreen : Control
     }
 
     private void Muted(string text) => _main.AddChild(MutedLabel(text));
-
-    // Prose has no hover of its own, so the words IT uses are explained under it — the same lines a tooltip
-    // would have shown, for the one place in the game that is read rather than pointed at.
-    private void Explained(string prose)
-    {
-        var terms = Glossary.In(prose, limit: 3);
-        if (terms.Count == 0)
-            return;
-        foreach (var term in terms)
-        {
-            var label = MutedLabel(term);
-            label.AddThemeFontSizeOverride("font_size", 12);
-            _main.AddChild(label);
-        }
-    }
 
     // THE SHELF ITSELF. An HFlowContainer is the one container that fills a row and then starts another, so
     // the strip grows downwards as relics are won and never sideways off the panel — and the sidebar already

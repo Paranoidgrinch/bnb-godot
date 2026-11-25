@@ -120,7 +120,7 @@ public partial class SessionScreen
                 {
                     var look = GameHost.Instance.Blueprint.Presentation.Relics.GetValueOrDefault(relic.Id.Value);
                     body.AddChild(Entry(RelicTile(relic, 56), relic.Definition.DisplayName + (relic.Enabled ? "" : " (off)"),
-                        Glossary.Explain(look?.FlavorText)));
+                        look?.FlavorText ?? ""));
                 }
                 break;
 
@@ -131,7 +131,7 @@ public partial class SessionScreen
                 {
                     var id = consumable.DefinitionId.Value;
                     var look = GameHost.Instance.Blueprint.Presentation.Consumables.GetValueOrDefault(id);
-                    body.AddChild(Entry(ConsumableIcon(id, 56), ConsumableName(id), Glossary.Explain(look?.FlavorText)));
+                    body.AddChild(Entry(ConsumableIcon(id, 56), ConsumableName(id), look?.FlavorText ?? ""));
                 }
                 break;
         }
@@ -148,7 +148,8 @@ public partial class SessionScreen
         return label;
     }
 
-    // One carried thing as a row: its tile, its name, what it does.
+    // One carried thing as a row: its tile, its name, what it does — the rules alone, their terms tinted and
+    // explained only under the pointer (Keywords), not spelled out beneath every relic.
     private static Control Entry(Control tile, string name, string text)
     {
         var row = new HBoxContainer { SizeFlagsHorizontal = SizeFlags.ShrinkCenter, CustomMinimumSize = new Vector2(640, 0) };
@@ -160,9 +161,7 @@ public partial class SessionScreen
         var title = new Label { Text = name };
         title.AddThemeFontSizeOverride("font_size", 17);
         words.AddChild(title);
-        var about = new Label { Text = text, AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        about.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
-        words.AddChild(about);
+        words.AddChild(Keywords.Text(text, 16, MoonvineTheme.TextSoft));
         row.AddChild(words);
         return row;
     }

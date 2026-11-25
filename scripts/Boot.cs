@@ -299,7 +299,7 @@ public partial class Boot : Control
             CallDeferred(nameof(GoToSession));
             return;
         }
-        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-cauldron" or "--smoke-wand" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-effects" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover" or "--smoke-mapkey" or "--smoke-piles" or "--smoke-relicsize" or "--smoke-keys" or "--smoke-preview" or "--smoke-intents" or "--smoke-peek" or "--smoke-report" or "--smoke-summaries" or "--smoke-tip-flip" or "--smoke-log" or "--smoke-treasure"))
+        if (userArgs.Any(a => a is "--smoke-run" or "--smoke-cauldron" or "--smoke-wand" or "--smoke-map" or "--smoke-full" or "--smoke-timing" or "--smoke-reward" or "--smoke-target" or "--smoke-draw" or "--smoke-effects" or "--smoke-statuses" or "--smoke-shop" or "--smoke-event" or "--smoke-rest" or "--smoke-upgrade" or "--smoke-marathon" or "--smoke-screens" or "--smoke-ambush" or "--smoke-elite" or "--smoke-crowd" or "--smoke-boss" or "--smoke-tooltips" or "--smoke-format" or "--smoke-shelf" or "--smoke-window" or "--smoke-bug-run" or "--smoke-quit" or "--smoke-archive-run" or "--smoke-hover" or "--smoke-mapkey" or "--smoke-piles" or "--smoke-keywords" or "--smoke-relicsize" or "--smoke-keys" or "--smoke-preview" or "--smoke-intents" or "--smoke-peek" or "--smoke-report" or "--smoke-summaries" or "--smoke-tip-flip" or "--smoke-log" or "--smoke-treasure"))
         {
             host.StartNewRun(seed: 7,
                 // Who walks it: `--character=<id>` (the roster's first otherwise) — a probe of the Hedge
@@ -973,7 +973,7 @@ public partial class Boot : Control
                 Cost: card is null || card.Costs.Count == 0 ? "" : string.Join("\u00b7", card.Costs.Select(c => c.Amount)),
                 Rules: look?.FlavorText ?? "",
                 Rarity: look?.Rarity,
-                Tooltip: id,
+                CostTip: id,
                 Dimmed: false,
                 Armed: false), scale: scale);
         }

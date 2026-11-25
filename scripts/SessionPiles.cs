@@ -180,6 +180,119 @@ public partial class SessionScreen
         return layer;
     }
 
+    // `--smoke-keywords`: the terms explained under the pointer and nowhere else (playtest, 2026-11-25). In the
+    // first fight it points at a term on a card in hand, then at the same card off its terms, then at a relic
+    // over the hero and onto that relic's tooltip, and photographs each; then the inventory's relic list. Every
+    // step prints what the tooltip would say, so the claim is read as well as seen.
+    private async System.Threading.Tasks.Task SmokeKeywords()
+    {
+        var fight = WalkToFirstFight();
+        for (var frame = 0; frame < 6; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        if (fight is null || _handFaces.Count == 0 || DisplayServer.GetName().Contains("headless"))
+        {
+            GD.Print($"smoke-keywords: needs a window and a hand (fight={fight is not null} faces={_handFaces.Count})");
+            GetTree().Quit(1);
+            return;
+        }
+        var problems = 0;
+        string Said()
+        {
+            var mouse = GetViewport().GetMousePosition();
+            for (Godot.Node? node = GetViewport().GuiGetHoveredControl(); node is Control control; node = control.GetParent())
+            {
+                if (control is IHoverText speaker)
+                    return speaker.HoverTextAt(mouse);
+                if (!string.IsNullOrWhiteSpace(control.TooltipText))
+                    return control.TooltipText;
+            }
+            return "";
+        }
+        static IEnumerable<T> Within<T>(Godot.Node node) where T : Godot.Node
+        {
+            foreach (var child in node.GetChildren())
+            {
+                if (child is T hit)
+                    yield return hit;
+                foreach (var deeper in Within<T>(child))
+                    yield return deeper;
+            }
+        }
+
+        var card = _handFaces.SelectMany(f => f is CardFaceRoot r ? [r] : Within<CardFaceRoot>(f))
+            .FirstOrDefault(r => r.Writing is { TermBoxes.Count: > 0 });
+        if (card?.Writing is { } writing)
+        {
+            // Point at the card first: it lifts under the pointer, and the term moves with it.
+            await PointAt(card.GetGlobalRect().GetCenter());
+            var (box, name) = writing.TermBoxes[0];
+            await PointAt(writing.GetGlobalTransform() * box.GetCenter());
+            var onTerm = Said();
+            GetViewport().GetTexture().GetImage().SavePng("user://smoke-keywords-card-term.png");
+            GD.Print($"smoke-keywords: on the term '{name}' ⇒ {onTerm.Replace("\n", " ⏎ ")}");
+            if (!onTerm.StartsWith(name, StringComparison.OrdinalIgnoreCase))
+                problems++;
+            // The picture box: on the card, on no term.
+            await PointAt(writing.GetGlobalTransform() * (writing.Size * new Vector2(0.5f, 0.32f)));
+            var offTerm = Said();
+            GetViewport().GetTexture().GetImage().SavePng("user://smoke-keywords-card-plain.png");
+            GD.Print($"smoke-keywords: on the card, off its terms ⇒ '{offTerm}'");
+            if (offTerm.Length > 0)
+                problems++;
+        }
+        else
+            GD.Print("smoke-keywords: no card in hand names a term");
+
+        if (_relicTiles.Values.FirstOrDefault() is { } tile)
+        {
+            await PointAt(tile.GetGlobalRect().GetCenter());
+            GD.Print($"smoke-keywords: on a relic ⇒ {Said().Replace("\n", " ⏎ ")}");
+            GetViewport().GetTexture().GetImage().SavePng("user://smoke-keywords-relic.png");
+            if (GetNodeOrNull<Tooltips>("/root/Tooltips") is { } tips
+                && tips.GetChildren().OfType<PanelContainer>().FirstOrDefault(p => p.Visible) is { } panel)
+            {
+                // Onto the tooltip itself: a reachable one stays up.
+                await PointAt(panel.GetGlobalRect().GetCenter());
+                GD.Print($"smoke-keywords: pointer on the relic's tooltip ⇒ still shown: {panel.Visible}");
+                GetViewport().GetTexture().GetImage().SavePng("user://smoke-keywords-relic-reached.png");
+            }
+        }
+
+        await PointAt(new Vector2(20, 20));
+        OpenInventory(InventoryTab.Relics);
+        await ToSignal(GetTree().CreateTimer(0.5), SceneTreeTimer.SignalName.Timeout);
+        if (GetNodeOrNull(InventoryOverlayName) is { } inventory
+            && Within<RichTextLabel>(inventory).FirstOrDefault(l => l.Text.Contains("[url=", StringComparison.Ordinal)) is { } rules)
+            GD.Print($"smoke-keywords: inventory rules ⇒ {rules.Text}");
+        GetViewport().GetTexture().GetImage().SavePng("user://smoke-keywords-inventory.png");
+        GD.Print($"smoke-keywords: problems={problems}");
+        GetTree().Quit(problems == 0 ? 0 : 1);
+    }
+
+    // A ROW THAT SCROLLS SIDEWAYS: what does not fit the width is reached with the mouse wheel over the row (a
+    // wheel has nothing to move up or down here) or with the bar, when `bar` shows one. The relic row over the
+    // hero and a card pick from a pile both wear it, so every card and every relic can be reached.
+    private static ScrollContainer SideScroll(Control row, int step, ScrollContainer.ScrollMode bar)
+    {
+        var scroll = new ScrollContainer
+        {
+            HorizontalScrollMode = bar,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            MouseFilter = MouseFilterEnum.Pass,
+        };
+        scroll.AddChild(row);
+        scroll.GuiInput += input =>
+        {
+            if (input is InputEventMouseButton { Pressed: true } wheel
+                && wheel.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
+            {
+                scroll.ScrollHorizontal += (wheel.ButtonIndex == MouseButton.WheelDown ? 1 : -1) * step;
+                scroll.AcceptEvent();
+            }
+        };
+        return scroll;
+    }
+
     // ── THE DISCARD AND EXHAUST PILES, IN THE RIGHT-HAND CORNER (user, 2026-09-28; split 2026-11-20) ────────
     // The mirror of the draw pile: small stacks of backs with their counts under them, and each picture is the
     // button that opens it. ⚠ TWO STACKS, NOT ONE CAPTION (user, 2026-11-20): "Discard 7 · Exhausted 3" under a

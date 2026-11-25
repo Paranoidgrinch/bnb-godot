@@ -29,6 +29,9 @@ public partial class CardWriting : Control
     public CardForm.Look Look { get; init; }
     public string Seed { get; init; } = "";
 
+    // The clerk's yellow marker, thin enough that the ink over it stays the ink.
+    private static readonly Color Highlighter = new(0.93f, 0.78f, 0.25f, 0.30f);
+
     private static Font TypeFace => MoonvineTheme.CardFont ?? ThemeDB.Singleton.FallbackFont;
 
     public CardWriting()
@@ -36,18 +39,40 @@ public partial class CardWriting : Control
         MouseFilter = MouseFilterEnum.Ignore;
     }
 
+    // Where each term was written on the last draw, in this control's own pixels, and where the cost stamp is —
+    // so the card can say which term the pointer is on (CardFaceRoot) without a Label to ask.
+    private readonly List<(Rect2 Box, string Name)> _termBoxes = [];
+    private Vector2 _stampCentre;
+    private float _stampRadius;
+
+    public string? TermAt(Vector2 local)
+    {
+        foreach (var (box, name) in _termBoxes)
+            if (box.HasPoint(local))
+                return name;
+        return null;
+    }
+
+    public IReadOnlyList<(Rect2 Box, string Name)> TermBoxes => _termBoxes;
+
+    public bool OnStamp(Vector2 local) => _stampRadius > 0 && local.DistanceTo(_stampCentre) <= _stampRadius;
+
     public override void _Draw()
     {
         var w = Size.X;
         var h = Size.Y;
         var u = w / CardVisuals.CardW; // one design unit, in pixels
         var rng = new Random((int)CardForm.Hash(Seed, 9));
+        _termBoxes.Clear();
+        _stampRadius = 0;
 
         // ── the cost, in the stamp ───────────────────────────────────────────────
         if (Cost.Length > 0)
         {
             var c = CardForm.StampCentre * new Vector2(w, h);
             var r = CardForm.StampR * w;
+            _stampCentre = c;
+            _stampRadius = r;
             var size = Fit(Cost, 1.25f * r, 21 * u, 9 * u);
             // Centred by its INK, not by its advance and ascent: a written "1" carries a lead-in stroke and
             // stands shorter than the line is tall, so the box a Label would centre is not the figure. Then a
@@ -86,7 +111,7 @@ public partial class CardWriting : Control
     }
 
     // One written word: what it says, whether it is (part of) a term, a correction inside it, and its ink.
-    private sealed record Word(string Text, int Term, (int At, string Old, string New)? Fix, Color Ink, bool Break);
+    private sealed record Word(string Text, int Term, (int At, string Old, string New)? Fix, Color Ink, bool Break, string? TermName = null);
 
     private void Text(Rect2 box, float u, Random rng)
     {
@@ -126,6 +151,14 @@ public partial class CardWriting : Control
             foreach (var word in lines[i])
             {
                 var width = Width(word, size);
+                // A term is marked as well as underlined: a faint highlighter wash behind it, so the words that
+                // explain themselves under the pointer can be told at a glance (playtest, 2026-11-25).
+                if (word.Term >= 0)
+                {
+                    var from = word.Term == lastTerm ? x - space : x;
+                    DrawRect(new Rect2(from - 0.06f * size, baseline - 0.78f * size, x + width - from + 0.12f * size, 0.98f * size),
+                        Highlighter);
+                }
                 if (word.Fix is { } fix)
                 {
                     var before = word.Text[..fix.At];
@@ -155,6 +188,10 @@ public partial class CardWriting : Control
                     var under = trimmed.Length == word.Text.Length ? width : width - Measure(word.Text[trimmed.Length..], size);
                     var from = word.Term == lastTerm ? x - space : x;
                     Underline(from + 0.05f * size, x + under - 0.05f * size, baseline + 0.2f * size, size, rng);
+                    // The hover's target is the written word plus a little air, so a term is easy to land on.
+                    if (word.TermName is { } termName)
+                        _termBoxes.Add((new Rect2(from - 0.1f * size, baseline - 0.95f * size,
+                            x + under - from + 0.2f * size, 1.25f * size), termName));
                 }
                 lastTerm = word.Term;
                 x += width + space;
@@ -185,17 +222,14 @@ public partial class CardWriting : Control
         // Where the terms are: every glossary term the text uses, each occurrence a span of characters.
         var term = new int[text.Length];
         Array.Fill(term, -1);
+        var names = new Dictionary<int, string>();
         var index = 0;
-        foreach (var name in Glossary.NamesIn(text))
+        foreach (var (at, length, name) in Glossary.Spans(text))
         {
-            foreach (Match m in Regex.Matches(text, $@"(?<![\p{{L}}]){Regex.Escape(name)}(?![\p{{L}}])", RegexOptions.IgnoreCase))
-            {
-                if (term[m.Index] >= 0)
-                    continue;
-                for (var k = m.Index; k < m.Index + m.Length; k++)
-                    term[k] = termBase + index;
-                index++;
-            }
+            for (var k = at; k < at + length; k++)
+                term[k] = termBase + index;
+            names[termBase + index] = name;
+            index++;
         }
 
         // What an improvement changed: the same sentence with other numbers in it. Anything more than that is
@@ -226,7 +260,8 @@ public partial class CardWriting : Control
                     fix = (at - m.Index, old, @new);
                     break;
                 }
-            words.Add(new Word(m.Value, term[m.Index], fix, ink, lineBreak));
+            var id = term[m.Index];
+            words.Add(new Word(m.Value, id, fix, ink, lineBreak, id >= 0 ? names[id] : null));
             lineBreak = false;
         }
         return words;

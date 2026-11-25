@@ -420,14 +420,8 @@ public partial class ArchivePanel : PanelContainer
                 named.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
                 column.AddChild(named);
             }
-            var rules = new Label
-            {
-                Text = prose,
-                AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                TooltipText = Glossary.Explain(prose),
-            };
-            rules.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
-            column.AddChild(rules);
+            // Its terms tinted and explained under the pointer, not on the whole paragraph (Keywords).
+            column.AddChild(Keywords.Text(prose, 16, MoonvineTheme.TextSoft));
         }
 
         // WHAT THE SAME CARD SAYS ONCE IT HAS BEEN IMPROVED — the question a player takes to an archive before
@@ -437,14 +431,7 @@ public partial class ArchivePanel : PanelContainer
             var mark = new Label { Text = "Upgraded" };
             mark.AddThemeColorOverride("font_color", MoonvineTheme.AccentLight);
             column.AddChild(mark);
-            var said = new Label
-            {
-                Text = better,
-                AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                TooltipText = Glossary.Explain(better),
-            };
-            said.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
-            column.AddChild(said);
+            column.AddChild(Keywords.Text(better, 16, MoonvineTheme.TextSoft));
         }
 
         // ⚠ THE KEY COLUMN IS TOP-ALIGNED BY HAND. A Label in an HBoxContainer is centred in the row it is
@@ -482,15 +469,7 @@ public partial class ArchivePanel : PanelContainer
             column.AddChild(Muted("Moves"));
             foreach (var move in entry.Moves)
             {
-                var line = new Label
-                {
-                    Text = $"· {move}",
-                    AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                    TooltipText = Glossary.Explain(move),
-                };
-                line.AddThemeColorOverride("font_color", MoonvineTheme.TextSoft);
-                line.AddThemeFontSizeOverride("font_size", 12);
-                column.AddChild(line);
+                column.AddChild(Keywords.Text($"· {move}", 12, MoonvineTheme.TextSoft));
             }
         }
         return column;
@@ -522,10 +501,11 @@ public partial class ArchivePanel : PanelContainer
                     Cost: plus ? UpgradedCost(entry) : entry.Facts.FirstOrDefault(f => f.Label == "Cost").Value ?? "0",
                     Rules: plus ? entry.Upgraded! : entry.Prose ?? "",
                     Rarity: entry.Frame,
-                    Tooltip: Glossary.Explain(plus ? entry.Upgraded : entry.Prose)
-                        + (entry.Upgraded is { Length: > 0 } ? "\n\nRight-click: " + (plus ? "the card as found." : "the upgraded card.") : ""),
+                    CostTip: "",
                     Dimmed: false,
-                    Armed: false), scale: 1.3f);
+                    Armed: false,
+                    Hint: entry.Upgraded is { Length: > 0 } ? "Right-click: " + (plus ? "the card as found." : "the upgraded card.") : ""),
+                    scale: 1.3f);
                 holder.AddChild(Drawn());
                 if (entry.Upgraded is { Length: > 0 })
                     holder.GuiInput += input =>

@@ -164,28 +164,33 @@ public static class CardVisuals
 
     // Everything the frontend knows about one card, flattened. The face renders; it does not look anything up
     // — the screen that owns the rules decides what is affordable, what is armed and what the hover says.
+    // ⚠ THE CARD HAS NO HOVER OF ITS OWN (playtest, 2026-11-25): its rules are on its face, and a term in them is
+    // explained only while the pointer is on that term (CardFaceRoot). `CostTip` is what the cost stamp says
+    // when it is hovered; `Hint` what the rest of the card says (nothing, unless a screen has a note to add).
     public readonly record struct CardFace(
         string Id,
         string Title,
         string Cost,
         string Rules,
         string? Rarity,
-        string Tooltip,
+        string CostTip,
         bool Dimmed,
         bool Armed,
-        IReadOnlyList<(string Label, string Explanation)>? Marks = null);
+        IReadOnlyList<(string Label, string Explanation)>? Marks = null,
+        string Hint = "");
 
     public static Control Face(CardFace card, Action? onClick = null, float scale = 1f)
     {
         var w = Mathf.Round(CardW * scale);
         var h = Mathf.Round(CardH * scale);
 
-        var root = new Control
+        var root = new CardFaceRoot
         {
             CustomMinimumSize = new Vector2(w, h),
             Size = new Vector2(w, h),
             ClipContents = true,
-            TooltipText = card.Tooltip,
+            CostTip = card.CostTip,
+            Hint = card.Hint,
         };
 
         // An improved copy fights as "<id>+" and is named "… +", or is drawn as the card with a "+" on its name
@@ -270,6 +275,7 @@ public static class CardVisuals
         };
         writing.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         root.AddChild(writing);
+        root.Writing = writing;
 
         // The seal goes on last: it is pressed onto the finished card, over the end of the title's rule.
         if (sealed_)
@@ -298,7 +304,7 @@ public static class CardVisuals
 
         if (onClick is not null)
         {
-            var overlay = new Button { Flat = true, Disabled = card.Dimmed, TooltipText = card.Tooltip };
+            var overlay = new Button { Flat = true, Disabled = card.Dimmed };
             overlay.SetAnchorsPreset(Control.LayoutPreset.FullRect);
             overlay.Pressed += onClick;
             root.AddChild(overlay);

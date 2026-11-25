@@ -178,7 +178,7 @@ public partial class BoosterOpening : Control
             Cost: card is null || card.Costs.Count == 0 ? "" : string.Join("·", card.Costs.Select(c => c.Amount)),
             Rules: rules,
             Rarity: look?.Rarity,
-            Tooltip: Glossary.Explain(rules),
+            CostTip: "",
             Dimmed: false,
             Armed: false), scale: CardScale);
         face.MouseFilter = MouseFilterEnum.Pass;
