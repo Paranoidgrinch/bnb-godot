@@ -64,6 +64,16 @@ def light(cx, cy, r, floor=0.25, p=1.6):
     d = np.sqrt(((xx - cx * W) / W) ** 2 + ((yy - cy * H) / H * 0.8) ** 2) / r
     return (floor + (1 - floor) * np.clip(1 - d, 0, 1) ** p)[..., None]
 
+def shoulder(a, knee=0.75):
+    """Linear up to the knee, then rolled off towards 1 instead of clipped."""
+    over = np.maximum(a - knee, 0)
+    return np.minimum(a, knee) + (1 - knee) * (1 - np.exp(-over / (1 - knee)))
+
+def clarity(a, amount, radius=24):
+    """Local contrast: each pixel pushed away from its blurred surroundings (a large-radius unsharp mask)."""
+    soft = np.stack([cv2.GaussianBlur(a[..., c], (0, 0), radius) for c in range(3)], -1)
+    return a + (a - soft) * amount
+
 def duotone(a, dark, light_, gamma=1.0):
     l = (a @ np.array([0.3, 0.59, 0.11], np.float32))[..., None] ** gamma
     return np.array(dark) / 255 * (1 - l) + np.array(light_) / 255 * l
@@ -78,7 +88,10 @@ def act1():
     a = a + arr(glow)[..., :1] * np.array([0.9, 0.7, 0.35]) * 0.55
     fog = np.linspace(0, 1, H, dtype=np.float32)[:, None, None] ** 2 * 0.18
     a = a * (1 - fog) + np.array([0.45, 0.5, 0.48]) * fog
-    return a * light(0.42, 0.55, 0.75, 0.35)
+    a = a * light(0.42, 0.55, 0.78, 0.45)
+    # lifted (playtest 2026-11-25: under the fight's scrim the street was all but black): the shadows opened
+    # up by a gamma, the whole a stop brighter, the lamp light kept off white by a soft shoulder
+    return shoulder(clarity(a ** 0.9 * 1.3, 0.5))
 
 def act2():
     a = arr(crop169(Image.open(SRC / '2g.jpg'), 0.5, 1.06))
@@ -96,13 +109,16 @@ def act3():
 def act4():
     a = arr(crop169(abu_simbel_without_people(), 0.62))
     a = arr(ImageEnhance.Color(img(a)).enhance(0.8))
-    a = a ** 1.25
+    a = a ** 1.15
     # the only light comes from the doorway at the far end; the hall falls into torch-dark round it
     # the retouched floor at the lower left sinks into shadow
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
-    corner = np.clip(1 - np.sqrt(((xx / W) / 0.45) ** 2 + ((1 - yy / H) / 0.6) ** 2), 0, 1)[..., None]
+    corner = np.clip(1 - np.sqrt(((xx / W) / 0.55) ** 2 + ((1 - yy / H) / 0.6) ** 2), 0, 1)[..., None] ** 0.8
     a = a * (1 - corner * 0.85)
-    return a * light(0.42, 0.5, 0.68, 0.26, 1.2)
+    a = a * light(0.42, 0.5, 0.72, 0.38, 1.2)
+    # lifted (playtest 2026-11-25: under the fight's scrim the hall was a brown murk): the pillars a stop and
+    # a half brighter, the doorway kept off white by a soft shoulder
+    return shoulder(clarity(a ** 0.95 * 1.35, 1.1))
 
 def act5():
     im = Image.open(SRC / '5f.jpg')
