@@ -67,14 +67,8 @@ public partial class MapView : Control
         // An act with SEVERAL boss rooms is a gauntlet, and its whole shape is which bosses stand in it and in
         // what order — so those rooms wear their names under their tokens rather than three crowned skulls. An
         // ordinary act's single boss stays unnamed: finding out who ends the act is part of walking it.
-        var named = _map.Nodes.Count(n => Role(n) == MapNodeTags.Boss) > 1;
-
-        // a named room is NameW wide; its token sits in the middle of that
-        var side = named ? (NameW - NodeD) / 2 : 0;
-        _positions = Layout(_map, named ? NameW + 8 : LaneW, named ? RowH + NameH : RowH, Margin + side);
-        var width = _positions.Count == 0 ? NodeD : (int)_positions.Values.Max(p => p.X) + NodeD + side + Margin;
-        var height = _positions.Count == 0 ? NodeD
-            : (int)_positions.Values.Max(p => p.Y) + NodeD + (named ? NameH : 0) + Margin;
+        var (named, positions, width, height) = Shape(_map);
+        _positions = positions;
         CustomMinimumSize = new Vector2(width, height);
         if (_positions.Count > 0 && !DisplayServer.GetName().Contains("headless"))
             StartArt(width, height);
@@ -153,13 +147,30 @@ public partial class MapView : Control
         }
     }
 
-    // The plan under the rooms: worked out on a worker thread and drawn once, then kept for the run (MapArt/Bake).
-    private void StartArt(int width, int height)
+    // Where every room stands and how large the map is, from the graph alone — the same answer for the view
+    // and for Prewarm, which has to bake the very picture the view will ask for.
+    private static (bool Named, System.Collections.Generic.Dictionary<NodeId, Vector2> Positions, int Width, int Height) Shape(RunMap map)
+    {
+        var named = map.Nodes.Count(n => Role(n) == MapNodeTags.Boss) > 1;
+        // a named room is NameW wide; its token sits in the middle of that
+        var side = named ? (NameW - NodeD) / 2 : 0;
+        var positions = Layout(map, named ? NameW + 8 : LaneW, named ? RowH + NameH : RowH, Margin + side);
+        var width = positions.Count == 0 ? NodeD : (int)positions.Values.Max(p => p.X) + NodeD + side + Margin;
+        var height = positions.Count == 0 ? NodeD
+            : (int)positions.Values.Max(p => p.Y) + NodeD + (named ? NameH : 0) + Margin;
+        return (named, positions, width, height);
+    }
+
+    private static string ArtKey(RunMap map, RunState run) =>
+        $"{run.RandomSeed}:{run.ActNumber}:{map.Nodes.Count}:{map.Edges.Count}";
+
+    private static MapArt.Plan.Input ArtInput(RunMap map, RunState run,
+        System.Collections.Generic.Dictionary<NodeId, Vector2> positions, int width, int height)
     {
         var input = new MapArt.Plan.Input(
-            _run.ActNumber, _run.RandomSeed, width, height, NodeD,
-            [.. _map.Nodes.Select(n => new MapArt.Plan.Room(n.Id.Value, Role(n), _positions[n.Id].X, _positions[n.Id].Y))],
-            [.. _map.Edges.Select(e => (e.From.Value, e.To.Value))]);
+            run.ActNumber, run.RandomSeed, width, height, NodeD,
+            [.. map.Nodes.Select(n => new MapArt.Plan.Room(n.Id.Value, Role(n), positions[n.Id].X, positions[n.Id].Y))],
+            [.. map.Edges.Select(e => (e.From.Value, e.To.Value))]);
         // dev: BNB_MAPART_ACT=5 draws Act V's fragments under three rooms of whatever map is open (top, middle,
         // bottom), since no probe stops on the gauntlet's map
         if (System.Environment.GetEnvironmentVariable("BNB_MAPART_ACT") == "5")
@@ -167,6 +178,40 @@ public partial class MapView : Control
             var byY = input.Rooms.OrderBy(r => r.Y).ToList();
             input = input with { Act = 5, Rooms = [byY[0], byY[byY.Count / 2], byY[^1]] };
         }
+        return input;
+    }
+
+    // ★ THE PICTURE IS BAKED BEFORE IT IS ASKED FOR (playtest, 2026-11-25: "the map's picture comes a moment after
+    // the rooms"). The screen calls this whenever a run's map is known — a fight in the act, the act's title
+    // card — so by the time the map opens its picture is usually done. Cheap when it is: one key looked up.
+    public static void Prewarm(RunMap? map, RunState run, Godot.Node host)
+    {
+        if (map is null || map.Nodes.Count == 0 || !host.IsInsideTree() || DisplayServer.GetName().Contains("headless"))
+            return;
+        var key = ArtKey(map, run);
+        if (MapArt.Bake.Known(key))
+            return;
+        var (_, positions, width, height) = Shape(map);
+        var input = ArtInput(map, run, positions, width, height);
+        _ = Prewarmed(key, host.GetTree().Root, input);
+    }
+
+    private static async System.Threading.Tasks.Task Prewarmed(string key, Godot.Node root, MapArt.Plan.Input input)
+    {
+        try
+        {
+            await MapArt.Bake.Get(key, root, () => MapArt.Plan.Make(input));
+        }
+        catch (Exception e)
+        {
+            GD.PushWarning($"map art for act {input.Act} failed: {e.Message}");
+        }
+    }
+
+    // The plan under the rooms: worked out on a worker thread and drawn once, then kept for the run (MapArt/Bake).
+    private void StartArt(int width, int height)
+    {
+        var input = ArtInput(_map, _run, _positions, width, height);
         var origin = new Vector2(MapArt.Plan.Side, MapArt.Plan.Top);
         _positions = _positions.ToDictionary(kv => kv.Key, kv => kv.Value + origin);
         CustomMinimumSize = new Vector2(width + 2 * MapArt.Plan.Side, height + MapArt.Plan.Top + MapArt.Plan.Foot);
@@ -180,15 +225,23 @@ public partial class MapView : Control
             Name = "MapArt",
         };
         AddChild(_art);
-        var key = $"{_run.RandomSeed}:{_run.ActNumber}:{_map.Nodes.Count}:{_map.Edges.Count}";
+        var key = ArtKey(_map, _run);
         if (MapArt.Bake.Cached(key) is { } done)
             _art.Texture = done;
         else
             ShowArtWhenReady(key, input);
     }
 
+    // ⚠ THE ROOMS WAIT FOR THEIR PICTURE. A map whose rooms and roads stood on the bare page for a moment before
+    // the picture arrived under them read as two things loading. Until the bake is done the whole view is held
+    // invisible, then it comes in at once — picture, roads and rooms together. A bake that takes too long (a
+    // slow machine's first map) lets the rooms show anyway after RevealAfter: the map has to stay usable.
+    private const double RevealAfter = 1.5;
+
     private async void ShowArtWhenReady(string key, MapArt.Plan.Input input)
     {
+        Modulate = new Color(1, 1, 1, 0);
+        GetTree().CreateTimer(RevealAfter).Timeout += Reveal;
         try
         {
             var tex = await MapArt.Bake.Get(key, GetTree().Root, () => MapArt.Plan.Make(input));
@@ -200,6 +253,13 @@ public partial class MapView : Control
             // the plan is a picture: the map still works without it, so say so and carry on
             GD.PushWarning($"map art for act {input.Act} failed: {e.Message}");
         }
+        Reveal();
+    }
+
+    private void Reveal()
+    {
+        if (IsInstanceValid(this) && Modulate.A < 1)
+            Modulate = Colors.White;
     }
 
     // Depth downward, lanes across — the shape a run map is read in. The engine's layered layout already knows
@@ -338,10 +398,16 @@ public partial class MapView : Control
     }
 
     // The token for a kind of room (assets/map/nodes/make_nodes.py), or null for a kind that has none yet.
+    // Remembered, misses too: every map and every legend asks for each kind again, and asking the filesystem
+    // whether a file exists is not free.
+    private static readonly System.Collections.Generic.Dictionary<string, Texture2D?> Tokens = [];
+
     public static Texture2D? Token(string role)
     {
+        if (Tokens.TryGetValue(role, out var known))
+            return known;
         var path = $"res://assets/map/nodes/{role}.png";
-        return ResourceLoader.Exists(path) ? GD.Load<Texture2D>(path) : null;
+        return Tokens[role] = ResourceLoader.Exists(path) ? GD.Load<Texture2D>(path) : null;
     }
 
     // ── what a room is ───────────────────────────────────────────────────────────

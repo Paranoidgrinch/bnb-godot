@@ -11,10 +11,15 @@ public static partial class Bake
     private static readonly Dictionary<string, Texture2D> Done = [];
     private static readonly Dictionary<string, Task<Texture2D>> Pending = [];
     private static FontFile? _font;
+    // One shader for every bake: a new Shader is a new compile, and on a weak card that is a hitch per map.
+    private static Shader? _compose;
 
     public static Texture2D? Cached(string key) => Done.GetValueOrDefault(key);
 
     public static bool Busy => Pending.Count > 0;
+
+    // Done or under way: nothing to start.
+    public static bool Known(string key) => Done.ContainsKey(key) || Pending.ContainsKey(key);
 
     // `make` works the plan out (on a worker thread); `host` is any node in the tree, to hang the viewports on.
     public static Task<Texture2D> Get(string key, Node host, Func<Plan.Result> make)
@@ -37,7 +42,9 @@ public static partial class Bake
         var ink = await Replay(host, size, plan.Sketch.Ink, Colors.White);
         var paint = await Replay(host, size, plan.Sketch.Paint, null);
         var final = await Compose(host, size, plan.Ground, plan.GroundColor, ink, paint);
-        final.GenerateMipmaps();
+        // The mip chain of a picture this size is tens of milliseconds of CPU: off the main thread, so the frame
+        // the map is waiting on does not hitch for it.
+        await Task.Run(() => final.GenerateMipmaps());
         var tex = ImageTexture.CreateFromImage(final);
         Done[key] = tex;
         Pending.Remove(key);
@@ -75,7 +82,7 @@ public static partial class Bake
     {
         var vp = new SubViewport { Size = size, RenderTargetUpdateMode = SubViewport.UpdateMode.Once, Disable3D = true };
         Texture2D groundTex = ground is not null ? GD.Load<Texture2D>(ground) : ImageTexture.CreateFromImage(Solid(groundColor));
-        var shader = new Shader
+        var shader = _compose ??= new Shader
         {
             Code = """
                 shader_type canvas_item;

@@ -2785,6 +2785,16 @@ public partial class SessionScreen : Control
         : session.IsAwaitingNodeChoice ? "map"
         : "";
 
+    private static readonly bool RebuildClock = System.Environment.GetEnvironmentVariable("BNB_REBUILD_MS") is { Length: > 0 };
+
+    private static int CountNodes(Godot.Node node)
+    {
+        var count = 1;
+        foreach (var child in node.GetChildren())
+            count += CountNodes(child);
+        return count;
+    }
+
     private void Rebuild()
     {
         if (!_drawing || HoldForDeathBeat())
@@ -2811,7 +2821,14 @@ public partial class SessionScreen : Control
         var scope = MyMemberScope(Session);
         try
         {
+            // The act's map picture is baked while the player is anywhere in the act, not when the map opens.
+            if (Session is { } walking)
+                MapView.Prewarm(walking.Run.Map, walking.Run, this);
+            // dev: BNB_REBUILD_MS=1 prints how long every redraw of the screen takes to build (not to draw).
+            var clock = RebuildClock ? System.Diagnostics.Stopwatch.StartNew() : null;
             RebuildScreen();
+            if (clock is not null)
+                GD.Print($"rebuild {key}: {clock.Elapsed.TotalMilliseconds:0.0} ms, {CountNodes(this)} nodes");
             if (keep is { } offset && offset > 0)
             {
                 Callable.From(() => _mainScroll.ScrollVertical = offset).CallDeferred();
