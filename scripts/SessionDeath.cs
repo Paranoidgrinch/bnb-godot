@@ -132,9 +132,12 @@ public partial class SessionScreen
         var figure = drawn.Body;
         // Already drawn as the dead are drawn; it stands until the blow has landed.
         figure.Modulate = Colors.White;
-        if (await BodyAfter(id, delay) is not { } body || body != figure)
-            return;
+        var body = await BodyAfter(id, delay);
+        // Heard even when a redraw has already replaced the body with its dimmed dead self.
         Sfx.Play(Sfx.Kind.Death);
+        Sound(Sfx.Kind.Fall, ThudAfter);
+        if (body is null || body != figure)
+            return;
         figure.PivotOffset = new Vector2(figure.Size.X / 2, figure.Size.Y);
         var home = figure.Position;
         var tween = figure.CreateTween();
@@ -146,7 +149,6 @@ public partial class SessionScreen
         tween.Parallel().TweenProperty(figure, "position:y", home.Y + 22, 0.5)
             .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.In);
         tween.Parallel().TweenProperty(figure, "self_modulate", new Color(0.55f, 0.5f, 0.5f, last ? 0.08f : 0.35f), 0.55);
-        Sound(Sfx.Kind.Fall, ThudAfter);
     }
 
     // THE LAST BLOW, PHOTOGRAPHED (`--smoke-effects --to-the-death`, needs a window): after the effects probe, the
