@@ -4031,13 +4031,6 @@ public partial class SessionScreen : Control
             var top = Math.Max(2, arenaTop - 4 - height);
             // From the pane's left edge to just short of the round's heading in the middle.
             var band = TopRegion(top, height, right: Math.Max(PaneInset, (int)(PaneWidth / 2f) + 60));
-            var scroll = new ScrollContainer
-            {
-                HorizontalScrollMode = ScrollContainer.ScrollMode.ShowNever,
-                VerticalScrollMode = ScrollContainer.ScrollMode.Disabled,
-                MouseFilter = MouseFilterEnum.Pass,
-            };
-            scroll.SetAnchorsPreset(LayoutPreset.FullRect);
             var row = new HBoxContainer { Name = RelicGridName, MouseFilter = MouseFilterEnum.Pass };
             row.AddThemeConstantOverride("separation", 3);
             var steady = session.Run.Relics.Where(relic => AlwaysInEffect(relic.Id.Value, hero)).ToList();
@@ -4049,17 +4042,8 @@ public partial class SessionScreen : Control
                 _relicTiles[relic.Id.Value] = tile;
                 row.AddChild(tile);
             }
-            scroll.AddChild(row);
-            // A wheel over the row moves it sideways: there is nothing for it to move up or down.
-            scroll.GuiInput += input =>
-            {
-                if (input is InputEventMouseButton { Pressed: true } wheel
-                    && wheel.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
-                {
-                    scroll.ScrollHorizontal += (wheel.ButtonIndex == MouseButton.WheelDown ? 1 : -1) * (CombatRelicTile + 3);
-                    scroll.AcceptEvent();
-                }
-            };
+            var scroll = SideScroll(row, CombatRelicTile + 3, ScrollContainer.ScrollMode.ShowNever);
+            scroll.SetAnchorsPreset(LayoutPreset.FullRect);
             band.AddChild(scroll);
             arenaTop = Math.Max(arenaTop, top + height + 4);
             LightRelics(combat, hero);
@@ -4242,7 +4226,15 @@ public partial class SessionScreen : Control
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             choiceBox.AddChild(title);
-            var choiceRow = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+            // ⚠ A PICK FROM A FULL PILE IS WIDER THAN THE SCREEN (playtest, 2026-11-25): twenty discarded cards side
+            // by side ran off both edges, and the ones out there could neither be seen nor clicked. The row
+            // scrolls sideways like the relic row over the hero — the wheel over it, or its bar.
+            var choiceRow = new HBoxContainer
+            {
+                Alignment = BoxContainer.AlignmentMode.Center,
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                MouseFilter = MouseFilterEnum.Pass,
+            };
             choiceRow.AddThemeConstantOverride("separation", 10);
             foreach (var candidate in cardChoice)
             {
@@ -4253,7 +4245,7 @@ public partial class SessionScreen : Control
                 block.Name = $"Choice_{id.value}";
                 choiceRow.AddChild(block);
             }
-            choiceBox.AddChild(choiceRow);
+            choiceBox.AddChild(SideScroll(choiceRow, CardVisuals.CardW + 10, ScrollContainer.ScrollMode.Auto));
             if (play.Seat.PendingCardChoiceCount > 1)
             {
                 var confirm = new Button { Text = "Confirm" };
