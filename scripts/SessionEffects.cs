@@ -79,6 +79,7 @@ public partial class SessionScreen
             shown.AddRange(steps.Skip(_stepsSeen));
         _stepsFight = key;
         _stepsSeen = steps.Count;
+        NoteTheLiving(combat);
         WriteFightLog(combat, shown, fresh);
         if (_fastForward || shown.Count == 0)
             return;
@@ -105,9 +106,9 @@ public partial class SessionScreen
                         row[who] = row.GetValueOrDefault(who) + 1;
                         Sound(Sfx.Kind.Hit, at);
                         var lethal = hit.HealthBefore > 0 && hit.HealthAfter <= 0;
-                        // A body that this blow put down falls a moment after it lands.
+                        // A body that this blow put down falls a moment after it lands (SessionDeath).
                         if (lethal && hit.TargetCombatantId != combat.HeroId)
-                            Sound(Sfx.Kind.Death, at + 0.18);
+                            Fall(who, at + FallAfter, last: false);
                         if (hit.HealthLost > 0)
                         {
                             Wound(who, at);
@@ -322,6 +323,8 @@ public partial class SessionScreen
         }
         GD.Print($"smoke-effects: {shots} shots; sounds "
             + string.Join(", ", Enum.GetValues<Sfx.Kind>().Select(k => $"{k}={Sfx.Played[(int)k]}")));
+        if (OS.GetCmdlineUserArgs().Contains("--to-the-death"))
+            await SmokeDeath();
         GetTree().Quit();
 
         async System.Threading.Tasks.Task Snap(int n)

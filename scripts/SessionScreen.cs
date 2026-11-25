@@ -2785,7 +2785,7 @@ public partial class SessionScreen : Control
 
     private void Rebuild()
     {
-        if (!_drawing)
+        if (!_drawing || HoldForDeathBeat())
             return;
         // THE PAGE STAYS WHERE IT WAS READ (playtest feedback 2, B3). Every click on a screen that is not a fight
         // redraws the page — and a screen left for a moment (the shop's card strike, a card looked at, an upgrade

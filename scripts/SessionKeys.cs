@@ -21,6 +21,10 @@ public partial class SessionScreen
 
     public override void _Input(InputEvent @event)
     {
+        // A fallen enemy's last moment is the old fight's screen: nothing on it may be played, and a click or a
+        // key only skips to the reward (SessionDeath).
+        if (DeathBeatInput(@event))
+            return;
         // The wand's drag-and-drop goes first: a release over the staff must not also be a click on the card.
         if (WandGesture(@event))
         {
