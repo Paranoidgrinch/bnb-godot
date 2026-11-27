@@ -102,6 +102,9 @@ public static class DisplaySettings
             return;
 
         DisplayServer.WindowSetVsyncMode(VSync ? DisplayServer.VSyncMode.Enabled : DisplayServer.VSyncMode.Disabled);
+        // Without V-Sync nothing limits the frame rate, and a card game drawn 500 times a second keeps a weak
+        // graphics card at full load for nothing. 120 is smoother than any screen most players have.
+        Engine.MaxFps = VSync ? 0 : 120;
         switch (Mode)
         {
             case WindowKind.Exclusive:

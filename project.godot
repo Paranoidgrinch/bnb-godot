@@ -68,3 +68,12 @@ texture={
 [gui]
 
 timers/tooltip_delay_sec=100000.0
+
+[rendering]
+
+; A 2D card game on any card (user, 2026-11-27: the game should run smoothly on a GeForce GT 730): the
+; Compatibility renderer still draws on the graphics card, through OpenGL 3.3 instead of Vulkan, and is the one
+; Godot recommends for 2D and older hardware. Everything the game draws is canvas_item work, so the pictures are
+; the same (compared side by side in --smoke-effects --to-the-death).
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
