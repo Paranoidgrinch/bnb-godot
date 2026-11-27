@@ -34,10 +34,26 @@ public partial class GameHost : Godot.Node
 
     public void SaveMeta(MetaState meta) => _metaStore.Save(meta);
 
+    // dev: BNB_FRAME_MS=<n> prints every frame that took longer than n ms (a hitch the player would feel).
+    private static readonly int SlowFrame =
+        int.TryParse(System.Environment.GetEnvironmentVariable("BNB_FRAME_MS"), out var ms) ? ms : 0;
+
+    public override void _ExitTree() => ArtWarm.Release();
+
+    public override void _Process(double delta)
+    {
+        if (ArtWarm.Busy)
+            ArtWarm.Collect();
+        if (SlowFrame > 0 && delta * 1000 > SlowFrame)
+            GD.Print($"slow frame: {delta * 1000:0} ms");
+    }
+
     public override void _Ready()
     {
         Instance = this;
         Controls.Install();
+        // Every picture of the game, loaded on the loader threads while the title is up (ArtWarm).
+        ArtWarm.Start();
         // The window the player last chose, before anything is drawn in it. An interface scale applies even
         // under a probe (it is a canvas property); the window itself is left alone there — see DisplaySettings.
         DisplaySettings.Apply(GetTree(),
